@@ -3,6 +3,7 @@ import { getFirestore, getDatabase, verifyAndGetUid, FieldValue } from '@/lib/fi
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import { kv, isKvConfigured } from '@/lib/kv';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
+import { rebuildCustomerProfileForOrder, syncCompletedOrderCounterForOrder } from '@/lib/server/orderLifecycle';
 
 function normalizeIndianPhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
@@ -184,6 +185,26 @@ export async function PATCH(req) {
         }
 
         await batch.commit();
+
+        if (newStatus === 'delivered') {
+            const countableOrderData = {
+                ...orderData,
+                status: newStatus,
+            };
+            await Promise.allSettled([
+                syncCompletedOrderCounterForOrder({
+                    firestore,
+                    orderRef,
+                    orderData: countableOrderData,
+                    fallbackCollection: collectionName,
+                }),
+                rebuildCustomerProfileForOrder({
+                    firestore,
+                    orderData: countableOrderData,
+                    fallbackCollection: collectionName,
+                }),
+            ]);
+        }
 
         // ✅ RTDB Write for Real-time Tracking (Dual Write)
         try {

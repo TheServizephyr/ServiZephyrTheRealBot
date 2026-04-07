@@ -69,6 +69,9 @@ export async function POST(req) {
         if (!coupon || !coupon.code || coupon.minOrder === undefined || (!isFreeDelivery && coupon.value === undefined)) {
             return NextResponse.json({ message: 'Missing required coupon data.' }, { status: 400 });
         }
+        if (String(coupon.customerId || '').startsWith('phone:')) {
+            return NextResponse.json({ message: 'Specific reward coupon must target a customer doc id, not a phone number.' }, { status: 400 });
+        }
 
         const couponsCollectionRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
         const newCouponRef = couponsCollectionRef.doc();
@@ -220,6 +223,9 @@ export async function PATCH(req) {
 
         if (!coupon || !coupon.id) {
             return NextResponse.json({ message: 'Coupon ID is required for updating.' }, { status: 400 });
+        }
+        if (String(coupon.customerId || '').startsWith('phone:')) {
+            return NextResponse.json({ message: 'Specific reward coupon must target a customer doc id, not a phone number.' }, { status: 400 });
         }
 
         const couponRef = firestore.collection(collectionName).doc(businessId).collection('coupons').doc(coupon.id);

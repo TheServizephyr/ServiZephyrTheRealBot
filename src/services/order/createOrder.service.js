@@ -24,7 +24,7 @@ import { getFirestore, FieldValue, GeoPoint, verifyIdToken } from '@/lib/firebas
 import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
-import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
+import { resolveBusinessCustomerProfileRef, upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
 import {
@@ -613,6 +613,14 @@ export async function createOrderV2(req, options = {}) {
         }
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
+        const resolvedRestaurantCustomer = await resolveBusinessCustomerProfileRef({
+            firestore,
+            businessCollection: business.collection,
+            businessId: business.id,
+            actorId: userId,
+            customerPhone: normalizedPhone,
+        });
+        const restaurantCustomerDocId = String(resolvedRestaurantCustomer?.customerDocId || '').trim();
         const trustedCouponActorUid = String(refSession?.subjectId || bearerUid || '').trim();
         const couponAudience = await resolveCouponAudienceContext({
             firestore,
@@ -620,6 +628,7 @@ export async function createOrderV2(req, options = {}) {
             phone: normalizedPhone,
             actorUid: trustedCouponActorUid,
             resolveRef: false,
+            preferredCustomerDocId: restaurantCustomerDocId,
         });
         const couponRedemptionKeys = couponAudience?.redemptionKeys instanceof Set
             ? couponAudience.redemptionKeys
@@ -943,6 +952,7 @@ export async function createOrderV2(req, options = {}) {
                 customerName: finalCustomerName,
                 customerId: userId,
                 userId: userId,  // ✅ NEW: Unified userId field
+                restaurantCustomerDocId: restaurantCustomerDocId || null,
                 customerAddress: address?.full || null,
                 customerPhone: normalizedPhone,
                 customerEmail: finalCustomerEmail || null,
@@ -1014,7 +1024,8 @@ export async function createOrderV2(req, options = {}) {
                             firestore,
                             businessCollection: business.collection,
                             businessId: business.id,
-                            customerDocId: userId,
+                            customerDocId: restaurantCustomerDocId || userId,
+                            actorId: userId,
                             customerName: orderData.customerName,
                             customerEmail: finalCustomerEmail,
                             customerPhone: normalizedPhone,
@@ -1177,6 +1188,7 @@ export async function createOrderV2(req, options = {}) {
             ),
             customerId: userId,
             userId: userId,  // ✅ NEW: Unified userId field for queries
+            restaurantCustomerDocId: restaurantCustomerDocId || null,
             customerAddress: address?.full || null,
             // ✅ Car Order fields
             ...(deliveryType === 'car-order' && {
@@ -1294,7 +1306,8 @@ export async function createOrderV2(req, options = {}) {
                     firestore,
                     businessCollection: business.collection,
                     businessId: business.id,
-                    customerDocId: userId,
+                    customerDocId: restaurantCustomerDocId || userId,
+                    actorId: userId,
                     customerName: orderData.customerName,
                     customerEmail: finalCustomerEmail,
                     customerPhone: normalizedPhone,

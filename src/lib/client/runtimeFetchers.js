@@ -21,6 +21,24 @@ const USE_PUBLIC_BOOTSTRAP = process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP === 't
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 const getTokenSignature = (value) => String(value || '').slice(-24);
 
+function buildRestaurantBootstrapCacheKey({
+    restaurantId,
+    phone = '',
+    token = '',
+    ref = '',
+} = {}) {
+    const normalizedRef = String(ref || '').trim();
+    const normalizedPhone = normalizedRef ? '' : normalizePhone(phone);
+    const tokenSignature = getTokenSignature(token);
+    return [
+        RESTAURANT_BOOTSTRAP_CACHE_PREFIX,
+        toCacheKeyPart(restaurantId),
+        toCacheKeyPart(normalizedPhone),
+        toCacheKeyPart(normalizedRef),
+        toCacheKeyPart(tokenSignature),
+    ].join('');
+}
+
 async function fetchJsonOrThrow(url, init = {}) {
     const response = await fetch(url, init);
     const payload = await response.json().catch(() => ({}));
@@ -300,17 +318,15 @@ export async function fetchCachedRestaurantBootstrap({
 
     const normalizedPhone = normalizePhone(phone);
     const tokenSignature = getTokenSignature(token);
-    const cacheKey = [
-        RESTAURANT_BOOTSTRAP_CACHE_PREFIX,
-        toCacheKeyPart(restaurantId),
-        
-        toCacheKeyPart(normalizedPhone),
-        toCacheKeyPart(ref),
-        toCacheKeyPart(tokenSignature),
-    ].join('');
+    const cacheKey = buildRestaurantBootstrapCacheKey({
+        restaurantId,
+        phone: normalizedPhone,
+        token,
+        ref,
+    });
 
     if (force) {
-        invalidateCachedClientResource(cacheKey, { storage: 'memory' });
+        invalidateCachedClientResource(cacheKey, { storage: 'session' });
     }
 
     return getCachedClientResource(cacheKey, async () => {
@@ -378,7 +394,47 @@ export async function fetchCachedRestaurantBootstrap({
         };
     }, {
         ttlMs,
-        storage: 'memory',
+        storage: 'session',
+    });
+}
+
+export function primeRestaurantBootstrapCache({
+    restaurantId,
+    phone = '',
+    token = '',
+    ref = '',
+    bootstrapData = null,
+    ttlMs = RESTAURANT_BOOTSTRAP_TTL_MS,
+} = {}) {
+    if (!restaurantId || !bootstrapData || typeof bootstrapData !== 'object') {
+        return null;
+    }
+
+    const cacheKey = buildRestaurantBootstrapCacheKey({
+        restaurantId,
+        phone,
+        token,
+        ref,
+    });
+    const menuData = toLegacyMenuDataFromBootstrap(bootstrapData);
+    const settingsData = toLegacySettingsDataFromBootstrap(bootstrapData);
+
+    if (bootstrapData?.user?.customer && bootstrapData?.user?.customer?.resolved !== false) {
+        primeCustomerLookupCache({
+            phone: normalizePhone(phone),
+            ref,
+            guestId: '',
+            user: null,
+        }, bootstrapData.user.customer, CUSTOMER_LOOKUP_TTL_MS);
+    }
+
+    return primeCachedClientResource(cacheKey, {
+        menuData,
+        settingsData: settingsData || {},
+        bootstrapData,
+    }, {
+        ttlMs,
+        storage: 'session',
     });
 }
 

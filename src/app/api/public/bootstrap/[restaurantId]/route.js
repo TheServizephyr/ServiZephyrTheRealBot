@@ -12,10 +12,10 @@ import { getBusinessRuntime, resolveScopedFeatureFlagValue } from '@/lib/server/
 import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 import { getOrSetSharedCache } from '@/lib/server/sharedCache';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
+import { resolveBusinessCustomerProfileRef } from '@/lib/customer-profiles';
 
 export const dynamic = 'force-dynamic';
 
-const CUSTOMER_TIMEOUT_MS = Math.max(150, Number(process.env.PUBLIC_BOOTSTRAP_CUSTOMER_TIMEOUT_MS || 300));
 const ACTIVE_ORDER_TIMEOUT_MS = Math.max(150, Number(process.env.PUBLIC_BOOTSTRAP_ACTIVE_ORDER_TIMEOUT_MS || 300));
 function withTimeout(promise, timeoutMs, fallbackValue = null) {
   return Promise.race([
@@ -102,17 +102,13 @@ export async function GET(req, { params }) {
         businessData: businessData,
         allowInlineRebuild: true,
       }),
-      withTimeout(
-        resolveCustomerLookupProfile(firestore, {
-          phone,
-          explicitGuestId: null,
-          ref,
-          cookieGuestId,
-          loggedInUid,
-        }),
-        CUSTOMER_TIMEOUT_MS,
-        null
-      ),
+      resolveCustomerLookupProfile(firestore, {
+        phone,
+        explicitGuestId: null,
+        ref,
+        cookieGuestId,
+        loggedInUid,
+      }).catch(() => null),
       withTimeout(
         resolveActiveOrdersForCustomerContext(firestore, {
           phone,
@@ -212,23 +208,37 @@ export async function GET(req, { params }) {
         zones: [],
       },
     };
-    const couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
-    const hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+    let couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
+    let hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+    let hasMilestoneCoupons = couponCatalog.some((coupon) => Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0);
+
     const couponActorUid =
       loggedInUid ||
       customerResult?.actorUid ||
       cookieGuestId ||
       '';
-    const couponAudience = hasAssignedCoupons || couponCatalog.some((coupon) => Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0)
+    const resolvedCustomerDocId = customerResult?.found
+      ? await resolveBusinessCustomerProfileRef({
+          firestore,
+          businessCollection: business.collection,
+          businessId,
+          customerDocId: String(customerResult?.response?.customerId || '').trim(),
+          actorId: String(customerResult?.actorUid || couponActorUid || '').trim(),
+          customerPhone: String(customerResult?.response?.phone || phone || '').trim(),
+        }).then((resolved) => String(resolved?.customerDocId || '').trim()).catch(() => '')
+      : '';
+    const shouldResolveCouponAudience = Boolean(customerResult?.found) || hasAssignedCoupons || hasMilestoneCoupons;
+    const couponAudience = shouldResolveCouponAudience
       ? await resolveCouponAudienceContext({
           firestore,
           businessRef: business.ref,
           phone,
           ref,
           actorUid: couponActorUid,
+          preferredCustomerDocId: resolvedCustomerDocId,
         })
-      : { eligibleIds: new Set(), nextOrderNumber: 0 };
-    const personalizedCoupons = couponCatalog.length > 0
+      : { eligibleIds: new Set(), nextOrderNumber: 1, completedOrderCount: 0, primaryCustomerDocId: '' };
+    let personalizedCoupons = couponCatalog.length > 0
       ? filterCouponsForAudience(couponCatalog, {
           now: new Date(),
           eligibleIds: couponAudience.eligibleIds,
@@ -236,6 +246,25 @@ export async function GET(req, { params }) {
           nextOrderNumber: couponAudience.nextOrderNumber,
         })
       : (menuSnapshot?.menu?.coupons || []);
+
+    if ((customerResult?.found || ref || phone || cookieGuestId || loggedInUid) && personalizedCoupons.length === 0) {
+      const liveCouponsSnap = await business.ref.collection('coupons').where('status', '==', 'active').get().catch(() => null);
+      const liveCouponCatalog = liveCouponsSnap
+        ? liveCouponsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        : [];
+
+      if (liveCouponCatalog.length > 0) {
+        couponCatalog = liveCouponCatalog;
+        hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());
+        hasMilestoneCoupons = couponCatalog.some((coupon) => Array.isArray(coupon?.orderMilestones) && coupon.orderMilestones.length > 0);
+        personalizedCoupons = filterCouponsForAudience(couponCatalog, {
+          now: new Date(),
+          eligibleIds: couponAudience.eligibleIds,
+          redemptionKeys: couponAudience.redemptionKeys,
+          nextOrderNumber: couponAudience.nextOrderNumber,
+        });
+      }
+    }
 
     const menuPayload = menuSnapshot?.menu ? {
       ...menuSnapshot.menu,
@@ -260,8 +289,18 @@ export async function GET(req, { params }) {
       ordering: orderingPayload,
       menu: menuPayload,
       user: {
-        customer: customerResult?.found ? customerResult.response : {
+        customer: customerResult?.found ? {
+          ...customerResult.response,
+          customerId: String(resolvedCustomerDocId || couponAudience?.primaryCustomerDocId || ''),
+          actorId: String(customerResult?.actorUid || couponActorUid || ''),
+          completedOrderCount: Math.max(0, Number(couponAudience?.completedOrderCount) || 0),
+          nextOrderNumber: Math.max(1, Number(couponAudience?.nextOrderNumber) || 1),
+        } : {
           resolved: false,
+          customerId: '',
+          actorId: '',
+          completedOrderCount: 0,
+          nextOrderNumber: 1,
           name: '',
           phone: '',
           addresses: [],

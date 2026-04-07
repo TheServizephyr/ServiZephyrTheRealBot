@@ -1,5 +1,5 @@
 import { resolveGuestAccessRef } from '@/lib/public-auth';
-import { COUNTABLE_CUSTOMER_ORDER_STATUSES } from '@/lib/customer-profiles';
+import { resolveBusinessCustomerProfileRef } from '@/lib/customer-profiles';
 
 export function normalizeCouponPhone(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -85,10 +85,6 @@ export function buildCouponRedemptionKeys({
   return redemptionKeys;
 }
 
-function isCountableCouponOrderStatus(status) {
-  return COUNTABLE_CUSTOMER_ORDER_STATUSES.has(String(status || '').trim().toLowerCase());
-}
-
 export function hasCouponBeenRedeemedByAudience(coupon = {}, redemptionKeys = new Set()) {
   if (coupon?.singleUsePerCustomer !== true) return false;
 
@@ -115,14 +111,6 @@ function addMatchedCustomerDocIdentifiers(eligibleIds, doc) {
   if (!doc?.id) return;
 
   eligibleIds.add(String(doc.id));
-
-  const customerData = doc.data() || {};
-  if (customerData.customerId) eligibleIds.add(String(customerData.customerId));
-  if (customerData.userId) eligibleIds.add(String(customerData.userId));
-  if (customerData.uid) eligibleIds.add(String(customerData.uid));
-
-  const customerPhone = normalizeCouponPhone(customerData.phone || customerData.phoneNumber);
-  if (customerPhone) eligibleIds.add(`phone:${customerPhone}`);
 }
 
 function addCanonicalCustomerIdentifiers(targetIds, doc) {
@@ -131,17 +119,14 @@ function addCanonicalCustomerIdentifiers(targetIds, doc) {
   targetIds.add(String(doc.id));
 
   const customerData = doc.data() || {};
-  if (customerData.customerId) targetIds.add(String(customerData.customerId));
+  (Array.isArray(customerData.actorIds) ? customerData.actorIds : []).forEach((value) => {
+    const safeValue = String(value || '').trim();
+    if (safeValue) targetIds.add(safeValue);
+  });
+  if (customerData.currentActorId) targetIds.add(String(customerData.currentActorId));
   if (customerData.userId) targetIds.add(String(customerData.userId));
   if (customerData.uid) targetIds.add(String(customerData.uid));
-}
-
-function splitIntoChunks(values = [], size = 10) {
-  const chunks = [];
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size));
-  }
-  return chunks;
+  if (customerData.guestId) targetIds.add(String(customerData.guestId));
 }
 
 export async function resolveCouponAudienceContext({
@@ -151,14 +136,15 @@ export async function resolveCouponAudienceContext({
   ref = '',
   actorUid = '',
   resolveRef = true,
+  preferredCustomerDocId = '',
 } = {}) {
   const eligibleIds = new Set();
   const canonicalActorIds = new Set();
   const matchedCustomerDocs = new Map();
-  const matchedOrderDocs = new Map();
   const normalizedPhone = normalizeCouponPhone(phone);
   const safeActorUid = String(actorUid || '').trim();
   const safeRef = String(ref || '').trim();
+  const safePreferredCustomerDocId = String(preferredCustomerDocId || '').trim();
 
   if (safeActorUid) {
     eligibleIds.add(safeActorUid);
@@ -174,96 +160,63 @@ export async function resolveCouponAudienceContext({
         canonicalActorIds.add(subjectId);
       }
       const refPhone = normalizeCouponPhone(refSession?.phone);
-      if (refPhone) eligibleIds.add(`phone:${refPhone}`);
+      if (refPhone) canonicalActorIds.add(`phone:${refPhone}`);
     } catch (error) {
       console.warn('[Coupon Eligibility] Reward ref resolution failed:', error?.message || error);
     }
   }
 
-  if (normalizedPhone) eligibleIds.add(`phone:${normalizedPhone}`);
-
-  if (businessRef && canonicalActorIds.size > 0) {
-    const directIds = [...canonicalActorIds].filter(Boolean);
-
-    for (const directId of directIds) {
-      try {
-        const directDocSnap = await businessRef.collection('customers').doc(String(directId)).get();
-        if (directDocSnap.exists) {
-          matchedCustomerDocs.set(directDocSnap.id, directDocSnap);
-        }
-      } catch (error) {
-        console.warn('[Coupon Eligibility] Direct customer lookup failed:', error?.message || error);
-      }
-    }
-
-    for (const idChunk of splitIntoChunks(directIds, 10)) {
-      try {
-        const [customerIdSnap, userIdSnap, uidSnap] = await Promise.all([
-          businessRef.collection('customers').where('customerId', 'in', idChunk).get(),
-          businessRef.collection('customers').where('userId', 'in', idChunk).get(),
-          businessRef.collection('customers').where('uid', 'in', idChunk).get(),
-        ]);
-
-        customerIdSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
-        userIdSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
-        uidSnap.forEach((doc) => matchedCustomerDocs.set(doc.id, doc));
-      } catch (error) {
-        console.warn('[Coupon Eligibility] Canonical customer lookup failed:', error?.message || error);
-      }
-    }
-
-    matchedCustomerDocs.forEach((doc) => {
-      addMatchedCustomerDocIdentifiers(eligibleIds, doc);
-      addCanonicalCustomerIdentifiers(canonicalActorIds, doc);
+  if (businessRef) {
+    const resolvedProfile = await resolveBusinessCustomerProfileRef({
+      firestore,
+      businessCollection: businessRef.parent.parent?.id || businessRef.parent.id || '',
+      businessId: businessRef.id,
+      customerDocId: safePreferredCustomerDocId,
+      actorId: [...canonicalActorIds].find((value) => value && !String(value).startsWith('phone:')) || '',
+      customerPhone: normalizedPhone,
+    }).catch((error) => {
+      console.warn('[Coupon Eligibility] Customer profile resolution failed:', error?.message || error);
+      return null;
     });
 
-    const businessId = String(businessRef.id || '').trim();
-    const lookupIds = [...canonicalActorIds].filter((value) => value && !String(value).startsWith('phone:'));
+    const resolvedDoc = resolvedProfile?.customerSnap
+      || (resolvedProfile?.customerRef ? await resolvedProfile.customerRef.get().catch(() => null) : null);
 
-    try {
-      const orderLookups = [];
-      splitIntoChunks(lookupIds, 10).forEach((idChunk) => {
-        if (!idChunk.length) return;
-        orderLookups.push(firestore.collection('orders').where('customerId', 'in', idChunk).get());
-        orderLookups.push(firestore.collection('orders').where('userId', 'in', idChunk).get());
-      });
-
-      const orderSnapshots = await Promise.all(orderLookups);
-      orderSnapshots.forEach((snapshot) => {
-        snapshot.forEach((doc) => {
-          const data = doc.data() || {};
-          const orderBusinessId = String(data.restaurantId || '').trim();
-          const orderStatus = String(data.status || '').trim().toLowerCase();
-          if (businessId && orderBusinessId !== businessId) return;
-          if (!isCountableCouponOrderStatus(orderStatus)) return;
-          matchedOrderDocs.set(doc.id, doc);
-        });
-      });
-    } catch (error) {
-      console.warn('[Coupon Eligibility] Order history lookup failed:', error?.message || error);
+    if (resolvedDoc?.exists) {
+      matchedCustomerDocs.set(resolvedDoc.id, resolvedDoc);
+      addMatchedCustomerDocIdentifiers(eligibleIds, resolvedDoc);
+      addCanonicalCustomerIdentifiers(canonicalActorIds, resolvedDoc);
     }
-
   }
-
-  const resolvedCompletedOrderCount = matchedOrderDocs.size;
-  const compatibilityRedemptionIds = new Set(canonicalActorIds);
-  matchedCustomerDocs.forEach((doc) => {
-    const customerData = doc.data() || {};
-    const customerPhone = normalizeCouponPhone(customerData.phone || customerData.phoneNumber);
-    if (customerPhone) compatibilityRedemptionIds.add(`phone:${customerPhone}`);
+  const matchedCustomerDoc = matchedCustomerDocs.size > 0
+    ? [...matchedCustomerDocs.values()][0]
+    : null;
+  const matchedCustomerData = matchedCustomerDoc?.data() || {};
+  const completedOrderCount = Math.max(0, Number(matchedCustomerData.completedOrderCount) || 0);
+  const compatibilityRedemptionIds = new Set();
+  if (matchedCustomerDoc?.id) compatibilityRedemptionIds.add(String(matchedCustomerDoc.id));
+  canonicalActorIds.forEach((value) => {
+    const safeValue = String(value || '').trim();
+    if (safeValue) compatibilityRedemptionIds.add(safeValue);
   });
-  const redemptionSourceIds = compatibilityRedemptionIds.size > 0 ? compatibilityRedemptionIds : eligibleIds;
+  const matchedCustomerPhone = normalizeCouponPhone(matchedCustomerData.phone || matchedCustomerData.phoneNumber || normalizedPhone);
+  if (matchedCustomerPhone) {
+    compatibilityRedemptionIds.add(matchedCustomerPhone);
+    compatibilityRedemptionIds.add(`phone:${matchedCustomerPhone}`);
+  }
+  const redemptionSourceIds = compatibilityRedemptionIds.size > 0 ? compatibilityRedemptionIds : new Set();
 
   return {
     eligibleIds,
     canonicalActorIds,
     redemptionKeys: buildCouponRedemptionKeys({
       eligibleIds: redemptionSourceIds,
-      phone: canonicalActorIds.size > 0 ? '' : normalizedPhone,
+      phone: '',
     }),
     matchedCustomerDocs,
-    completedOrderCount: resolvedCompletedOrderCount,
-    nextOrderNumber: resolvedCompletedOrderCount + 1,
+    primaryCustomerDocId: matchedCustomerDoc?.id || safePreferredCustomerDocId || '',
+    completedOrderCount,
+    nextOrderNumber: completedOrderCount + 1,
   };
 }
 

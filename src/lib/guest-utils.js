@@ -213,47 +213,85 @@ export const migrateGuestToUser = async (firestore, uid, phone, finalUserData = 
                 const normalizedType = String(restaurantInfo.businessType || '').toLowerCase();
                 const collectionPath = (normalizedType === 'shop' || normalizedType === 'store') ? 'shops' : 'restaurants';
 
-                // Old customer record (by guestId)
-                const oldCustomerRef = firestore.collection(collectionPath)
+                // Preserve the original restaurant customer doc id so coupon ownership
+                // and per-restaurant counters don't break after guest -> uid migration.
+                const preservedCustomerRef = firestore.collection(collectionPath)
                     .doc(restaurantId)
                     .collection('customers')
                     .doc(guestId);
-
-                // New customer record (by uid)
-                const newCustomerRef = firestore.collection(collectionPath)
+                const legacyUidCustomerRef = firestore.collection(collectionPath)
                     .doc(restaurantId)
                     .collection('customers')
                     .doc(uid);
 
-                const oldCustomerSnap = await oldCustomerRef.get();
+                const [preservedCustomerSnap, legacyUidCustomerSnap] = await Promise.all([
+                    preservedCustomerRef.get(),
+                    legacyUidCustomerRef.get(),
+                ]);
 
-                let oldCustomerData = {};
-                if (oldCustomerSnap.exists) {
-                    oldCustomerData = oldCustomerSnap.data();
-                    batch.delete(oldCustomerRef);
-                    console.log(`[GuestUtils] Migrating customer record from ${collectionPath}/${restaurantId}/customers/${guestId}`);
-                }
+                const preservedCustomerData = preservedCustomerSnap.exists ? (preservedCustomerSnap.data() || {}) : {};
+                const legacyUidCustomerData = legacyUidCustomerSnap.exists ? (legacyUidCustomerSnap.data() || {}) : {};
 
-                // Create/update customer record with UID
-                const newCustomerPayload = {
-                    ...oldCustomerData,
-                    name: finalUserData.name || userData.name,
-                    email: finalUserData.email || userData.email,
+                const mergedActorIds = [...new Set([
+                    ...(Array.isArray(preservedCustomerData.actorIds) ? preservedCustomerData.actorIds : []),
+                    ...(Array.isArray(legacyUidCustomerData.actorIds) ? legacyUidCustomerData.actorIds : []),
+                    guestId,
+                    uid,
+                ].map((value) => String(value || '').trim()).filter(Boolean))];
+
+                const mergedAddresses = [
+                    ...new Set([
+                        ...((Array.isArray(preservedCustomerData.addresses) ? preservedCustomerData.addresses : []).map((value) => JSON.stringify(value))),
+                        ...((Array.isArray(legacyUidCustomerData.addresses) ? legacyUidCustomerData.addresses : []).map((value) => JSON.stringify(value))),
+                    ]),
+                ].map((value) => {
+                    try {
+                        return JSON.parse(value);
+                    } catch {
+                        return null;
+                    }
+                }).filter(Boolean);
+
+                const mergedRecentOrderIds = [...new Set([
+                    ...(Array.isArray(preservedCustomerData.recentOrderIds) ? preservedCustomerData.recentOrderIds : []),
+                    ...(Array.isArray(legacyUidCustomerData.recentOrderIds) ? legacyUidCustomerData.recentOrderIds : []),
+                ].map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 20);
+
+                const preservedCustomerPayload = {
+                    ...preservedCustomerData,
+                    ...legacyUidCustomerData,
+                    customerId: guestId,
+                    name: finalUserData.name || userData.name || preservedCustomerData.name || legacyUidCustomerData.name,
+                    email: finalUserData.email || userData.email || preservedCustomerData.email || legacyUidCustomerData.email,
+                    phone: normalizedPhone,
                     status: 'verified',
-                    lastSeen: FieldValue.serverTimestamp()
+                    customerType: 'uid',
+                    currentActorId: uid,
+                    actorIds: mergedActorIds,
+                    uid,
+                    userId: uid,
+                    guestId,
+                    legacyGuestId: guestId,
+                    addresses: mergedAddresses,
+                    recentOrderIds: mergedRecentOrderIds,
+                    lastSeen: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp(),
                 };
 
-                batch.set(newCustomerRef, newCustomerPayload, { merge: true });
+                batch.set(preservedCustomerRef, preservedCustomerPayload, { merge: true });
+                if (legacyUidCustomerSnap.exists && legacyUidCustomerRef.path !== preservedCustomerRef.path) {
+                    batch.delete(legacyUidCustomerRef);
+                }
 
                 // Add to joined_restaurants subcollection
                 const userRestaurantLinkRef = userRef.collection('joined_restaurants').doc(restaurantId);
                 batch.set(userRestaurantLinkRef, {
                     restaurantName: restaurantInfo.restaurantName,
                     joinedAt: FieldValue.serverTimestamp(),
-                    totalSpend: oldCustomerData.totalSpend || 0,
-                    loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
-                    lastOrderDate: oldCustomerData.lastOrderDate,
-                    totalOrders: oldCustomerData.totalOrders || 0,
+                    totalSpend: preservedCustomerData.totalSpend || legacyUidCustomerData.totalSpend || 0,
+                    loyaltyPoints: preservedCustomerData.loyaltyPoints || legacyUidCustomerData.loyaltyPoints || 0,
+                    lastOrderDate: preservedCustomerData.lastOrderDate || legacyUidCustomerData.lastOrderDate,
+                    totalOrders: preservedCustomerData.totalOrders || legacyUidCustomerData.totalOrders || 0,
                 }, { merge: true });
             }
         }
@@ -269,7 +307,9 @@ export const migrateGuestToUser = async (firestore, uid, phone, finalUserData = 
         ordersQuery.docs.forEach(orderDoc => {
             batch.update(orderDoc.ref, {
                 userId: uid,
-                migratedFromGuest: guestId
+                customerId: uid,
+                migratedFromGuest: guestId,
+                restaurantCustomerDocId: orderDoc.data()?.restaurantCustomerDocId || guestId,
             });
         });
     }

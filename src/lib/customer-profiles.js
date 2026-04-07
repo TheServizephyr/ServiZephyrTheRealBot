@@ -38,6 +38,22 @@ function normalizePhone(phone) {
     return digits.length > 10 ? digits.slice(-10) : digits;
 }
 
+function normalizeActorId(value) {
+    const normalized = String(value || '').trim();
+    if (!normalized) return '';
+    if (normalized.startsWith('phone:')) return '';
+    if (/^\d{10}$/.test(normalized)) return '';
+    return normalized;
+}
+
+function dedupeStrings(values = []) {
+    return [...new Set(
+        values
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+    )];
+}
+
 function buildAddressObject(addressInput) {
     if (!addressInput) return null;
 
@@ -77,6 +93,116 @@ function mergeAddresses(existing, incoming) {
 
     const deduped = safeExisting.filter((addr) => String(addr?.full || '').trim().toLowerCase() !== key);
     return [incoming, ...deduped].slice(0, 10);
+}
+
+function collectActorIds(existing = {}, incoming = {}) {
+    const actorIds = dedupeStrings([
+        ...(Array.isArray(existing.actorIds) ? existing.actorIds : []),
+        existing.currentActorId,
+        existing.userId,
+        existing.uid,
+        existing.guestId,
+        existing.legacyGuestId,
+        incoming.actorId,
+        incoming.currentActorId,
+        incoming.userId,
+        incoming.uid,
+        incoming.guestId,
+        incoming.legacyGuestId,
+    ])
+        .map((value) => normalizeActorId(value))
+        .filter(Boolean);
+
+    return dedupeStrings(actorIds);
+}
+
+async function queryCustomerByField({ firestore, businessCollection, businessId, field, value, op = '==' }) {
+    const safeValue = String(value || '').trim();
+    if (!safeValue) return null;
+
+    try {
+        const snap = await firestore
+            .collection(String(businessCollection))
+            .doc(String(businessId))
+            .collection('customers')
+            .where(field, op, safeValue)
+            .limit(1)
+            .get();
+
+        return snap.empty ? null : snap.docs[0];
+    } catch {
+        return null;
+    }
+}
+
+export async function resolveBusinessCustomerProfileRef({
+    firestore,
+    businessCollection,
+    businessId,
+    customerDocId = '',
+    actorId = '',
+    customerPhone = '',
+} = {}) {
+    if (!firestore || !businessCollection || !businessId) return null;
+
+    const safeCustomerDocId = String(customerDocId || '').trim();
+    const safeActorId = normalizeActorId(actorId || customerDocId);
+    const safePhone = normalizePhone(customerPhone);
+    const customersRef = firestore
+        .collection(String(businessCollection))
+        .doc(String(businessId))
+        .collection('customers');
+
+    const directIds = dedupeStrings([safeCustomerDocId, safeActorId]);
+    for (const directId of directIds) {
+        const directSnap = await customersRef.doc(directId).get().catch(() => null);
+        if (directSnap?.exists) {
+            return {
+                customerRef: directSnap.ref,
+                customerDocId: directSnap.id,
+                customerSnap: directSnap,
+            };
+        }
+    }
+
+    const fieldLookups = [
+        ['currentActorId', safeActorId, '=='],
+        ['actorIds', safeActorId, 'array-contains'],
+        ['uid', safeActorId, '=='],
+        ['userId', safeActorId, '=='],
+        ['guestId', safeActorId, '=='],
+        ['legacyGuestId', safeActorId, '=='],
+        ['customerId', safeCustomerDocId, '=='],
+        ['phone', safePhone, '=='],
+    ];
+
+    for (const [field, value, op] of fieldLookups) {
+        if (!value) continue;
+        const matchedDoc = await queryCustomerByField({
+            firestore,
+            businessCollection,
+            businessId,
+            field,
+            value,
+            op,
+        });
+        if (matchedDoc) {
+            return {
+                customerRef: matchedDoc.ref,
+                customerDocId: matchedDoc.id,
+                customerSnap: matchedDoc,
+            };
+        }
+    }
+
+    const nextDocId = safeCustomerDocId || safeActorId;
+    if (!nextDocId) return null;
+
+    return {
+        customerRef: customersRef.doc(nextDocId),
+        customerDocId: nextDocId,
+        customerSnap: null,
+    };
 }
 
 function updateDishStats(existingStats, items, nowIso) {
@@ -135,7 +261,6 @@ function computeBestDishes(dishStats) {
 export const COUNTABLE_CUSTOMER_ORDER_STATUSES = new Set([
     'completed',
     'delivered',
-    'paid',
     'picked_up',
     'served',
 ]);
@@ -161,6 +286,12 @@ function normalizeOnlineOrderEntry(doc) {
 }
 
 function mergeCustomerProfileMetadata(existing = {}, incoming = {}) {
+    const actorIds = collectActorIds(existing, incoming);
+    const currentActorId = normalizeActorId(incoming.actorId || incoming.currentActorId)
+        || normalizeActorId(existing.currentActorId)
+        || actorIds[0]
+        || '';
+
     return {
         customerId: String(incoming.customerDocId || existing.customerId || ''),
         name: incoming.customerName || existing.name || 'Guest Customer',
@@ -169,19 +300,33 @@ function mergeCustomerProfileMetadata(existing = {}, incoming = {}) {
             : (existing.email || ''),
         phone: incoming.customerPhone ? normalizePhone(incoming.customerPhone) : normalizePhone(existing.phone || ''),
         status: incoming.customerStatus || existing.status || 'verified',
-        customerType: incoming.customerType || existing.customerType || (String(incoming.customerDocId || '').startsWith('g_') ? 'guest' : 'uid'),
+        customerType: incoming.customerType || existing.customerType || (String(currentActorId).startsWith('g_') ? 'guest' : 'uid'),
+        actorIds,
+        currentActorId,
+        uid: currentActorId && !String(currentActorId).startsWith('g_') ? currentActorId : (existing.uid || ''),
+        userId: currentActorId && !String(currentActorId).startsWith('g_') ? currentActorId : (existing.userId || ''),
+        guestId: String(currentActorId).startsWith('g_') ? currentActorId : (existing.guestId || ''),
         addresses: mergeAddresses(existing.addresses, buildAddressObject(incoming.customerAddress)),
     };
 }
 
-async function loadProfileOrders({ firestore, businessId, customerDocId }) {
+async function loadProfileOrders({ firestore, businessId, customerDocId, actorIds = [] }) {
     const orderMap = new Map();
-    const [userOrders, customerOrders] = await Promise.all([
-        firestore.collection('orders').where('userId', '==', String(customerDocId)).get().catch(() => null),
-        firestore.collection('orders').where('customerId', '==', String(customerDocId)).get().catch(() => null),
-    ]);
+    const lookupActorIds = dedupeStrings(actorIds.map((value) => normalizeActorId(value)).filter(Boolean));
+    const queryPromises = [
+        firestore.collection('orders').where('restaurantCustomerDocId', '==', String(customerDocId)).get().catch(() => null),
+    ];
 
-    [userOrders, customerOrders].forEach((snapshot) => {
+    for (const actorId of lookupActorIds) {
+        queryPromises.push(
+            firestore.collection('orders').where('userId', '==', actorId).get().catch(() => null),
+            firestore.collection('orders').where('customerId', '==', actorId).get().catch(() => null)
+        );
+    }
+
+    const snapshots = await Promise.all(queryPromises);
+
+    snapshots.forEach((snapshot) => {
         snapshot?.forEach((doc) => {
             const data = doc.data() || {};
             if (String(data.restaurantId || '').trim() !== String(businessId || '').trim()) return;
@@ -215,24 +360,35 @@ export async function rebuildBusinessCustomerProfile({
     customerType = null,
 } = {}) {
     if (!firestore || !businessCollection || !businessId || !customerDocId) return;
+    const resolvedProfile = await resolveBusinessCustomerProfileRef({
+        firestore,
+        businessCollection,
+        businessId,
+        customerDocId,
+        actorId: customerDocId,
+        customerPhone,
+    });
+    if (!resolvedProfile?.customerRef) return;
 
-    const businessRef = firestore.collection(String(businessCollection)).doc(String(businessId));
-    const customerRef = businessRef.collection('customers').doc(String(customerDocId));
-
-    const [customerSnap, onlineOrders] = await Promise.all([
-        customerRef.get(),
-        loadProfileOrders({ firestore, businessId, customerDocId }),
-    ]);
+    const { customerRef, customerDocId: stableCustomerDocId } = resolvedProfile;
+    const customerSnap = resolvedProfile.customerSnap || await customerRef.get();
 
     const current = customerSnap.exists ? (customerSnap.data() || {}) : {};
     const metadata = mergeCustomerProfileMetadata(current, {
-        customerDocId,
+        customerDocId: stableCustomerDocId,
+        actorId: customerDocId,
         customerName,
         customerEmail,
         customerPhone,
         customerAddress,
         customerStatus,
         customerType,
+    });
+    const onlineOrders = await loadProfileOrders({
+        firestore,
+        businessId,
+        customerDocId: stableCustomerDocId,
+        actorIds: metadata.actorIds,
     });
 
     const aggregatedOrders = [...onlineOrders]
@@ -244,9 +400,9 @@ export async function rebuildBusinessCustomerProfile({
     const latestOrder = aggregatedOrders[0] || null;
     const oldestOrder = aggregatedOrders[aggregatedOrders.length - 1] || null;
 
-    const aggregatedAddresses = mergeAddresses(
-        metadata.addresses,
-        ...aggregatedOrders.map((entry) => buildAddressObject(entry.customerAddress))
+    const aggregatedAddresses = aggregatedOrders.reduce(
+        (acc, entry) => mergeAddresses(acc, buildAddressObject(entry.customerAddress)),
+        metadata.addresses
     );
 
     const totalOrders = aggregatedOrders.length;
@@ -260,7 +416,10 @@ export async function rebuildBusinessCustomerProfile({
         name: metadata.name,
         status: metadata.status,
         customerType: metadata.customerType,
+        actorIds: metadata.actorIds,
+        currentActorId: metadata.currentActorId || null,
         totalOrders,
+        completedOrderCount: totalOrders,
         totalSpend,
         totalBillValue,
         lastOrderDate: latestOrderDate || null,
@@ -275,6 +434,9 @@ export async function rebuildBusinessCustomerProfile({
 
     if (metadata.email) payload.email = metadata.email;
     if (metadata.phone) payload.phone = metadata.phone;
+    if (metadata.uid) payload.uid = metadata.uid;
+    if (metadata.userId) payload.userId = metadata.userId;
+    if (metadata.guestId) payload.guestId = metadata.guestId;
 
     if (!customerSnap.exists) {
         payload.createdAt = FieldValue.serverTimestamp();
@@ -300,21 +462,30 @@ export async function upsertBusinessCustomerProfile({
     businessCollection,
     businessId,
     customerDocId,
+    actorId = '',
     customerName,
     customerEmail = '',
     customerPhone = '',
     customerAddress = null,
     customerStatus = 'verified',
     orderId = null,
+    orderSubtotal = 0,
+    orderTotal = 0,
+    items = [],
     customerType = null,
 }) {
-    if (!firestore || !businessCollection || !businessId || !customerDocId) return;
+    if (!firestore || !businessCollection || !businessId || (!customerDocId && !actorId)) return;
+    const resolvedProfile = await resolveBusinessCustomerProfileRef({
+        firestore,
+        businessCollection,
+        businessId,
+        customerDocId,
+        actorId,
+        customerPhone,
+    });
+    if (!resolvedProfile?.customerRef) return null;
 
-    const customerRef = firestore
-        .collection(businessCollection)
-        .doc(String(businessId))
-        .collection('customers')
-        .doc(String(customerDocId));
+    const { customerRef, customerDocId: stableCustomerDocId } = resolvedProfile;
 
     const safePhone = normalizePhone(customerPhone);
     const normalizedAddress = buildAddressObject(customerAddress);
@@ -323,39 +494,76 @@ export async function upsertBusinessCustomerProfile({
         const snap = await tx.get(customerRef);
         const current = snap.exists ? (snap.data() || {}) : {};
         const addresses = mergeAddresses(current.addresses, normalizedAddress);
+        const actorIds = collectActorIds(current, {
+            actorId: actorId || customerDocId,
+            currentActorId: actorId || customerDocId,
+        });
+        const currentActorId = normalizeActorId(actorId || customerDocId) || current.currentActorId || actorIds[0] || '';
 
         const recentOrderIds = Array.isArray(current.recentOrderIds) ? [...current.recentOrderIds] : [];
+        const safeOrderId = orderId ? String(orderId) : '';
+        const isNewOrderForProfile = safeOrderId ? !recentOrderIds.includes(safeOrderId) : false;
         if (orderId) {
-            const oid = String(orderId);
-            if (!recentOrderIds.includes(oid)) {
-                recentOrderIds.unshift(oid);
+            if (isNewOrderForProfile) {
+                recentOrderIds.unshift(safeOrderId);
             }
         }
 
+        const currentTotalOrders = Math.max(0, toNumber(current.totalOrders, 0));
+        const currentTotalSpend = Math.max(0, toNumber(current.totalSpend, 0));
+        const currentTotalBillValue = Math.max(0, toNumber(current.totalBillValue, 0));
+        const nextTotalOrders = isNewOrderForProfile ? currentTotalOrders + 1 : currentTotalOrders;
+        const nextTotalSpend = isNewOrderForProfile
+            ? Number((currentTotalSpend + Math.max(0, toNumber(orderSubtotal, 0))).toFixed(2))
+            : currentTotalSpend;
+        const nextTotalBillValue = isNewOrderForProfile
+            ? Number((currentTotalBillValue + Math.max(0, toNumber(orderTotal, 0))).toFixed(2))
+            : currentTotalBillValue;
+        const dishStats = isNewOrderForProfile
+            ? updateDishStats(current.dishStats, items, new Date().toISOString())
+            : ((current.dishStats && typeof current.dishStats === 'object') ? current.dishStats : {});
+        const bestDishes = computeBestDishes(dishStats);
+
         const payload = {
-            customerId: String(customerDocId),
+            customerId: String(stableCustomerDocId),
             name: customerName || current.name || 'Guest Customer',
             ...(customerEmail ? { email: String(customerEmail).trim().toLowerCase() } : {}),
             ...(safePhone ? { phone: safePhone } : {}),
             status: customerStatus || current.status || 'verified',
-            customerType: customerType || current.customerType || (String(customerDocId).startsWith('g_') ? 'guest' : 'uid'),
+            customerType: customerType || current.customerType || (String(currentActorId).startsWith('g_') ? 'guest' : 'uid'),
+            actorIds,
+            currentActorId: currentActorId || null,
+            ...(currentActorId && !String(currentActorId).startsWith('g_') ? {
+                uid: currentActorId,
+                userId: currentActorId,
+            } : {}),
+            ...(String(currentActorId).startsWith('g_') ? {
+                guestId: currentActorId,
+            } : {}),
             lastActivityAt: FieldValue.serverTimestamp(),
             ...(orderId ? { lastOrderId: String(orderId) } : {}),
+            ...(isNewOrderForProfile ? { lastOrderDate: FieldValue.serverTimestamp() } : {}),
             addresses,
             recentOrderIds: recentOrderIds.slice(0, 20),
+            totalOrders: nextTotalOrders,
+            totalSpend: nextTotalSpend,
+            totalBillValue: nextTotalBillValue,
+            dishStats,
+            bestDishes,
             updatedAt: FieldValue.serverTimestamp(),
         };
 
         if (!snap.exists) {
             payload.createdAt = FieldValue.serverTimestamp();
             payload.joinedAt = FieldValue.serverTimestamp();
-            payload.totalOrders = 0;
-            payload.totalSpend = 0;
-            payload.totalBillValue = 0;
-            payload.dishStats = {};
-            payload.bestDishes = [];
+            payload.firstOrderDate = FieldValue.serverTimestamp();
         }
 
         tx.set(customerRef, payload, { merge: true });
     });
+
+    return {
+        customerDocId: stableCustomerDocId,
+        customerRef,
+    };
 }

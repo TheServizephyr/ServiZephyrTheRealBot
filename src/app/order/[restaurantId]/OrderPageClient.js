@@ -50,6 +50,7 @@ import {
     fetchCachedCustomerLookup,
     fetchCachedRestaurantBootstrap,
     invalidateCustomerLookupCache,
+    primeRestaurantBootstrapCache,
     readCustomerAddressesUpdatedAt,
     readCustomerAddressesSnapshot,
     removeCustomerAddressSnapshot,
@@ -1586,6 +1587,18 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
     const searchParamsString = searchParams.toString();
 
     useEffect(() => {
+        if (!initialBootstrap || !restaurantId) return;
+        primeRestaurantBootstrapCache({
+            restaurantId,
+            phone: String(initialSearchParams?.phone || ''),
+            token: String(initialSearchParams?.token || ''),
+            ref: String(initialSearchParams?.ref || ''),
+            bootstrapData: initialBootstrap,
+            ttlMs: 60000,
+        });
+    }, [initialBootstrap, initialSearchParams, restaurantId]);
+
+    useEffect(() => {
         if (refParam) {
             localStorage.setItem('guest_ref', refParam);
             setRef(refParam);
@@ -1783,16 +1796,19 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
         if (tableIdFromUrl || deliveryType !== 'delivery' || hasPrefetchedAddressBook.current) return;
 
         const snapshotAddresses = readCustomerAddressesSnapshot();
+        const pendingAddressBookUpdateAt = readCustomerAddressesUpdatedAt();
+        const shouldForceFreshLookup = pendingAddressBookUpdateAt > lastAddressBookUpdateSeenRef.current;
         if (snapshotAddresses.length > 0) {
             setUserAddresses((prev) => mergeSavedAddresses(snapshotAddresses, prev));
+            if (!shouldForceFreshLookup) {
+                hasPrefetchedAddressBook.current = true;
+                return;
+            }
         }
 
         const savedPhone = typeof window !== 'undefined' ? (localStorage.getItem('customerPhone') || '') : '';
         const fallbackPhone = phone || savedPhone;
         if (!fallbackPhone && !ref && !auth.currentUser) return;
-
-        const pendingAddressBookUpdateAt = readCustomerAddressesUpdatedAt();
-        const shouldForceFreshLookup = pendingAddressBookUpdateAt > lastAddressBookUpdateSeenRef.current;
 
         hasPrefetchedAddressBook.current = true;
 
@@ -2721,7 +2737,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
             if (locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) { } }
 
             try {
-                const { menuData, settingsData } = await fetchCachedRestaurantBootstrap({
+                const { menuData, settingsData, bootstrapData } = await fetchCachedRestaurantBootstrap({
                     restaurantId,
                     phone,
                     token,
@@ -2729,6 +2745,8 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                     src: 'order_page',
                     ttlMs: 60000,
                 });
+                const bootstrapCustomer = bootstrapData?.user?.customer;
+                const bootstrapAddresses = Array.isArray(bootstrapCustomer?.addresses) ? bootstrapCustomer.addresses : [];
 
                 // Map specific payment settings (fallback to true if undefined)
                 const deliveryOnlinePaymentEnabled = settingsData.deliveryOnlinePaymentEnabled !== false;
@@ -2806,6 +2824,13 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                 if (isActive) {
                     setRestaurantData(fetchedSettings);
                     setLoyaltyPoints(menuData.loyaltyPoints || 0);
+                    if (bootstrapCustomer?.resolved !== false && bootstrapAddresses.length > 0) {
+                        writeCustomerAddressesSnapshot(bootstrapAddresses);
+                        setUserAddresses((prev) => mergeSavedAddresses(bootstrapAddresses, prev));
+                    }
+                    if (bootstrapCustomer?.resolved !== false && bootstrapCustomer?.phone && typeof window !== 'undefined') {
+                        localStorage.setItem('customerPhone', bootstrapCustomer.phone);
+                    }
                 }
 
             } catch (err) {

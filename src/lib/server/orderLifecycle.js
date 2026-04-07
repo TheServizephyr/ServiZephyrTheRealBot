@@ -1,5 +1,9 @@
 import { FieldValue } from '@/lib/firebase-admin';
-import { rebuildBusinessCustomerProfile } from '@/lib/customer-profiles';
+import {
+    COUNTABLE_CUSTOMER_ORDER_STATUSES,
+    rebuildBusinessCustomerProfile,
+    resolveBusinessCustomerProfileRef,
+} from '@/lib/customer-profiles';
 
 function normalizeCollectionName(value = '') {
     const normalized = String(value || '').trim().toLowerCase();
@@ -33,6 +37,13 @@ export function resolveOrderCustomerActorId(orderData = {}) {
     );
 }
 
+function resolveOrderCustomerDocId(orderData = {}) {
+    return (
+        String(orderData?.restaurantCustomerDocId || '').trim() ||
+        resolveOrderCustomerActorId(orderData)
+    );
+}
+
 export function resolveOrderBusinessCollection(orderData = {}, fallbackCollection = '') {
     return (
         normalizeCollectionName(fallbackCollection) ||
@@ -55,7 +66,7 @@ export async function rebuildCustomerProfileForOrder({
 } = {}) {
     const businessId = String(orderData?.restaurantId || '').trim();
     const businessCollection = resolveOrderBusinessCollection(orderData, fallbackCollection);
-    const customerDocId = resolveOrderCustomerActorId(orderData);
+    const customerDocId = resolveOrderCustomerDocId(orderData);
 
     if (!firestore || !businessId || !businessCollection || !customerDocId) return false;
 
@@ -64,12 +75,75 @@ export async function rebuildCustomerProfileForOrder({
         businessCollection,
         businessId,
         customerDocId,
+        actorId: resolveOrderCustomerActorId(orderData),
         customerName: orderData?.customerName || '',
         customerEmail: orderData?.customerEmail || '',
         customerPhone: orderData?.customerPhone || '',
         customerAddress: orderData?.customerAddress || null,
         customerStatus: String(customerDocId).startsWith('g_') ? 'unclaimed' : 'verified',
         customerType: String(customerDocId).startsWith('g_') ? 'guest' : 'uid',
+    });
+
+    return true;
+}
+
+export async function syncCompletedOrderCounterForOrder({
+    firestore,
+    orderRef,
+    orderData,
+    fallbackCollection = '',
+} = {}) {
+    const businessId = String(orderData?.restaurantId || '').trim();
+    const businessCollection = resolveOrderBusinessCollection(orderData, fallbackCollection);
+    const actorId = resolveOrderCustomerActorId(orderData);
+    const stableCustomerDocId = resolveOrderCustomerDocId(orderData);
+    const normalizedStatus = String(orderData?.status || '').trim().toLowerCase();
+
+    if (
+        !firestore ||
+        !orderRef ||
+        !businessId ||
+        !businessCollection ||
+        !stableCustomerDocId ||
+        !COUNTABLE_CUSTOMER_ORDER_STATUSES.has(normalizedStatus)
+    ) {
+        return false;
+    }
+
+    const resolvedProfile = await resolveBusinessCustomerProfileRef({
+        firestore,
+        businessCollection,
+        businessId,
+        customerDocId: stableCustomerDocId,
+        actorId,
+        customerPhone: orderData?.customerPhone || '',
+    });
+    if (!resolvedProfile?.customerRef) return false;
+
+    const { customerRef, customerDocId } = resolvedProfile;
+
+    await firestore.runTransaction(async (transaction) => {
+        const currentOrderSnap = await transaction.get(orderRef);
+        const currentOrder = currentOrderSnap.exists ? (currentOrderSnap.data() || {}) : (orderData || {});
+        if (currentOrder?.countedForCompletedOrders === true) return;
+
+        const liveStatus = String(currentOrder?.status || normalizedStatus).trim().toLowerCase();
+        if (!COUNTABLE_CUSTOMER_ORDER_STATUSES.has(liveStatus)) return;
+
+        transaction.set(customerRef, {
+            customerId: String(customerDocId),
+            completedOrderCount: FieldValue.increment(1),
+            lastOrderId: currentOrderSnap.id,
+            lastOrderDate: currentOrder?.orderDate || FieldValue.serverTimestamp(),
+            lastActivityAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        transaction.set(orderRef, {
+            restaurantCustomerDocId: String(customerDocId),
+            countedForCompletedOrders: true,
+            countedForCompletedOrdersAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
     });
 
     return true;

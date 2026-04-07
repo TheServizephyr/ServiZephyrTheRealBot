@@ -12,7 +12,7 @@ import { trackEndpointRead } from '@/lib/readTelemetry';
 import { trackApiTelemetry } from '@/lib/opsTelemetry';
 import { clearOrderStatusCache } from '@/lib/orderStatusCache';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
-import { rebuildCustomerProfileForOrder, releaseCouponForOrder } from '@/lib/server/orderLifecycle';
+import { rebuildCustomerProfileForOrder, releaseCouponForOrder, syncCompletedOrderCounterForOrder } from '@/lib/server/orderLifecycle';
 import { kv, isKvConfigured } from '@/lib/kv';
 import { getOrSetEphemeralCache, invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
 
@@ -1191,6 +1191,18 @@ export async function PATCH(req) {
                                 firestore,
                                 orderRef: orderSnap.ref,
                                 orderData,
+                                fallbackCollection: collectionName,
+                            }));
+                        }
+
+                        if (['delivered', 'picked_up', 'served'].includes(newStatus)) {
+                            effects.push(syncCompletedOrderCounterForOrder({
+                                firestore,
+                                orderRef: orderSnap.ref,
+                                orderData: {
+                                    ...orderData,
+                                    status: newStatus,
+                                },
                                 fallbackCollection: collectionName,
                             }));
                         }

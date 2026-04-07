@@ -751,8 +751,7 @@ const CheckoutPageInternal = () => {
                 token,
                 ref,
                 src: 'checkout_page',
-                ttlMs: 5000,
-                force: true,
+                ttlMs: 60000,
             });
 
             console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
@@ -776,8 +775,10 @@ const CheckoutPageInternal = () => {
             setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
 
             try {
-                const { menuData, settingsData } = await bootstrapPromise;
+                const { menuData, settingsData, bootstrapData } = await bootstrapPromise;
                 if (isStaleRequest()) return;
+                const bootstrapCustomer = bootstrapData?.user?.customer;
+                const bootstrapAddresses = Array.isArray(bootstrapCustomer?.addresses) ? bootstrapCustomer.addresses : [];
                 applyCheckoutPaymentSettings(settingsData, deliveryType, {
                     setCodEnabled,
                     setOnlinePaymentEnabled,
@@ -808,6 +809,27 @@ const CheckoutPageInternal = () => {
                     longitude: menuData?.longitude,
                     roadDistanceFactor: menuData?.roadDistanceFactor || 1.3
                 }));
+
+                if (bootstrapCustomer?.resolved !== false) {
+                    setOrderName(prev => prev || bootstrapCustomer?.name || '');
+                    if (deliveryType === 'delivery' && bootstrapAddresses.length > 0) {
+                        writeCustomerAddressesSnapshot(bootstrapAddresses);
+                        setUserAddresses(bootstrapAddresses);
+
+                        const savedLocation = localStorage.getItem('customerLocation');
+                        if (savedLocation && !selectedAddressRef.current) {
+                            try {
+                                const parsedLocation = JSON.parse(savedLocation);
+                                const matchingAddress = bootstrapAddresses.find(addr => addr.id === parsedLocation.id);
+                                setSelectedAddress(matchingAddress || bootstrapAddresses[0]);
+                            } catch {
+                                setSelectedAddress(bootstrapAddresses[0]);
+                            }
+                        } else if (!selectedAddressRef.current) {
+                            setSelectedAddress(bootstrapAddresses[0]);
+                        }
+                    }
+                }
 
                 const deferredTasks = [];
                 if (tabId && deliveryType === 'dine-in') {
@@ -878,7 +900,7 @@ const CheckoutPageInternal = () => {
                     })());
                 }
 
-                if (phoneToLookup || ref || user) {
+                if ((phoneToLookup || ref || user) && bootstrapCustomer?.resolved === false) {
                     deferredTasks.push((async () => {
                         const data = await fetchCachedCustomerLookup({
                             phone: phoneToLookup,
