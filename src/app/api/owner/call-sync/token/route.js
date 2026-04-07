@@ -2,8 +2,9 @@ import { randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
-import { FieldValue } from '@/lib/firebase-admin';
+import { FieldValue, getFirestore } from '@/lib/firebase-admin';
 import { PERMISSIONS } from '@/lib/permissions';
+import { getCallSyncTokenDocRef, upsertCallSyncTokenBindingForBusinessRef } from '@/lib/server/callSyncTokens';
 
 const buildCallSyncToken = () => randomBytes(18).toString('base64url');
 
@@ -20,6 +21,7 @@ export async function POST(req) {
             [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS]
         );
 
+        const firestore = await getFirestore();
         const businessRef = context.businessSnap.ref;
         const businessData = context.businessSnap.data() || {};
         const existingToken = String(businessData.callSyncToken || '').trim();
@@ -30,6 +32,20 @@ export async function POST(req) {
                 callSyncToken: nextToken,
                 callSyncTokenUpdatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
+        }
+
+        await upsertCallSyncTokenBindingForBusinessRef(firestore, {
+            token: nextToken,
+            businessRef,
+            collectionName: context.collectionName,
+            businessId: context.businessId,
+        });
+
+        if (rotate && existingToken && existingToken !== nextToken) {
+            const existingTokenRef = getCallSyncTokenDocRef(firestore, existingToken);
+            if (existingTokenRef) {
+                await existingTokenRef.delete().catch(() => {});
+            }
         }
 
         return NextResponse.json({

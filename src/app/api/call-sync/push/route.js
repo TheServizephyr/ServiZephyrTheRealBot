@@ -2,16 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { getDatabase, getFirestore } from '@/lib/firebase-admin';
 import { buildActiveCallSyncPath, buildActiveCallSyncUserPath, normalizeIndianPhoneLoose } from '@/lib/call-sync';
-import { getPermissionsForRole, PERMISSIONS } from '@/lib/permissions';
+import { getCallSyncTokenDocRef, upsertCallSyncTokenBindingForBusinessRef } from '@/lib/server/callSyncTokens';
 
 const BUSINESS_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
 const ACTIVE_STATES = new Set(['ringing', 'incoming', 'offhook', 'idle', 'ended']);
-const CALL_SYNC_LISTENER_PERMISSIONS = [
-    PERMISSIONS.CREATE_ORDER,
-    PERMISSIONS.MANUAL_BILLING?.WRITE || PERMISSIONS.MANUAL_BILLING,
-];
 
-async function resolveBusinessByCallSyncToken(firestore, token) {
+async function resolveBusinessByCallSyncTokenLegacy(firestore, token) {
     for (const collectionName of BUSINESS_COLLECTIONS) {
         const snap = await firestore
             .collection(collectionName)
@@ -23,68 +19,12 @@ async function resolveBusinessByCallSyncToken(firestore, token) {
             return {
                 collectionName,
                 businessId: snap.docs[0].id,
+                businessRef: snap.docs[0].ref,
             };
         }
     }
 
     return null;
-}
-
-function canReceiveCallSync(memberData = {}) {
-    const explicitPermissions = Array.isArray(memberData?.permissions)
-        ? memberData.permissions.filter(Boolean)
-        : [];
-    const customAllowedPages = Array.isArray(memberData?.customAllowedPages)
-        ? memberData.customAllowedPages.map((page) => String(page || '').trim().toLowerCase()).filter(Boolean)
-        : [];
-    const effectivePermissions = explicitPermissions.length > 0
-        ? explicitPermissions
-        : getPermissionsForRole(memberData?.role);
-
-    if (CALL_SYNC_LISTENER_PERMISSIONS.some((permission) => effectivePermissions.includes(permission))) {
-        return true;
-    }
-
-    return customAllowedPages.includes('manual-order');
-}
-
-async function resolveCallSyncRecipients(firestore, target) {
-    const businessRef = firestore.collection(target.collectionName).doc(target.businessId);
-    const businessSnap = await businessRef.get();
-    if (!businessSnap.exists) {
-        return {
-            businessData: null,
-            ownerId: '',
-            recipients: [],
-        };
-    }
-
-    const businessData = businessSnap.data() || {};
-    const ownerId = String(businessData?.ownerId || '').trim();
-    const recipients = new Set();
-
-    if (ownerId) {
-        recipients.add(ownerId);
-    }
-
-    const employeesSnap = await businessRef.collection('employees').get();
-    for (const employeeDoc of employeesSnap.docs) {
-        const employeeData = employeeDoc.data() || {};
-        const status = String(employeeData?.status || 'active').trim().toLowerCase();
-        if (status !== 'active') continue;
-
-        const employeeUid = String(employeeDoc.id || employeeData?.userId || '').trim();
-        if (!employeeUid) continue;
-
-        if (!canReceiveCallSync(employeeData)) continue;
-        recipients.add(employeeUid);
-    }
-
-    return {
-        businessData,
-        ownerId,
-        recipients: Array.from(recipients),
-    };
 }
 
 export async function POST(req) {
@@ -108,12 +48,35 @@ export async function POST(req) {
         }
 
         const firestore = await getFirestore();
-        const target = await resolveBusinessByCallSyncToken(firestore, token);
-        if (!target) {
+        const tokenRef = getCallSyncTokenDocRef(firestore, token);
+        let tokenSnap = tokenRef ? await tokenRef.get() : null;
+        let target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
+
+        if ((!target?.businessId || !target?.collectionName) && tokenRef) {
+            const legacyTarget = await resolveBusinessByCallSyncTokenLegacy(firestore, token);
+            if (legacyTarget?.businessRef) {
+                await upsertCallSyncTokenBindingForBusinessRef(firestore, {
+                    token,
+                    businessRef: legacyTarget.businessRef,
+                    collectionName: legacyTarget.collectionName,
+                    businessId: legacyTarget.businessId,
+                });
+                tokenSnap = await tokenRef.get();
+                target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
+            }
+        }
+
+        if (!target?.businessId || !target?.collectionName) {
             return NextResponse.json({ message: 'Invalid call sync token.' }, { status: 404 });
         }
 
-        const { ownerId, recipients } = await resolveCallSyncRecipients(firestore, target);
+        const ownerId = String(target?.ownerId || '').trim();
+        const recipients = Array.isArray(target?.recipients)
+            ? target.recipients.map((uid) => String(uid || '').trim()).filter(Boolean)
+            : (ownerId ? [ownerId] : []);
+        if (recipients.length === 0) {
+            return NextResponse.json({ message: 'Call sync token has no active recipients.' }, { status: 409 });
+        }
 
         const rtdb = await getDatabase();
         const now = Date.now();
@@ -147,8 +110,8 @@ export async function POST(req) {
 
         return NextResponse.json({
             ok: true,
-            collectionName: target.collectionName,
-            businessId: target.businessId,
+            collectionName: String(target.collectionName),
+            businessId: String(target.businessId),
             state,
             timestampMs: now,
             recipientCount: recipients.length,

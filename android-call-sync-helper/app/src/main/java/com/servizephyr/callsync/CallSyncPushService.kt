@@ -63,6 +63,7 @@ object CallSyncPushService {
     private const val KEY_PENDING_EVENTS = "pending_events"
     private const val KEY_LAST_SUCCESS_AT = "last_success_at"
     private const val MAX_PENDING_EVENTS = 25
+    private const val LIVE_RINGING_MAX_AGE_MS = 8_000L
 
     fun enqueueEvent(context: Context, event: CallSyncEvent) {
         if (!isQueueable(event)) {
@@ -166,6 +167,17 @@ object CallSyncPushService {
                 message = "Skipped invalid ${event.state} event without a caller number"
             )
         }
+
+        // Live incoming calls must either land now or be dropped.
+        // Replaying an old ringing event later can attach the wrong customer to a fresh bill.
+        if (event.state.equals("ringing", ignoreCase = true)) {
+            val result = pushSingleEvent(config, event)
+            if (result.success) {
+                markLastSuccess(context)
+            }
+            return result
+        }
+
         val pending = loadPendingEvents(context).toMutableList()
         pending.removeAll { it.queueKey == event.queueKey }
         pending.add(event)
@@ -225,8 +237,12 @@ object CallSyncPushService {
     private fun sanitizePendingEvents(events: List<CallSyncEvent>): QueueSanitizationResult {
         val validEvents = mutableListOf<CallSyncEvent>()
         var droppedCount = 0
+        val now = System.currentTimeMillis()
         events.forEach { event ->
-            if (isQueueable(event)) {
+            val isStaleRinging = event.state.equals("ringing", ignoreCase = true) &&
+                (now - event.timestampMs) > LIVE_RINGING_MAX_AGE_MS
+
+            if (!isStaleRinging && isQueueable(event)) {
                 validEvents += event
             } else {
                 droppedCount += 1
@@ -311,8 +327,8 @@ object CallSyncPushService {
     private fun executePost(endpoint: String, payload: String, redirectDepth: Int): PushAttemptResult {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 10000
-            readTimeout = 10000
+            connectTimeout = 15000
+            readTimeout = 15000
             doOutput = true
             instanceFollowRedirects = false
             setRequestProperty("Content-Type", "application/json")
