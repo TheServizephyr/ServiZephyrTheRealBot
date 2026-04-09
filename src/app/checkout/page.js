@@ -1435,6 +1435,41 @@ const CheckoutPageInternal = () => {
         return true;
     };
 
+    const removeAppliedCoupon = (couponCode) => {
+        const normalizedCode = String(couponCode || '').trim().toUpperCase();
+        const nextCoupons = appliedCoupons.filter(
+            (coupon) => String(coupon?.code || '').trim().toUpperCase() !== normalizedCode
+        );
+
+        setAppliedCoupons(nextCoupons);
+        if (restaurantId) {
+            const savedData = safeReadCart(restaurantId) || {};
+            safeWriteCart(restaurantId, {
+                ...savedData,
+                appliedCoupons: nextCoupons,
+            });
+        }
+
+        toast({
+            title: 'Coupon removed',
+            description: normalizedCode ? `${normalizedCode} removed from this order.` : 'Coupon removed from this order.'
+        });
+    };
+
+    const toggleCouponSelection = (coupon) => {
+        const normalizedCode = String(coupon?.code || '').trim().toUpperCase();
+        const isApplied = appliedCoupons.some(
+            (appliedCoupon) => String(appliedCoupon?.code || '').trim().toUpperCase() === normalizedCode
+        );
+
+        if (isApplied) {
+            removeAppliedCoupon(normalizedCode);
+            return 'removed';
+        }
+
+        return applyCoupon(coupon) ? 'applied' : 'blocked';
+    };
+
     const handleApplyCouponCode = () => {
         const code = couponCodeInput.trim().toUpperCase();
         if (!code) {
@@ -3140,15 +3175,43 @@ const CheckoutPageInternal = () => {
                                                     const isApplied = appliedCoupons.some(
                                                         (appliedCoupon) => String(appliedCoupon?.code || '').trim().toUpperCase() === String(coupon?.code || '').trim().toUpperCase()
                                                     );
+                                                    const canToggleCoupon = eligibility.eligible || isApplied;
 
                                                     return (
-                                                        <div key={idx} className="bg-card border border-dashed border-primary/40 rounded-xl p-4 relative overflow-hidden group hover:border-primary transition-colors">
-                                                            <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-r border-dashed border-primary/40 group-hover:border-primary transition-colors"></div>
-                                                            <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-l border-dashed border-primary/40 group-hover:border-primary transition-colors"></div>
+                                                        <div
+                                                            key={idx}
+                                                            role="button"
+                                                            tabIndex={canToggleCoupon ? 0 : -1}
+                                                            aria-pressed={isApplied}
+                                                            onClick={() => {
+                                                                if (!canToggleCoupon) return;
+                                                                const action = toggleCouponSelection(coupon);
+                                                                if (action === 'applied') {
+                                                                    setIsCouponDrawerOpen(false);
+                                                                }
+                                                            }}
+                                                            onKeyDown={(event) => {
+                                                                if (!canToggleCoupon) return;
+                                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                                    event.preventDefault();
+                                                                    const action = toggleCouponSelection(coupon);
+                                                                    if (action === 'applied') {
+                                                                        setIsCouponDrawerOpen(false);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className={`bg-card border rounded-xl p-4 relative overflow-hidden transition-all ${
+                                                                isApplied
+                                                                    ? 'border-primary border-2 shadow-[0_0_0_2px_rgba(34,197,94,0.18)] bg-primary/5'
+                                                                    : 'border-dashed border-primary/40 hover:border-primary'
+                                                            } ${canToggleCoupon ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
+                                                        >
+                                                            <div className={`absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-r transition-colors ${isApplied ? 'border-primary' : 'border-dashed border-primary/40'}`}></div>
+                                                            <div className={`absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-muted/5 rounded-full border-l transition-colors ${isApplied ? 'border-primary' : 'border-dashed border-primary/40'}`}></div>
 
                                                             <div className="flex justify-between items-start ml-2 mr-2 gap-2">
                                                                 <div>
-                                                                    <div className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-1 rounded w-fit mb-2 flex items-center gap-1">
+                                                                    <div className={`text-xs font-bold px-2 py-1 rounded w-fit mb-2 flex items-center gap-1 ${isApplied ? 'bg-primary text-primary-foreground' : 'bg-yellow-100 text-yellow-800'}`}>
                                                                         <Ticket size={12} />
                                                                         {coupon.code}
                                                                     </div>
@@ -3156,6 +3219,9 @@ const CheckoutPageInternal = () => {
                                                                         {coupon.description || `Get ${coupon.value}${normalizeCouponType(coupon.type) === 'percentage' ? '%' : ' OFF'}`}
                                                                     </p>
                                                                     <p className="text-xs text-muted-foreground mt-1">Min order: {formatCurrency(Number(coupon.minOrder) || 0, 0)}</p>
+                                                                    {isApplied && (
+                                                                        <p className="text-xs text-primary font-semibold mt-1">Selected coupon. Tap again to remove.</p>
+                                                                    )}
                                                                     {!eligibility.eligible && (
                                                                         <p className="text-xs text-amber-500 mt-1">{eligibility.message}</p>
                                                                     )}
@@ -3163,16 +3229,21 @@ const CheckoutPageInternal = () => {
                                                                 <Button
                                                                     variant="outline"
                                                                     size="sm"
-                                                                    disabled={!eligibility.eligible}
-                                                                    className="text-primary border-primary hover:bg-primary hover:text-white font-bold h-8 disabled:opacity-60 disabled:cursor-not-allowed"
-                                                                    onClick={() => {
-                                                                        const applied = applyCoupon(coupon);
-                                                                        if (applied) {
+                                                                    disabled={!canToggleCoupon}
+                                                                    className={`font-bold h-8 disabled:opacity-60 disabled:cursor-not-allowed ${
+                                                                        isApplied
+                                                                            ? 'bg-primary text-primary-foreground border-primary hover:bg-primary/90'
+                                                                            : 'text-primary border-primary hover:bg-primary hover:text-white'
+                                                                    }`}
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        const action = toggleCouponSelection(coupon);
+                                                                        if (action === 'applied') {
                                                                             setIsCouponDrawerOpen(false);
                                                                         }
                                                                     }}
                                                                 >
-                                                                    {isApplied ? 'APPLIED' : 'APPLY'}
+                                                                    {isApplied ? 'REMOVE' : 'APPLY'}
                                                                 </Button>
                                                             </div>
                                                         </div>
