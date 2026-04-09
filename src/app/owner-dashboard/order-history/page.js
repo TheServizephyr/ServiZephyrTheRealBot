@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, ChevronLeft, Search, Calendar, X, Package, Phone, MapPin, CreditCard, Clock, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, getDocs, limit, Timestamp } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -32,18 +31,6 @@ const toDateInput = (date) => {
 };
 
 const toAmount = (v, fallback = 0) => { const n = Number(v); return Number.isFinite(n) ? n : fallback; };
-const OWNER_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
-
-async function resolveOwnerBusinessId(ownerId) {
-    for (const collectionName of OWNER_COLLECTIONS) {
-        const businessQuery = query(collection(db, collectionName), where('ownerId', '==', ownerId), limit(1));
-        const businessSnapshot = await getDocs(businessQuery);
-        if (!businessSnapshot.empty) {
-            return businessSnapshot.docs[0].id;
-        }
-    }
-    return null;
-}
 
 // ─── Order Detail Modal ──────────────────────────────────────────────────────
 function OrderDetailModal({ order, activeTab, onClose }) {
@@ -277,27 +264,34 @@ export default function OrderHistoryPage() {
         try {
             const user = auth.currentUser;
             if (!user) return;
-            const ownerId = user.uid;
-            const restaurantId = await resolveOwnerBusinessId(ownerId);
-            if (!restaurantId) return;
+            const idToken = await user.getIdToken();
 
-            const ordersQuery = query(
-                collection(db, 'orders'),
-                where('restaurantId', '==', restaurantId),
-                where('orderDate', '>=', Timestamp.fromDate(dateRange.from)),
-                where('orderDate', '<=', Timestamp.fromDate(dateRange.to)),
-                orderBy('orderDate', 'desc'),
-                limit(300)
-            );
-            const ordersSnapshot = await getDocs(ordersQuery);
+            const apiUrl = new URL('/api/owner/orders', window.location.origin);
+            apiUrl.searchParams.set('startDate', dateRange.from.toISOString());
+            apiUrl.searchParams.set('endDate', dateRange.to.toISOString());
+            if (impersonatedOwnerId) apiUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            else if (employeeOfOwnerId) apiUrl.searchParams.set('employee_of', employeeOfOwnerId);
+
+            const res = await fetch(apiUrl.toString(), { headers: { Authorization: `Bearer ${idToken}` } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || 'Failed to fetch orders');
+
             const historyStatuses = ['delivered', 'picked_up', 'rejected', 'cancelled', 'failed_delivery'];
-            const fetchedOrders = [];
-            ordersSnapshot.forEach((doc) => {
-                const data = doc.data();
-                if (historyStatuses.includes(data.status)) {
-                    fetchedOrders.push({ id: doc.id, ...data });
-                }
-            });
+            const allOrders = Array.isArray(data.orders) ? data.orders : [];
+            // Filter to only history statuses; also normalise orderDate so it looks like a Firestore Timestamp
+            // so the rest of the page (renderTableDate, sort) keeps working without changes.
+            const fetchedOrders = allOrders
+                .filter(o => historyStatuses.includes((o.status || '').toLowerCase()))
+                .map(o => {
+                    // API returns orderDate as ISO string; wrap it so existing code that checks .seconds works.
+                    if (o.orderDate && typeof o.orderDate === 'string') {
+                        const ms = new Date(o.orderDate).getTime();
+                        if (!isNaN(ms)) {
+                            return { ...o, orderDate: { seconds: Math.floor(ms / 1000) } };
+                        }
+                    }
+                    return o;
+                });
             setOrders(fetchedOrders);
             return fetchedOrders;
         } catch (error) {
