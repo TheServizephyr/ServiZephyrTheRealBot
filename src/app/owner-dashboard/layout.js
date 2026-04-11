@@ -36,6 +36,7 @@ import {
   normalizeIndianPhoneLoose,
 } from "@/lib/call-sync";
 import DesktopSyncProcessor from "@/components/DesktopSyncProcessor";
+import AppNotificationCenter from "@/components/AppNotificationCenter";
 import { getBestEffortIdToken } from "@/lib/client-session";
 import { isDesktopApp } from "@/lib/desktop/runtime";
 
@@ -1052,6 +1053,12 @@ function OwnerDashboardContent({ children }) {
             className="fixed inset-0 bg-black/60 z-40"
             onClick={() => setSidebarOpen(false)}
           />
+        )}
+
+        {pathname?.startsWith('/owner-dashboard/manual-order') && (
+          <div className="pointer-events-none fixed right-4 top-4 z-[115] opacity-0">
+            <AppNotificationCenter scope="owner" />
+          </div>
         )}
 
 

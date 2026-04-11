@@ -31,7 +31,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, getDocs, collection, query, where, limit } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, limit, onSnapshot } from 'firebase/firestore';
 import Image from 'next/image';
 import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
@@ -280,6 +280,59 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     }
   }, [desktopRuntime, effectiveOwnerId, pathname]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const applyResolvedTarget = (resolvedBusiness) => {
+      if (cancelled) return;
+
+      if (!resolvedBusiness?.id) {
+        setNotificationBusinessTarget(null);
+        return;
+      }
+
+      const nextBusinessType = normalizeBusinessType(
+        resolvedBusiness?.data?.businessType || resolvedBusiness?.collectionName
+      );
+
+      if (nextBusinessType && nextBusinessType !== businessType) {
+        setBusinessType(nextBusinessType);
+      }
+
+      setNotificationBusinessTarget({
+        businessId: String(resolvedBusiness.id || '').trim(),
+        collectionName: String(resolvedBusiness.collectionName || '').trim(),
+      });
+    };
+
+    const resolveNotificationTarget = async (firebaseUser) => {
+      const targetOwnerId = String(effectiveOwnerId || firebaseUser?.uid || '').trim();
+      if (!targetOwnerId) {
+        applyResolvedTarget(null);
+        return;
+      }
+
+      try {
+        const resolvedBusiness = await resolveOwnedBusiness(targetOwnerId, businessType || 'restaurant');
+        applyResolvedTarget(resolvedBusiness);
+      } catch (error) {
+        console.error('[Sidebar] Failed to resolve notification target:', error);
+        applyResolvedTarget(null);
+      }
+    };
+
+    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+      void resolveNotificationTarget(firebaseUser);
+    });
+
+    void resolveNotificationTarget(auth.currentUser);
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [businessType, effectiveOwnerId]);
+
 
   const getIsDisabled = (featureId) => {
     if (lockedFeatures.includes(featureId)) {
@@ -449,8 +502,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const [waitlistEntriesCount, setWaitlistEntriesCount] = useState(0);
   const [dineInPendingOrdersCount, setDineInPendingOrdersCount] = useState(0);
   const [dineInServiceRequestsCount, setDineInServiceRequestsCount] = useState(0);
-  const hasBootstrappedPendingNotifRef = useRef(false);
-  const prevPendingCountRef = useRef(0);
+  const [notificationBusinessTarget, setNotificationBusinessTarget] = useState(null);
   const hasBootstrappedWaNotifRef = useRef(false);
   const prevWaUnreadCountRef = useRef(0);
   const isOnWhatsAppDirectPage = pathname?.includes('/owner-dashboard/whatsapp-direct');
@@ -517,6 +569,55 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, [badgeMonitoringReady, badgePollIntervalMs, businessType, employeeOfOwnerId, impersonatedOwnerId, isPageVisible]);
 
   useEffect(() => {
+    const businessId = String(notificationBusinessTarget?.businessId || '').trim();
+    if (!businessId) return undefined;
+
+    let bootstrapped = false;
+
+    const pendingOrdersQuery = query(
+      collection(db, 'orders'),
+      where('restaurantId', '==', businessId),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribe = onSnapshot(
+      pendingOrdersQuery,
+      (snapshot) => {
+        const nextCount = Math.max(0, snapshot.size);
+        setPendingOrdersCount(nextCount);
+
+        if (!bootstrapped) {
+          bootstrapped = true;
+          return;
+        }
+
+        const addedChanges = snapshot.docChanges().filter((change) => change.type === 'added');
+        if (!addedChanges.length || isOnLiveOrdersPage) return;
+
+        emitAppNotification({
+          scope: 'owner',
+          title: 'New Live Order',
+          message: addedChanges.length === 1
+            ? '1 new order is waiting in Live Orders.'
+            : `${addedChanges.length} new orders are waiting in Live Orders.`,
+          dedupeKey: `sidebar_realtime_pending_${addedChanges.map((change) => change.doc.id).sort().join('_')}`,
+          alarmId: 'live_orders_pending',
+          disableAutoStop: true,
+          sound: '/notification-owner-manager.mp3',
+          href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders',
+        });
+      },
+      (error) => {
+        console.error('[Sidebar] Pending order realtime listener failed:', error);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [businessType, isOnLiveOrdersPage, notificationBusinessTarget?.businessId]);
+
+  useEffect(() => {
     const count = pendingOrdersCount || 0;
 
     if (count > 0) {
@@ -532,40 +633,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       });
     } else {
       clearAppNotificationAlarmState('owner', 'live_orders_pending');
-    }
-
-    if (!hasBootstrappedPendingNotifRef.current) {
-      hasBootstrappedPendingNotifRef.current = true;
-      prevPendingCountRef.current = count;
-      return;
-    }
-
-    if (!isOnLiveOrdersPage && count > prevPendingCountRef.current) {
-      const delta = count - prevPendingCountRef.current;
-      emitAppNotification({
-        scope: 'owner',
-        title: 'New Live Order',
-        message: delta === 1
-          ? '1 new order is waiting in Live Orders.'
-          : `${delta} new orders are waiting in Live Orders.`,
-        dedupeKey: `sidebar_pending_${count}_${Date.now()}`,
-        alarmId: 'live_orders_pending',
-        disableAutoStop: true,
-        sound: '/notification-owner-manager.mp3',
-        href: businessType === 'street-vendor' ? '/street-vendor-dashboard' : '/owner-dashboard/live-orders'
-      });
-    }
-
-    if (count === 0 && prevPendingCountRef.current > 0) {
       emitAppNotification({
         scope: 'owner',
         action: 'stop_alarm',
         alarmId: 'live_orders_pending'
       });
     }
-
-    prevPendingCountRef.current = count;
-  }, [pendingOrdersCount, businessType, isOnLiveOrdersPage]);
+  }, [pendingOrdersCount, businessType]);
 
   useEffect(() => {
     if (impersonatedOwnerId || employeeOfOwnerId) return;
