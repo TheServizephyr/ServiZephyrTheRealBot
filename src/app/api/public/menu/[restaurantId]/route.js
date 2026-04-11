@@ -10,6 +10,8 @@ import { resolveCustomerLookupProfile } from '@/services/customer/customerLookup
 import { buildLegacyMenuDataFromSnapshot, getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+
 // --- Analytics Badge Thresholds ---
 // Strict thresholds to prevent badge inflation — only truly top-performing items qualify
 const BADGE_LOOKBACK_DAYS = 7;           // Reduced from 30 to 7 to save 75% Firebase Reads
