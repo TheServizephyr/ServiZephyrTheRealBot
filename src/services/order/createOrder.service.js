@@ -115,6 +115,13 @@ const optimizeItemSnapshot = (item) => {
         snapshot.addedAt = item.addedAt;
     }
 
+    if (item.isCouponReward === true) {
+        snapshot.isCouponReward = true;
+        snapshot.couponRewardMeta = item.couponRewardMeta || null;
+        if (item.originalUnitPrice !== undefined) snapshot.originalUnitPrice = item.originalUnitPrice;
+        if (item.originalTotalPrice !== undefined) snapshot.originalTotalPrice = item.originalTotalPrice;
+    }
+
     return snapshot;
 };
 
@@ -127,6 +134,34 @@ const normalizeCouponType = (couponType) => {
     const normalized = String(couponType || '').trim().toLowerCase();
     if (normalized === 'fixed') return 'flat';
     return normalized;
+};
+
+const normalizeCouponFreeItemReward = (reward = null) => {
+    if (!reward) return null;
+    const source = String(reward.source || (reward.isCustom ? 'custom' : 'menu')).trim().toLowerCase();
+    const itemId = String(reward.itemId || '').trim();
+    const itemName = String(reward.itemName || '').trim();
+    const portionName = String(reward.portionName || '').trim();
+    if (source === 'custom') {
+        if (!itemName) return null;
+        return {
+            source: 'custom',
+            itemId: itemId || '',
+            itemName,
+            categoryId: String(reward.categoryId || 'custom-reward').trim(),
+            portionName,
+            quantity: Math.max(1, Number(reward.quantity) || 1),
+        };
+    }
+    if (!itemId) return null;
+    return {
+        source: 'menu',
+        itemId,
+        itemName,
+        categoryId: String(reward.categoryId || '').trim(),
+        portionName,
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+    };
 };
 
 const ACTIVE_DINE_IN_TOKEN_STATUSES = [
@@ -183,6 +218,113 @@ async function resolveCouponOwnership({
     const safePhone = String(normalizedPhone || '').trim();
     if (assignedCustomerId.startsWith('phone:')) return assignedCustomerId.slice('phone:'.length) === safePhone;
     return false;
+}
+
+async function buildCouponRewardItem({
+    firestore,
+    businessCollection,
+    businessId,
+    reward = null,
+    deliveryType = 'delivery',
+} = {}) {
+    const normalizedReward = normalizeCouponFreeItemReward(reward);
+    if (!normalizedReward) return null;
+    if (normalizedReward.source === 'custom') {
+        return {
+            id: `custom_reward_${Date.now()}`,
+            name: normalizedReward.itemName || 'Free Item',
+            categoryId: normalizedReward.categoryId || 'custom-reward',
+            isVeg: false,
+            quantity: Math.max(1, Number(normalizedReward.quantity) || 1),
+            price: 0,
+            totalPrice: 0,
+            serverVerifiedPrice: 0,
+            serverVerifiedTotal: 0,
+            originalUnitPrice: 0,
+            originalTotalPrice: 0,
+            cartItemId: `coupon_reward_custom_${String(normalizedReward.itemName || 'item').replace(/\s+/g, '_').toLowerCase()}`,
+            isAddon: false,
+            isCouponReward: true,
+            couponRewardMeta: {
+                source: 'coupon_free_item_custom',
+                quantity: Math.max(1, Number(normalizedReward.quantity) || 1),
+                originalUnitPrice: 0,
+            },
+            selectedAddOns: [],
+            ...(normalizedReward.portionName ? {
+                portion: {
+                    name: normalizedReward.portionName,
+                    price: 0,
+                    isDefault: false,
+                },
+            } : {}),
+        };
+    }
+    if (!normalizedReward?.itemId) return null;
+
+    const rewardSnap = await firestore
+        .collection(String(businessCollection || 'restaurants'))
+        .doc(String(businessId))
+        .collection('menu')
+        .doc(String(normalizedReward.itemId))
+        .get();
+
+    if (!rewardSnap.exists) {
+        throw new Error('Selected free item is no longer available.');
+    }
+
+    const rewardItem = rewardSnap.data() || {};
+    if (rewardItem.isDeleted === true || rewardItem.isAvailable === false) {
+        throw new Error('Selected free item is currently unavailable.');
+    }
+
+    const normalizedDeliveryType = String(deliveryType || '').trim().toLowerCase();
+    if (rewardItem?.isDineInExclusive === true && normalizedDeliveryType !== 'dine-in') {
+        throw new Error('Selected free item is available only for dine-in orders.');
+    }
+
+    const rewardPortions = Array.isArray(rewardItem.portions) ? rewardItem.portions : [];
+    const selectedPortion = normalizedReward.portionName
+        ? rewardPortions.find((portion) => String(portion?.name || '').trim() === normalizedReward.portionName)
+        : (rewardPortions[0] || null);
+
+    if (normalizedReward.portionName && rewardPortions.length > 0 && !selectedPortion) {
+        throw new Error('Selected free item portion is no longer available.');
+    }
+
+    const rewardPrice = Number(selectedPortion?.price ?? rewardItem.price ?? 0) || 0;
+    const quantity = Math.max(1, Number(normalizedReward.quantity) || 1);
+
+    return {
+        id: rewardSnap.id,
+        name: String(rewardItem.name || normalizedReward.itemName || 'Free Item').trim(),
+        categoryId: String(rewardItem.categoryId || normalizedReward.categoryId || 'general').trim() || 'general',
+        isVeg: !!rewardItem.isVeg,
+        quantity,
+        price: 0,
+        totalPrice: 0,
+        serverVerifiedPrice: 0,
+        serverVerifiedTotal: 0,
+        originalUnitPrice: rewardPrice,
+        originalTotalPrice: rewardPrice * quantity,
+        cartItemId: `coupon_reward_${rewardSnap.id}`,
+        isAddon: false,
+        isCouponReward: true,
+        couponRewardMeta: {
+            source: 'coupon_free_item',
+            quantity,
+            originalUnitPrice: rewardPrice,
+        },
+        selectedAddOns: [],
+        ...(selectedPortion ? {
+            portion: {
+                name: String(selectedPortion.name || normalizedReward.portionName || 'Regular'),
+                price: 0,
+                isDefault: selectedPortion.isDefault === true,
+            },
+            portionCount: rewardPortions.length || 1,
+        } : {}),
+    };
 }
 
 async function resolveDineInLikeToken({
@@ -643,6 +785,7 @@ export async function createOrderV2(req, options = {}) {
         // --- SERVER-SIDE BILLING CALCULATIONS ---
         let verifiedCoupon = null;
         let couponDiscountAmount = 0;
+        let couponRewardItem = null;
 
         if (Number(discount) > 0) {
             console.warn('[createOrderV2] Ignoring client-provided discount; server side discount validation is required.');
@@ -667,6 +810,7 @@ export async function createOrderV2(req, options = {}) {
                 const couponValue = Number(couponData.value) || 0;
                 const couponMinOrder = Number(couponData.minOrder) || 0;
                 const couponMaxDiscount = Number(couponData.maxDiscount) || 0;
+                const couponFreeItemReward = normalizeCouponFreeItemReward(couponData.freeItemReward);
                 const couponUsageLimit = Number(couponData.usageLimit) || 0;
                 const couponTimesUsed = Number(couponData.timesUsed) || 0;
                 const singleUsePerCustomer = couponData.singleUsePerCustomer === true;
@@ -757,7 +901,7 @@ export async function createOrderV2(req, options = {}) {
                     });
                 }
 
-                if (!['flat', 'percentage', 'free_delivery'].includes(couponType)) {
+                if (!['flat', 'percentage', 'free_delivery', 'free_item'].includes(couponType)) {
                     await idempotencyRepository.fail(idempotencyKey, new Error('Unsupported coupon type'));
                     return buildErrorResponse({
                         message: 'Invalid coupon type.',
@@ -777,7 +921,21 @@ export async function createOrderV2(req, options = {}) {
                 }
 
                 couponDiscountAmount = Math.max(0, couponDiscountAmount);
-                verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
+                couponRewardItem = couponFreeItemReward
+                    ? await buildCouponRewardItem({
+                        firestore,
+                        businessCollection: business.collection,
+                        businessId: business.id,
+                        reward: couponFreeItemReward,
+                        deliveryType,
+                    })
+                    : null;
+                verifiedCoupon = {
+                    ...couponData,
+                    type: couponType,
+                    id: couponSnap.id,
+                    freeItemReward: couponFreeItemReward,
+                };
 
                 console.log(`[createOrderV2] ✅ Coupon validated: ${verifiedCoupon.code || verifiedCoupon.id}, discount=₹${couponDiscountAmount}`);
             } catch (couponError) {
@@ -791,6 +949,9 @@ export async function createOrderV2(req, options = {}) {
 
         const netSubtotal = Math.max(0, pricing.serverSubtotal - couponDiscountAmount);
         const couponReservationKeys = verifiedCoupon?.id ? Array.from(couponRedemptionKeys) : [];
+        const finalValidatedItems = couponRewardItem
+            ? [...pricing.validatedItems, couponRewardItem]
+            : pricing.validatedItems;
         const taxes = calculateTaxes(netSubtotal, business.data);
         const serverCgst = taxes.cgst;
         const serverSgst = taxes.sgst;
@@ -970,7 +1131,7 @@ export async function createOrderV2(req, options = {}) {
                 }),
                 pickupTime: body.pickupTime || '',
                 tipAmount: tipAmount || 0,
-                items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
+                items: finalValidatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 subtotal: pricing.serverSubtotal, // Server-calculated
                 cgst: serverCgst, // Server-calculated
                 sgst: serverSgst, // Server-calculated
@@ -1082,7 +1243,7 @@ export async function createOrderV2(req, options = {}) {
                     pickupTime: body.pickupTime || '',
                     diningPreference: sanitizedDiningPreference,
                 },
-                items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED
+                items: finalValidatedItems.map(optimizeItemSnapshot), // OPTIMIZED
                 restaurantId: business.id, // ✅ FIX
                 userId,
                 businessType: business.type,
@@ -1210,9 +1371,7 @@ export async function createOrderV2(req, options = {}) {
             customerAddressPending: deliveryType === 'delivery' && !customerLocation,
             pickupTime: body.pickupTime || '',
             tipAmount: tipAmount || 0,
-            tipAmount: tipAmount || 0,
-            items: pricing.validatedItems.map(optimizeItemSnapshot), // OPTIMIZED: Remove heavy fields
-            subtotal: pricing.serverSubtotal, // Server-calculated
+            items: finalValidatedItems.map(optimizeItemSnapshot), // OPTIMIZED: Remove heavy fields
             subtotal: pricing.serverSubtotal, // Server-calculated
             cgst: serverCgst,
             sgst: serverSgst,
@@ -1316,7 +1475,7 @@ export async function createOrderV2(req, options = {}) {
                     orderId,
                     orderSubtotal: pricing.serverSubtotal,
                     orderTotal: serverGrandTotal,
-                    items: pricing.validatedItems,
+                    items: finalValidatedItems,
                     customerType: isGuest ? 'guest' : 'uid',
                 });
             } catch (profileSyncError) {

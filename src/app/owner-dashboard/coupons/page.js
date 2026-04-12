@@ -47,17 +47,74 @@ const formatDate = (dateStr) => {
     return format(date, "dd MMM yyyy");
 };
 
-const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
+const normalizeFreeItemReward = (reward = null) => {
+    if (!reward) return null;
+    const source = String(reward.source || (reward.isCustom ? 'custom' : 'menu')).trim().toLowerCase();
+    const itemId = String(reward.itemId || '').trim();
+    const itemName = String(reward.itemName || '').trim();
+    const portionName = String(reward.portionName || '').trim();
+    if (source === 'custom') {
+        if (!itemName) return null;
+        return {
+            source: 'custom',
+            itemId: itemId || '',
+            itemName,
+            categoryId: String(reward.categoryId || 'custom-reward').trim(),
+            portionName,
+            quantity: Math.max(1, Number(reward.quantity) || 1),
+        };
+    }
+    if (!itemId) return null;
+    return {
+        source: 'menu',
+        itemId,
+        itemName,
+        categoryId: String(reward.categoryId || '').trim(),
+        portionName,
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+    };
+};
+
+const formatCouponHeadline = (coupon = {}) => {
+    const freeItemReward = normalizeFreeItemReward(coupon.freeItemReward);
+    const parts = [];
+
+    if (coupon.type === 'free_delivery') {
+        parts.push('Free Delivery');
+    } else if (coupon.type === 'flat') {
+        parts.push(`₹${coupon.value} OFF`);
+    } else if (coupon.type === 'percentage') {
+        parts.push(`${coupon.value}% OFF`);
+    } else if (coupon.type === 'free_item') {
+        parts.push('Free Dish');
+    }
+
+    if (freeItemReward) {
+        const rewardLabel = `${freeItemReward.quantity > 1 ? `${freeItemReward.quantity}x ` : ''}${freeItemReward.itemName || 'Free Item'}`;
+        if (coupon.type === 'free_item') {
+            return rewardLabel;
+        }
+        parts.push(`+ ${rewardLabel}`);
+    }
+
+    return parts.join(' ') || 'Offer';
+};
+
+const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon, rewardMenuItems = [] }) => {
     const [coupon, setCoupon] = useState(null);
     const [isStartDatePickerOpen, setStartDatePickerOpen] = useState(false);
     const [isEndDatePickerOpen, setEndDatePickerOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [modalError, setModalError] = useState('');
+    const [isCustomRewardDialogOpen, setIsCustomRewardDialogOpen] = useState(false);
+    const [customRewardDraft, setCustomRewardDraft] = useState({ itemName: '', portionName: '' });
 
     useEffect(() => {
         if (isOpen) {
             setIsSaving(false);
             setModalError('');
+            setIsCustomRewardDialogOpen(false);
+            setCustomRewardDraft({ itemName: '', portionName: '' });
             if (editingCoupon) {
                 setCoupon({
                     ...editingCoupon
@@ -67,7 +124,8 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                     id: null, code: '', description: '', type: 'flat', value: '',
                     maxDiscount: '',
                     minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                    status: 'active', timesUsed: 0, customerId: null, singleUsePerCustomer: false, orderMilestones: ''
+                    status: 'active', timesUsed: 0, customerId: null, singleUsePerCustomer: false, orderMilestones: '',
+                    freeItemReward: null,
                 });
             }
         }
@@ -76,12 +134,86 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
     const handleChange = (field, value) => {
         const newCoupon = { ...coupon, [field]: value };
 
-        if (field === 'type' && value === 'free_delivery') {
-            newCoupon.value = 0;
-            newCoupon.maxDiscount = '';
+        if (field === 'type') {
+            const hasFreeRewardSelected = Boolean(normalizeFreeItemReward(newCoupon.freeItemReward));
+            if (hasFreeRewardSelected && value !== 'free_item') {
+                newCoupon.type = 'free_item';
+            } else {
+                newCoupon.type = value;
+            }
+            if (newCoupon.type === 'free_delivery' || newCoupon.type === 'free_item') {
+                newCoupon.value = 0;
+                newCoupon.maxDiscount = '';
+            }
+        }
+
+        if (field === 'freeItemReward') {
+            newCoupon.freeItemReward = normalizeFreeItemReward(value);
+            if (newCoupon.freeItemReward) {
+                newCoupon.type = 'free_item';
+                newCoupon.value = 0;
+                newCoupon.maxDiscount = '';
+            }
         }
 
         setCoupon(newCoupon);
+    };
+
+    const selectedRewardItem = useMemo(() => (
+        rewardMenuItems.find((item) => item.id === coupon?.freeItemReward?.itemId) || null
+    ), [coupon?.freeItemReward?.itemId, rewardMenuItems]);
+
+    const selectedRewardPortions = Array.isArray(selectedRewardItem?.portions) ? selectedRewardItem.portions : [];
+    const isRewardLockedToFreeDish = Boolean(normalizeFreeItemReward(coupon?.freeItemReward));
+
+    const handleRewardItemSelection = (itemId) => {
+        if (itemId === '__custom__') {
+            setCustomRewardDraft({
+                itemName: String(coupon?.freeItemReward?.source === 'custom' ? coupon?.freeItemReward?.itemName || '' : '').trim(),
+                portionName: String(coupon?.freeItemReward?.source === 'custom' ? coupon?.freeItemReward?.portionName || '' : '').trim(),
+            });
+            setIsCustomRewardDialogOpen(true);
+            return;
+        }
+
+        const nextItem = rewardMenuItems.find((item) => item.id === itemId) || null;
+        if (!nextItem) {
+            handleChange('freeItemReward', null);
+            return;
+        }
+
+        const defaultPortion = Array.isArray(nextItem.portions) && nextItem.portions.length > 0
+            ? nextItem.portions[0]
+            : null;
+
+        handleChange('freeItemReward', {
+            source: 'menu',
+            itemId: nextItem.id,
+            itemName: nextItem.name,
+            categoryId: nextItem.categoryId,
+            portionName: defaultPortion?.name || '',
+            quantity: Math.max(1, Number(coupon?.freeItemReward?.quantity) || 1),
+        });
+    };
+
+    const handleSaveCustomReward = () => {
+        const itemName = String(customRewardDraft.itemName || '').trim();
+        const portionName = String(customRewardDraft.portionName || '').trim();
+        if (!itemName) {
+            setModalError('Custom reward item name is required.');
+            return;
+        }
+
+        setModalError('');
+        handleChange('freeItemReward', {
+            source: 'custom',
+            itemId: '',
+            itemName,
+            categoryId: 'custom-reward',
+            portionName,
+            quantity: Math.max(1, Number(coupon?.freeItemReward?.quantity) || 1),
+        });
+        setIsCustomRewardDialogOpen(false);
     };
 
     const generateRandomCode = () => {
@@ -94,12 +226,15 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
         setModalError('');
 
         let requiredFieldsMet = coupon.code && coupon.minOrder !== '';
-        if (coupon.type !== 'free_delivery') {
+        if (!['free_delivery', 'free_item'].includes(coupon.type)) {
             requiredFieldsMet = requiredFieldsMet && coupon.value !== '';
+        }
+        if (coupon.type === 'free_item' && !normalizeFreeItemReward(coupon.freeItemReward)) {
+            requiredFieldsMet = false;
         }
 
         if (!requiredFieldsMet) {
-            setModalError('Please fill all required fields: Code, Value (if not free delivery), and Minimum Order.');
+            setModalError('Please fill all required fields: code, minimum order, discount value when needed, and free reward item when selected.');
             return;
         }
 
@@ -119,6 +254,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
     const minimumOrderValue = Number(coupon.minOrder) || 0;
     const rewardValue = Number(coupon.value) || 0;
     const maxDiscountValue = Number(coupon.maxDiscount) || 0;
+    const freeItemReward = normalizeFreeItemReward(coupon.freeItemReward);
     const sampleOrderValue = Math.max(minimumOrderValue || 500, 500);
     const percentagePreviewDiscount = Math.round((sampleOrderValue * rewardValue) / 100);
     const effectivePercentageDiscount = maxDiscountValue > 0
@@ -164,21 +300,135 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             </div>
                             <div>
                                 <Label>Discount Type</Label>
-                                <div className="grid grid-cols-3 gap-2 mt-2">
-                                    <div onClick={() => handleChange('type', 'flat')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'flat' ? 'border-primary bg-primary/10' : 'border-border')}>
+                                <div className="grid grid-cols-4 gap-2 mt-2">
+                                    <div
+                                        onClick={() => !isRewardLockedToFreeDish && handleChange('type', 'flat')}
+                                        className={cn('p-3 border-2 rounded-lg flex items-center justify-center gap-2 text-sm', coupon.type === 'flat' ? 'border-primary bg-primary/10' : 'border-border', isRewardLockedToFreeDish ? 'cursor-not-allowed opacity-40' : 'cursor-pointer')}
+                                    >
                                         <IndianRupee size={16} /> Flat Amount
                                     </div>
-                                    <div onClick={() => handleChange('type', 'percentage')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'percentage' ? 'border-primary bg-primary/10' : 'border-border')}>
+                                    <div
+                                        onClick={() => !isRewardLockedToFreeDish && handleChange('type', 'percentage')}
+                                        className={cn('p-3 border-2 rounded-lg flex items-center justify-center gap-2 text-sm', coupon.type === 'percentage' ? 'border-primary bg-primary/10' : 'border-border', isRewardLockedToFreeDish ? 'cursor-not-allowed opacity-40' : 'cursor-pointer')}
+                                    >
                                         <Percent size={16} /> Percentage
                                     </div>
-                                    <div onClick={() => handleChange('type', 'free_delivery')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'free_delivery' ? 'border-primary bg-primary/10' : 'border-border')}>
+                                    <div
+                                        onClick={() => !isRewardLockedToFreeDish && handleChange('type', 'free_delivery')}
+                                        className={cn('p-3 border-2 rounded-lg flex items-center justify-center gap-2 text-sm', coupon.type === 'free_delivery' ? 'border-primary bg-primary/10' : 'border-border', isRewardLockedToFreeDish ? 'cursor-not-allowed opacity-40' : 'cursor-pointer')}
+                                    >
                                         <Truck size={16} /> Free Delivery
                                     </div>
+                                    <div onClick={() => handleChange('type', 'free_item')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'free_item' ? 'border-primary bg-primary/10' : 'border-border')}>
+                                        <Ticket size={16} /> Free Dish
+                                    </div>
                                 </div>
+                                {isRewardLockedToFreeDish && (
+                                    <p className="text-xs text-amber-600 mt-2">
+                                        Free reward selected, so this coupon is locked to Free Dish only.
+                                    </p>
+                                )}
                             </div>
                         </div>
 
                         <div className="space-y-6">
+                            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <Label className="text-sm font-semibold">Free Dish Reward</Label>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            Attach one complimentary reward item to this coupon. Once selected, this coupon becomes a Free Dish offer only.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={Boolean(freeItemReward)}
+                                        onCheckedChange={(checked) => {
+                                            if (!checked) {
+                                                handleChange('freeItemReward', null);
+                                                return;
+                                            }
+                                            if (rewardMenuItems[0]?.id) {
+                                                handleRewardItemSelection(rewardMenuItems[0].id);
+                                            } else {
+                                                handleRewardItemSelection('__custom__');
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {freeItemReward && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="space-y-1 md:col-span-2">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <Label htmlFor="reward-item">Reward Item</Label>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8"
+                                                    onClick={() => handleRewardItemSelection('__custom__')}
+                                                >
+                                                    Custom Item
+                                                </Button>
+                                            </div>
+                                            <select
+                                                id="reward-item"
+                                                value={freeItemReward.source === 'custom' ? '__custom__' : freeItemReward.itemId}
+                                                onChange={(e) => handleRewardItemSelection(e.target.value)}
+                                                className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                            >
+                                                <option value="">Select menu item</option>
+                                                <option value="__custom__">Custom item (not in menu)</option>
+                                                {rewardMenuItems.map((item) => (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name} ({item.categoryId})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {freeItemReward.source === 'custom' && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Custom reward: {freeItemReward.itemName}{freeItemReward.portionName ? ` • ${freeItemReward.portionName}` : ''}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="reward-qty">Reward Qty</Label>
+                                            <input
+                                                id="reward-qty"
+                                                type="number"
+                                                min="1"
+                                                value={freeItemReward.quantity}
+                                                onChange={(e) => handleChange('freeItemReward', {
+                                                    ...freeItemReward,
+                                                    quantity: Math.max(1, Number(e.target.value) || 1),
+                                                })}
+                                                className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                            />
+                                        </div>
+                                        {selectedRewardPortions.length > 0 && freeItemReward.source !== 'custom' && (
+                                            <div className="space-y-1 md:col-span-3">
+                                                <Label htmlFor="reward-portion">Reward Portion</Label>
+                                                <select
+                                                    id="reward-portion"
+                                                    value={freeItemReward.portionName || selectedRewardPortions[0]?.name || ''}
+                                                    onChange={(e) => handleChange('freeItemReward', {
+                                                        ...freeItemReward,
+                                                        portionName: e.target.value,
+                                                    })}
+                                                    className="h-10 w-full rounded-md border border-border bg-input px-3 text-sm"
+                                                >
+                                                    {selectedRewardPortions.map((portion) => (
+                                                        <option key={portion.name} value={portion.name}>
+                                                            {portion.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             {coupon.type === 'percentage' && (
                                 <div>
                                     <Label htmlFor="maxDiscount">Maximum Discount Cap (Rs)</Label>
@@ -211,7 +461,11 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             </div>
                             <div className="rounded-lg border border-border bg-muted/40 p-3">
                                 <p className="text-sm font-medium">How this coupon will work</p>
-                                {coupon.type === 'free_delivery' ? (
+                                {coupon.type === 'free_item' ? (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Customer unlocks {freeItemReward?.quantity || 1} free {freeItemReward?.itemName || 'menu item'} on eligible orders.
+                                    </p>
+                                ) : coupon.type === 'free_delivery' ? (
                                     <p className="text-xs text-muted-foreground mt-1">
                                         Customer gets free delivery on orders of Rs {minimumOrderValue || 0} and above.
                                     </p>
@@ -240,14 +494,16 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                                         value={coupon.value}
                                         onChange={e => handleChange('value', e.target.value)}
                                         placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'}
-                                        disabled={coupon.type === 'free_delivery'}
+                                        disabled={coupon.type === 'free_delivery' || coupon.type === 'free_item'}
                                         className="mt-1 p-2 border rounded-md bg-input border-border w-full disabled:opacity-50 disabled:cursor-not-allowed" />
                                     <p className="text-xs text-muted-foreground mt-1">
                                         {coupon.type === 'flat'
                                             ? 'Customer gets this exact amount off.'
                                             : coupon.type === 'percentage'
                                                 ? 'For example, 20 means 20% off.'
-                                                : 'Free delivery coupons automatically keep discount value at 0.'}
+                                                : coupon.type === 'free_item'
+                                                    ? 'Free item coupons automatically keep discount value at 0.'
+                                                    : 'Free delivery coupons automatically keep discount value at 0.'}
                                     </p>
                                 </div>
                                 <div>
@@ -303,6 +559,44 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                         </Button>
                     </DialogFooter>
                 </form>
+                {isCustomRewardDialogOpen && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                        <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold">Add Custom Reward Item</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    Enter the free item name and optional portion label like Half, Full, 500 ml, Large, or Medium.
+                                </p>
+                            </div>
+                            <div className="space-y-4 py-4">
+                                <div>
+                                    <Label htmlFor="custom-reward-name">Item Name</Label>
+                                    <input
+                                        id="custom-reward-name"
+                                        value={customRewardDraft.itemName}
+                                        onChange={(e) => setCustomRewardDraft((prev) => ({ ...prev, itemName: e.target.value }))}
+                                        placeholder="e.g., Cold Drink"
+                                        className="mt-1 p-2 border rounded-md bg-input border-border w-full"
+                                    />
+                                </div>
+                                <div>
+                                    <Label htmlFor="custom-reward-portion">Portion / Size</Label>
+                                    <input
+                                        id="custom-reward-portion"
+                                        value={customRewardDraft.portionName}
+                                        onChange={(e) => setCustomRewardDraft((prev) => ({ ...prev, portionName: e.target.value }))}
+                                        placeholder="e.g., 500 ml, Full, Large"
+                                        className="mt-1 p-2 border rounded-md bg-input border-border w-full"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+                                <Button type="button" variant="secondary" onClick={() => setIsCustomRewardDialogOpen(false)}>Cancel</Button>
+                                <Button type="button" onClick={handleSaveCustomReward}>Use Custom Item</Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );
@@ -337,7 +631,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                     </div>
                 </div>
                 <p className="text-3xl font-bold text-primary mt-4">
-                    {coupon.type === 'free_delivery' ? 'Free Delivery' : (coupon.type === 'flat' ? `₹${coupon.value} OFF` : `${coupon.value}% OFF`)}
+                    {formatCouponHeadline(coupon)}
                 </p>
             </div>
 
@@ -349,6 +643,11 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                     <p><span className="font-semibold text-muted-foreground">Expires:</span> {formatDate(expiryDate)}</p>
                     <p><span className="font-semibold text-muted-foreground">Times Used:</span> {coupon.timesUsed}</p>
                     <p><span className="font-semibold text-muted-foreground">Usage Rule:</span> {coupon.singleUsePerCustomer ? 'One time per customer' : 'Multiple times allowed'}</p>
+                    {normalizeFreeItemReward(coupon.freeItemReward) && (
+                        <p>
+                            <span className="font-semibold text-muted-foreground">Free Reward:</span> {coupon.freeItemReward.quantity || 1}x {coupon.freeItemReward.itemName}
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -375,6 +674,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
 
 export default function CouponsPage() {
     const [coupons, setCoupons] = useState([]);
+    const [rewardMenuItems, setRewardMenuItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCoupon, setEditingCoupon] = useState(null);
@@ -464,9 +764,48 @@ export default function CouponsPage() {
         }
     };
 
+    const fetchRewardMenuItems = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const url = new URL('/api/owner/menu', window.location.origin);
+            url.searchParams.set('compact', '1');
+            if (impersonatedOwnerId) {
+                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            } else if (employeeOfOwnerId) {
+                url.searchParams.append('employee_of', employeeOfOwnerId);
+            }
+
+            const res = await fetch(url.toString(), {
+                headers: { Authorization: `Bearer ${idToken}` },
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to load menu items');
+
+            const flattened = Object.values(data.menu || {})
+                .flatMap((categoryItems) => (Array.isArray(categoryItems) ? categoryItems : []))
+                .filter((item) => item && item.id && item.isAvailable !== false)
+                .map((item) => ({
+                    id: item.id,
+                    name: String(item.name || 'Unnamed Item'),
+                    categoryId: String(item.categoryId || 'general'),
+                    portions: Array.isArray(item.portions) ? item.portions : [],
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            setRewardMenuItems(flattened);
+        } catch (error) {
+            console.error('[COUPON MENU FETCH]', error);
+        }
+    };
+
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchCoupons();
+            if (user) {
+                fetchCoupons();
+                fetchRewardMenuItems();
+            }
             else setLoading(false);
         });
         return () => unsubscribe();
@@ -567,7 +906,7 @@ export default function CouponsPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            <CouponModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} onSave={handleSaveCoupon} editingCoupon={editingCoupon} />
+            <CouponModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} onSave={handleSaveCoupon} editingCoupon={editingCoupon} rewardMenuItems={rewardMenuItems} />
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div>

@@ -14,6 +14,35 @@ const normalizePhone = (phone) => {
     return digits.length > 10 ? digits.slice(-10) : digits;
 };
 
+const normalizeFreeItemReward = (reward = null) => {
+    if (!reward) return null;
+    const source = String(reward.source || (reward.isCustom ? 'custom' : 'menu')).trim().toLowerCase();
+    const itemId = String(reward.itemId || '').trim();
+    const itemName = String(reward.itemName || '').trim();
+    const portionName = String(reward.portionName || '').trim();
+    if (source === 'custom') {
+        if (!itemName) return null;
+        return {
+            source: 'custom',
+            itemId: itemId || '',
+            itemName,
+            categoryId: String(reward.categoryId || 'custom-reward').trim(),
+            portionName,
+            quantity: Math.max(1, Number(reward.quantity) || 1),
+        };
+    }
+    if (!itemId) return null;
+
+    return {
+        source: 'menu',
+        itemId,
+        itemName,
+        categoryId: String(reward.categoryId || '').trim(),
+        portionName,
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+    };
+};
+
 
 export async function GET(req) {
     try {
@@ -66,8 +95,14 @@ export async function POST(req) {
 
         // Updated Validation
         const isFreeDelivery = coupon.type === 'free_delivery';
-        if (!coupon || !coupon.code || coupon.minOrder === undefined || (!isFreeDelivery && coupon.value === undefined)) {
+        const normalizedFreeItemReward = normalizeFreeItemReward(coupon.freeItemReward);
+        const effectiveCouponType = normalizedFreeItemReward ? 'free_item' : coupon.type;
+        const isFreeItemOnly = effectiveCouponType === 'free_item';
+        if (!coupon || !coupon.code || coupon.minOrder === undefined || (!isFreeDelivery && !isFreeItemOnly && coupon.value === undefined)) {
             return NextResponse.json({ message: 'Missing required coupon data.' }, { status: 400 });
+        }
+        if ((isFreeItemOnly || normalizedFreeItemReward) && !normalizedFreeItemReward) {
+            return NextResponse.json({ message: 'Please select a valid reward item for this coupon.' }, { status: 400 });
         }
         if (String(coupon.customerId || '').startsWith('phone:')) {
             return NextResponse.json({ message: 'Specific reward coupon must target a customer doc id, not a phone number.' }, { status: 400 });
@@ -78,12 +113,14 @@ export async function POST(req) {
 
         const newCouponData = {
             ...coupon,
+            type: effectiveCouponType,
             id: newCouponRef.id,
             timesUsed: 0,
-            value: isFreeDelivery ? 0 : Number(coupon.value),
-            maxDiscount: coupon.type === 'percentage' ? (Number(coupon.maxDiscount) || 0) : 0,
+            value: (isFreeDelivery || isFreeItemOnly) ? 0 : Number(coupon.value),
+            maxDiscount: effectiveCouponType === 'percentage' ? (Number(coupon.maxDiscount) || 0) : 0,
             orderMilestones: parseOrderMilestones(coupon.orderMilestones),
             singleUsePerCustomer: coupon.singleUsePerCustomer === true,
+            freeItemReward: normalizedFreeItemReward,
             redeemedCustomerIds: [],
             createdAt: FieldValue.serverTimestamp(),
             startDate: new Date(coupon.startDate),
@@ -102,9 +139,10 @@ export async function POST(req) {
             metadata: {
                 couponId: newCouponRef.id,
                 couponCode: coupon.code,
-                discountType: coupon.type, // 'percentage', 'fixed', 'free_delivery'
-                discountValue: isFreeDelivery ? 0 : coupon.value,
+                discountType: effectiveCouponType, // 'percentage', 'fixed', 'free_delivery', 'free_item'
+                discountValue: (isFreeDelivery || isFreeItemOnly) ? 0 : coupon.value,
                 minOrder: coupon.minOrder,
+                freeItemReward: normalizedFreeItemReward,
                 expiryDate: coupon.expiryDate,
                 createdAt: new Date().toISOString()
             },
@@ -232,7 +270,12 @@ export async function PATCH(req) {
 
         const { id, timesUsed, createdAt, ...updateData } = coupon;
 
-        if (updateData.type === 'free_delivery') {
+        updateData.freeItemReward = normalizeFreeItemReward(updateData.freeItemReward);
+        if (updateData.freeItemReward) {
+            updateData.type = 'free_item';
+        }
+
+        if (updateData.type === 'free_delivery' || updateData.type === 'free_item') {
             updateData.value = 0;
             updateData.maxDiscount = 0;
         } else {
@@ -242,6 +285,10 @@ export async function PATCH(req) {
 
         updateData.singleUsePerCustomer = updateData.singleUsePerCustomer === true;
         updateData.orderMilestones = parseOrderMilestones(updateData.orderMilestones);
+
+        if ((updateData.type === 'free_item' || updateData.freeItemReward) && !updateData.freeItemReward) {
+            return NextResponse.json({ message: 'Please select a valid reward item for this coupon.' }, { status: 400 });
+        }
 
         if (updateData.startDate) {
             updateData.startDate = new Date(updateData.startDate);

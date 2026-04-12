@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car, X } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy, User, Phone, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Ticket, Minus, Plus, Edit2, Banknote, HandCoins, Percent, ChevronRight, Car, X, Gift } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { useToast } from "@/components/ui/use-toast";
@@ -59,13 +59,74 @@ const normalizeCouponType = (couponType) => {
 
 const normalizeCoupon = (coupon) => {
     if (!coupon) return null;
+    const reward = coupon.freeItemReward || null;
+    const rewardSource = String(reward?.source || (reward?.isCustom ? 'custom' : 'menu')).trim().toLowerCase();
+    const normalizedReward = reward && (
+        (rewardSource === 'custom' && String(reward?.itemName || '').trim()) ||
+        (rewardSource !== 'custom' && String(reward?.itemId || '').trim())
+    ) ? {
+        ...reward,
+        source: rewardSource === 'custom' ? 'custom' : 'menu',
+        itemId: String(reward?.itemId || '').trim(),
+        itemName: String(reward?.itemName || '').trim(),
+        portionName: String(reward?.portionName || '').trim(),
+        quantity: Math.max(1, Number(reward?.quantity) || 1),
+    } : null;
     return {
         ...coupon,
         type: normalizeCouponType(coupon.type),
         value: Number(coupon.value) || 0,
         minOrder: Number(coupon.minOrder) || 0,
         maxDiscount: Number(coupon.maxDiscount) || 0,
+        freeItemReward: normalizedReward,
     };
+};
+
+const formatCouponRewardSummary = (coupon) => {
+    const normalizedCoupon = normalizeCoupon(coupon);
+    if (!normalizedCoupon) return 'Offer available';
+
+    const rewardParts = [];
+    const couponType = normalizeCouponType(normalizedCoupon.type);
+
+    if (couponType === 'free_delivery') {
+        rewardParts.push('Free delivery');
+    } else if (couponType === 'flat' && normalizedCoupon.value > 0) {
+        rewardParts.push(`${formatCurrency(normalizedCoupon.value, 0)} OFF`);
+    } else if (couponType === 'percentage' && normalizedCoupon.value > 0) {
+        rewardParts.push(`${normalizedCoupon.value}% OFF`);
+    }
+
+    if (normalizedCoupon.freeItemReward?.itemName || normalizedCoupon.freeItemReward?.itemId) {
+        rewardParts.push(`Free ${normalizedCoupon.freeItemReward.quantity > 1 ? `${normalizedCoupon.freeItemReward.quantity}x ` : ''}${normalizedCoupon.freeItemReward.itemName}`);
+    } else if (couponType === 'free_item') {
+        rewardParts.push('Free item');
+    }
+
+    return rewardParts.join(' + ') || 'Offer available';
+};
+
+const getCouponCelebrationMessage = (coupon) => {
+    const normalizedCoupon = normalizeCoupon(coupon);
+    if (!normalizedCoupon) return 'Offer unlocked';
+
+    const reward = normalizedCoupon.freeItemReward;
+    if (reward?.itemName || reward?.itemId) {
+        return `${reward.quantity > 1 ? `${reward.quantity}x ` : ''}${reward.itemName} unlocked`;
+    }
+
+    const couponType = normalizeCouponType(normalizedCoupon.type);
+    if (couponType === 'percentage' && normalizedCoupon.value > 0) {
+        return `${normalizedCoupon.value}% OFF unlocked`;
+    }
+    if (couponType === 'flat' && normalizedCoupon.value > 0) {
+        return `${formatCurrency(normalizedCoupon.value, 0)} OFF unlocked`;
+    }
+    if (couponType === 'free_delivery') {
+        return 'Free delivery unlocked';
+    }
+
+    return `${normalizedCoupon.code || 'Offer'} unlocked`;
 };
 
 const RUPEE_SYMBOL = '\u20B9';
@@ -253,9 +314,11 @@ const CheckoutPageInternal = () => {
     const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false); // Top slide-in drawer for addresses
     const [isCouponDrawerOpen, setIsCouponDrawerOpen] = useState(false); // NEW: Bottom slide-in drawer for coupons
     const [couponCodeInput, setCouponCodeInput] = useState('');
+    const [couponCelebration, setCouponCelebration] = useState(null);
 
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [editingItemIndex, setEditingItemIndex] = useState(null);
+    const couponCelebrationTimeoutRef = useRef(null);
 
     const mergeCartDataFromStorage = (storageData) => {
         setCartData((prev) => {
@@ -271,6 +334,12 @@ const CheckoutPageInternal = () => {
             };
         });
     };
+
+    useEffect(() => () => {
+        if (couponCelebrationTimeoutRef.current) {
+            clearTimeout(couponCelebrationTimeoutRef.current);
+        }
+    }, []);
 
     useEffect(() => {
         if (!restaurantId || cartData === null) return;
@@ -1082,6 +1151,40 @@ const CheckoutPageInternal = () => {
         }, 0);
     }, [cart]);
 
+    const activeAppliedCoupon = useMemo(() => {
+        const selectedCoupon = normalizeCoupon(appliedCoupons[0]);
+        if (!selectedCoupon?.code) return null;
+        if (selectedCoupon.type === 'free_delivery' && deliveryType !== 'delivery') return null;
+        if ((Number(selectedCoupon.minOrder) || 0) > currentSubtotal) return null;
+        return selectedCoupon;
+    }, [appliedCoupons, deliveryType, currentSubtotal]);
+
+    const displayCart = useMemo(() => {
+        const reward = activeAppliedCoupon?.freeItemReward;
+        if (!reward?.itemName && !reward?.itemId) return cart;
+        const rewardKey = reward.itemId || String(reward.itemName || 'reward').replace(/\s+/g, '_').toLowerCase();
+
+        return [
+            ...cart,
+            {
+                id: `coupon_reward_preview_${rewardKey}`,
+                cartItemId: `coupon_reward_preview_${rewardKey}_${activeAppliedCoupon?.code || 'coupon'}`,
+                name: reward.itemName || 'Free Item',
+                quantity: Math.max(1, Number(reward.quantity) || 1),
+                price: 0,
+                totalPrice: 0,
+                selectedAddOns: [],
+                portion: reward.portionName ? {
+                    name: reward.portionName,
+                    price: 0,
+                    isDefault: false,
+                } : null,
+                isCouponRewardPreview: true,
+                rewardCouponCode: activeAppliedCoupon?.code || '',
+            },
+        ];
+    }, [cart, activeAppliedCoupon]);
+
     // Instant local delivery calculation so checkout does not wait on server reads.
     const shadowDeliveryResult = useMemo(() => {
         if (deliveryType !== 'delivery' || !selectedAddress) return null;
@@ -1384,6 +1487,49 @@ const CheckoutPageInternal = () => {
         return `Add ${formatCurrency(shortAmount, 0)} more to get ${rewardText}`;
     }, [cartData, currentSubtotal, deliveryType]);
 
+    const freeDishOfferCta = useMemo(() => {
+        const coupons = (cartData?.availableCoupons || []).map(normalizeCoupon).filter(Boolean);
+        if (!coupons.length) return null;
+
+        const freeDishCoupons = coupons.filter((coupon) => {
+            const reward = coupon?.freeItemReward;
+            if (!reward?.itemName && !reward?.itemId) return false;
+            if (coupon.type === 'free_delivery' && deliveryType !== 'delivery') return false;
+            return true;
+        });
+
+        if (!freeDishCoupons.length) return null;
+
+        if (activeAppliedCoupon?.freeItemReward) {
+            return {
+                title: 'Your Free Dish Is Added',
+                subtitle: `${activeAppliedCoupon.freeItemReward.quantity > 1 ? `${activeAppliedCoupon.freeItemReward.quantity}x ` : ''}${activeAppliedCoupon.freeItemReward.itemName} is ready in your order`,
+            };
+        }
+
+        const eligibleFreeDishCoupon = freeDishCoupons.find((coupon) => currentSubtotal >= (Number(coupon.minOrder) || 0));
+        if (eligibleFreeDishCoupon) {
+            return {
+                title: 'Get Your Free Dish',
+                subtitle: `${eligibleFreeDishCoupon.freeItemReward.quantity > 1 ? `${eligibleFreeDishCoupon.freeItemReward.quantity}x ` : ''}${eligibleFreeDishCoupon.freeItemReward.itemName} is waiting for you`,
+            };
+        }
+
+        const nextFreeDishCoupon = [...freeDishCoupons]
+            .map((coupon) => ({
+                coupon,
+                shortBy: Math.max(0, (Number(coupon.minOrder) || 0) - currentSubtotal),
+            }))
+            .sort((a, b) => a.shortBy - b.shortBy)[0];
+
+        if (!nextFreeDishCoupon) return null;
+
+        return {
+            title: 'Unlock Your Free Dish',
+            subtitle: `Add ${formatCurrency(Math.ceil(nextFreeDishCoupon.shortBy), 0)} more for ${nextFreeDishCoupon.coupon.freeItemReward.itemName}`,
+        };
+    }, [cartData, currentSubtotal, deliveryType, activeAppliedCoupon]);
+
     const getCouponEligibility = (coupon) => {
         const normalizedCoupon = normalizeCoupon(coupon);
         if (!normalizedCoupon) {
@@ -1409,6 +1555,25 @@ const CheckoutPageInternal = () => {
         return { eligible: true, message: '', coupon: normalizedCoupon };
     };
 
+    const triggerCouponCelebration = (coupon) => {
+        const normalizedCoupon = normalizeCoupon(coupon);
+        if (!normalizedCoupon) return;
+
+        if (couponCelebrationTimeoutRef.current) {
+            clearTimeout(couponCelebrationTimeoutRef.current);
+        }
+
+        setCouponCelebration({
+            code: normalizedCoupon.code || 'Offer applied',
+            message: getCouponCelebrationMessage(normalizedCoupon),
+        });
+
+        couponCelebrationTimeoutRef.current = setTimeout(() => {
+            setCouponCelebration(null);
+            couponCelebrationTimeoutRef.current = null;
+        }, 1800);
+    };
+
     const applyCoupon = (coupon) => {
         const eligibility = getCouponEligibility(coupon);
         if (!eligibility.eligible) {
@@ -1428,10 +1593,7 @@ const CheckoutPageInternal = () => {
                 appliedCoupons: [eligibility.coupon],
             });
         }
-        toast({
-            title: 'Coupon Applied!',
-            description: `${eligibility.coupon.code} applied successfully.`
-        });
+        triggerCouponCelebration(eligibility.coupon);
         return true;
     };
 
@@ -1449,11 +1611,6 @@ const CheckoutPageInternal = () => {
                 appliedCoupons: nextCoupons,
             });
         }
-
-        toast({
-            title: 'Coupon removed',
-            description: normalizedCode ? `${normalizedCode} removed from this order.` : 'Coupon removed from this order.'
-        });
     };
 
     const toggleCouponSelection = (coupon) => {
@@ -2425,6 +2582,48 @@ const CheckoutPageInternal = () => {
                 cancelText="Keep"
                 variant="destructive"
             />
+            <AnimatePresence>
+                {couponCelebration && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -24, scale: 0.92 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -18, scale: 0.96 }}
+                        transition={{ duration: 0.28, ease: 'easeOut' }}
+                        className="fixed inset-x-0 top-5 z-[120] pointer-events-none flex justify-center px-4"
+                    >
+                        <motion.div
+                            initial={{ boxShadow: '0 0 0 rgba(16,185,129,0)' }}
+                            animate={{ boxShadow: '0 18px 45px rgba(16,185,129,0.22)' }}
+                            className="relative overflow-hidden rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500 via-green-500 to-lime-500 px-5 py-4 text-white max-w-sm w-full"
+                        >
+                            <motion.div
+                                initial={{ x: '-120%', opacity: 0.2 }}
+                                animate={{ x: '120%', opacity: 0.5 }}
+                                transition={{ duration: 0.9, ease: 'easeInOut' }}
+                                className="absolute inset-y-0 w-24 bg-white/20 blur-xl"
+                            />
+                            <div className="relative flex items-center gap-3">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20">
+                                    <Gift className="h-5 w-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-white/80">Reward Unlocked</p>
+                                    <p className="text-sm font-bold truncate">{couponCelebration.message}</p>
+                                    <p className="text-xs text-white/85">{couponCelebration.code}</p>
+                                </div>
+                                <motion.div
+                                    initial={{ scale: 0.6, rotate: -18, opacity: 0 }}
+                                    animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                                    transition={{ delay: 0.08, duration: 0.22 }}
+                                    className="ml-auto"
+                                >
+                                    <CheckCircle className="h-5 w-5" />
+                                </motion.div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <Script src="https://mercury.phonepe.com/web/bundle/checkout.js" />
             <Dialog open={isDineInModalOpen} onOpenChange={setDineInModalOpen}>
@@ -2541,17 +2740,34 @@ const CheckoutPageInternal = () => {
                             </div>
                             <div className="space-y-2">
                                 <div className="space-y-4">
-                                    {cart.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center text-sm bg-muted/10 p-2 rounded-lg">
+                                    {displayCart.map((item, idx) => (
+                                        <div key={item.cartItemId || `${item.id || item.name}-${idx}`} className={cn(
+                                            "flex justify-between items-center text-sm bg-muted/10 p-2 rounded-lg",
+                                            item.isCouponRewardPreview ? "border border-emerald-400/40 bg-emerald-500/5" : ""
+                                        )}>
                                             <div className="flex flex-col gap-1">
-                                                <span className="font-medium text-foreground">
+                                                <span className="font-medium text-foreground flex items-center gap-2 flex-wrap">
                                                     {item.name}
                                                     {getItemVariantLabel(item)}
+                                                    {item.isCouponRewardPreview && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+                                                            <Gift className="h-3 w-3" />
+                                                            Free
+                                                        </span>
+                                                    )}
                                                 </span>
-                                                {/* NEW: Base Price Display */}
-                                                <div className="text-xs text-muted-foreground">{formatCurrency(parseFloat(item.portion?.price || item.price || 0))}</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {item.isCouponRewardPreview ? (
+                                                        <>
+                                                            {item.portion?.name ? `${item.portion.name} • ` : ''}
+                                                            Free with coupon {item.rewardCouponCode}
+                                                        </>
+                                                    ) : (
+                                                        formatCurrency(parseFloat(item.portion?.price || item.price || 0))
+                                                    )}
+                                                </div>
                                                 {/* FIXED: Show Add-ons as proper sub-items with specific prices */}
-                                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
+                                                {!item.isCouponRewardPreview && (item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
                                                     <div className="flex flex-col gap-0.5 mt-0.5 pl-2 border-l-2 border-muted">
                                                         {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
                                                             <div key={aIdx} className="text-xs text-muted-foreground flex justify-between">
@@ -2562,10 +2778,18 @@ const CheckoutPageInternal = () => {
                                                     </div>
                                                 )}
                                                 {/* Line Total: (Base + Addons) * Qty */}
-                                                <span className="font-bold mt-1">{formatCurrency((item.totalPrice || item.price || 0) * item.quantity)}</span>
+                                                <span className={cn("font-bold mt-1", item.isCouponRewardPreview ? "text-emerald-600" : "")}>
+                                                    {item.isCouponRewardPreview ? 'FREE' : formatCurrency((item.totalPrice || item.price || 0) * item.quantity)}
+                                                </span>
                                             </div>
 
                                             <div className="flex items-center gap-2">
+                                                {item.isCouponRewardPreview ? (
+                                                    <div className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-600">
+                                                        {item.quantity}x
+                                                    </div>
+                                                ) : (
+                                                    <>
                                                 {/* Edit Button */}
                                                 {(item.portions?.length > 1 || item.addOnGroups?.length > 0) && (
                                                     <button
@@ -2601,6 +2825,8 @@ const CheckoutPageInternal = () => {
                                                         <Plus className="h-4 w-4" />
                                                     </button>
                                                 </div>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -2623,13 +2849,23 @@ const CheckoutPageInternal = () => {
                             onClick={() => setIsCouponDrawerOpen(true)}
                         >
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center dark:bg-blue-900/20 dark:text-blue-400">
-                                    <Percent className="w-5 h-5" />
+                                <div className={cn(
+                                    "w-10 h-10 rounded-xl flex items-center justify-center",
+                                    freeDishOfferCta
+                                        ? "bg-emerald-500/15 text-emerald-500"
+                                        : "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                                )}>
+                                    {freeDishOfferCta ? <Gift className="w-5 h-5" /> : <Percent className="w-5 h-5" />}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Use Coupons / View Offers</span>
+                                    <span className={cn(
+                                        "text-sm font-bold transition-colors",
+                                        freeDishOfferCta ? "text-emerald-500" : "text-foreground group-hover:text-primary"
+                                    )}>
+                                        {freeDishOfferCta?.title || 'Use Coupons / View Offers'}
+                                    </span>
                                     <span className="text-[11px] text-emerald-500 font-semibold mt-0.5">
-                                        {nextCouponUnlockMessage || (maxSavings > 0 ? `Save up to ${formatCurrency(maxSavings, 0)} on this order` : 'View available offers')}
+                                        {freeDishOfferCta?.subtitle || nextCouponUnlockMessage || (maxSavings > 0 ? `Save up to ${formatCurrency(maxSavings, 0)} on this order` : 'View available offers')}
                                     </span>
                                 </div>
                             </div>
@@ -2737,6 +2973,18 @@ const CheckoutPageInternal = () => {
                                         <div className="flex justify-between text-sm text-green-600">
                                             <span>Coupon Discount {appliedCoupons[0]?.code ? `(${appliedCoupons[0].code})` : ''}</span>
                                             <span>- {formatCurrency(Number(totalDiscount))}</span>
+                                        </div>
+                                    )}
+                                    {activeAppliedCoupon?.freeItemReward && (
+                                        <div className="flex justify-between text-sm text-emerald-600">
+                                            <span>
+                                                Free dish
+                                                {activeAppliedCoupon.code ? ` (${activeAppliedCoupon.code})` : ''}
+                                            </span>
+                                            <span>
+                                                {activeAppliedCoupon.freeItemReward.quantity > 1 ? `${activeAppliedCoupon.freeItemReward.quantity}x ` : ''}
+                                                {activeAppliedCoupon.freeItemReward.itemName} FREE
+                                            </span>
                                         </div>
                                     )}
                                     {/* DELIVERY CHARGE ROW */}
@@ -3216,9 +3464,14 @@ const CheckoutPageInternal = () => {
                                                                         {coupon.code}
                                                                     </div>
                                                                     <p className="font-bold text-sm">
-                                                                        {coupon.description || `Get ${coupon.value}${normalizeCouponType(coupon.type) === 'percentage' ? '%' : ' OFF'}`}
+                                                                        {coupon.description || formatCouponRewardSummary(coupon)}
                                                                     </p>
                                                                     <p className="text-xs text-muted-foreground mt-1">Min order: {formatCurrency(Number(coupon.minOrder) || 0, 0)}</p>
+                                                                    {coupon?.freeItemReward && (
+                                                                        <p className="text-xs text-emerald-500 mt-1">
+                                                                            Includes free {coupon.freeItemReward.quantity > 1 ? `${coupon.freeItemReward.quantity}x ` : ''}{coupon.freeItemReward.itemName}
+                                                                        </p>
+                                                                    )}
                                                                     {isApplied && (
                                                                         <p className="text-xs text-primary font-semibold mt-1">Selected coupon. Tap again to remove.</p>
                                                                     )}

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Dialog, DialogPortal, DialogOverlay, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertTriangle, Send, Loader2 } from 'lucide-react';
-import { usePathname } from 'next/navigation';
 import { useUser } from '@/firebase/provider';
 
 const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
@@ -27,7 +26,6 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
     || normalizedText.includes('loading')
     || normalizedText.includes('wait')
     || normalizedText.includes('please wait');
-  const pathname = usePathname();
   const { user } = useUser();
 
   const captureErrorContext = () => {
@@ -75,6 +73,7 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
       scrollY: window.scrollY,
     };
 
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
     return {
       timestamp,
       localTime,
@@ -105,7 +104,7 @@ const InfoDialog = ({ isOpen, onClose, title, message, type }) => {
         errorTitle: title,
         errorMessage: message,
         description: 'Reported via InfoDialog',
-        pathname: pathname,
+        pathname: typeof window !== 'undefined' ? window.location.pathname : '',
         user: context.user,
         context,
         timestamp: context.timestamp,

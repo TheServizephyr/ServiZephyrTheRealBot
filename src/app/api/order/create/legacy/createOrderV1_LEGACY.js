@@ -75,6 +75,141 @@ async function resolveCouponOwnership({
     return false;
 }
 
+const normalizeCouponFreeItemReward = (reward = null) => {
+    if (!reward) return null;
+    const source = String(reward.source || (reward.isCustom ? 'custom' : 'menu')).trim().toLowerCase();
+    const itemId = String(reward.itemId || '').trim();
+    const itemName = String(reward.itemName || '').trim();
+    const portionName = String(reward.portionName || '').trim();
+    if (source === 'custom') {
+        if (!itemName) return null;
+        return {
+            source: 'custom',
+            itemId: itemId || '',
+            itemName,
+            categoryId: String(reward.categoryId || 'custom-reward').trim(),
+            portionName,
+            quantity: Math.max(1, Number(reward.quantity) || 1),
+        };
+    }
+    if (!itemId) return null;
+    return {
+        source: 'menu',
+        itemId,
+        itemName,
+        categoryId: String(reward.categoryId || '').trim(),
+        portionName,
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+    };
+};
+
+async function buildCouponRewardItem({
+    firestore,
+    businessCollection,
+    businessId,
+    reward = null,
+    deliveryType = 'delivery',
+} = {}) {
+    const normalizedReward = normalizeCouponFreeItemReward(reward);
+    if (!normalizedReward) return null;
+    if (normalizedReward.source === 'custom') {
+        return {
+            id: `custom_reward_${Date.now()}`,
+            name: normalizedReward.itemName || 'Free Item',
+            categoryId: normalizedReward.categoryId || 'custom-reward',
+            isVeg: false,
+            quantity: Math.max(1, Number(normalizedReward.quantity) || 1),
+            price: 0,
+            totalPrice: 0,
+            serverVerifiedPrice: 0,
+            serverVerifiedTotal: 0,
+            originalUnitPrice: 0,
+            originalTotalPrice: 0,
+            cartItemId: `coupon_reward_custom_${String(normalizedReward.itemName || 'item').replace(/\s+/g, '_').toLowerCase()}`,
+            isAddon: false,
+            isCouponReward: true,
+            couponRewardMeta: {
+                source: 'coupon_free_item_custom',
+                quantity: Math.max(1, Number(normalizedReward.quantity) || 1),
+                originalUnitPrice: 0,
+            },
+            selectedAddOns: [],
+            ...(normalizedReward.portionName ? {
+                portion: {
+                    name: normalizedReward.portionName,
+                    price: 0,
+                    isDefault: false,
+                },
+            } : {}),
+        };
+    }
+    if (!normalizedReward?.itemId) return null;
+
+    const rewardSnap = await firestore
+        .collection(String(businessCollection || 'restaurants'))
+        .doc(String(businessId))
+        .collection('menu')
+        .doc(String(normalizedReward.itemId))
+        .get();
+
+    if (!rewardSnap.exists) {
+        throw new Error('Selected free item is no longer available.');
+    }
+
+    const rewardItem = rewardSnap.data() || {};
+    if (rewardItem.isDeleted === true || rewardItem.isAvailable === false) {
+        throw new Error('Selected free item is currently unavailable.');
+    }
+
+    const normalizedDeliveryType = String(deliveryType || '').trim().toLowerCase();
+    if (rewardItem?.isDineInExclusive === true && normalizedDeliveryType !== 'dine-in') {
+        throw new Error('Selected free item is available only for dine-in orders.');
+    }
+
+    const rewardPortions = Array.isArray(rewardItem.portions) ? rewardItem.portions : [];
+    const selectedPortion = normalizedReward.portionName
+        ? rewardPortions.find((portion) => String(portion?.name || '').trim() === normalizedReward.portionName)
+        : (rewardPortions[0] || null);
+
+    if (normalizedReward.portionName && rewardPortions.length > 0 && !selectedPortion) {
+        throw new Error('Selected free item portion is no longer available.');
+    }
+
+    const rewardPrice = Number(selectedPortion?.price ?? rewardItem.price ?? 0) || 0;
+    const quantity = Math.max(1, Number(normalizedReward.quantity) || 1);
+
+    return {
+        id: rewardSnap.id,
+        name: String(rewardItem.name || normalizedReward.itemName || 'Free Item').trim(),
+        categoryId: String(rewardItem.categoryId || normalizedReward.categoryId || 'general').trim() || 'general',
+        isVeg: !!rewardItem.isVeg,
+        quantity,
+        price: 0,
+        totalPrice: 0,
+        serverVerifiedPrice: 0,
+        serverVerifiedTotal: 0,
+        originalUnitPrice: rewardPrice,
+        originalTotalPrice: rewardPrice * quantity,
+        cartItemId: `coupon_reward_${rewardSnap.id}`,
+        isAddon: false,
+        isCouponReward: true,
+        couponRewardMeta: {
+            source: 'coupon_free_item',
+            quantity,
+            originalUnitPrice: rewardPrice,
+        },
+        selectedAddOns: [],
+        ...(selectedPortion ? {
+            portion: {
+                name: String(selectedPortion.name || normalizedReward.portionName || 'Regular'),
+                price: 0,
+                isDefault: selectedPortion.isDefault === true,
+            },
+            portionCount: rewardPortions.length || 1,
+        } : {}),
+    };
+}
+
 async function compensateLegacyPaymentInitFailure({
     firestore,
     orderRef,
@@ -758,6 +893,7 @@ export async function processOrderV1(body, firestore) {
             console.warn('[API /order/create] Ignoring client-provided loyaltyDiscount; server side validation required.');
         }
         let verifiedCoupon = null;
+        let couponRewardItem = null;
         const trustedCouponActorId = (() => {
             const candidate = String(validGuestId || '').trim();
             if (!candidate) return '';
@@ -792,6 +928,7 @@ export async function processOrderV1(body, firestore) {
                         ? 'flat'
                         : String(couponData.type || '').toLowerCase();
                     const couponMinOrder = Number(couponData.minOrder) || 0;
+                    const couponFreeItemReward = normalizeCouponFreeItemReward(couponData.freeItemReward);
                     const couponUsageLimit = Number(couponData.usageLimit) || 0;
                     const couponTimesUsed = Number(couponData.timesUsed) || 0;
                     const singleUsePerCustomer = couponData.singleUsePerCustomer === true;
@@ -858,14 +995,33 @@ export async function processOrderV1(body, firestore) {
                     } else if (couponType === 'free_delivery') {
                         // Handled in delivery charge logic below if applicable
                         console.log("[API /order/create] Free delivery coupon detected");
+                    } else if (couponType !== 'free_item') {
+                        return NextResponse.json({ message: 'Invalid coupon type.' }, { status: 400 });
                     }
 
                     finalDiscount += discountAmount;
-                    verifiedCoupon = { ...couponData, type: couponType, id: couponSnap.id };
+                    couponRewardItem = couponFreeItemReward
+                        ? await buildCouponRewardItem({
+                            firestore,
+                            businessCollection: getBusinessCollection(businessType),
+                            businessId: restaurantId,
+                            reward: couponFreeItemReward,
+                            deliveryType,
+                        })
+                        : null;
+                    verifiedCoupon = {
+                        ...couponData,
+                        type: couponType,
+                        id: couponSnap.id,
+                        freeItemReward: couponFreeItemReward,
+                    };
                     console.log(`[API /order/create] ✅ Coupon ${couponData.code} validated. Discount: ₹${discountAmount}`);
                 }
             } catch (err) {
-                console.error("[API /order/create] Coupon validation error (non-fatal):", err);
+                console.error("[API /order/create] Coupon validation error:", err);
+                return NextResponse.json({
+                    message: err?.message || 'Coupon validation failed.',
+                }, { status: 400 });
             }
         }
         const couponReservationKeys = verifiedCoupon?.id ? Array.from(couponRedemptionKeys) : [];
@@ -987,8 +1143,10 @@ export async function processOrderV1(body, firestore) {
         deliveryCharge = finalDeliveryCharge;
         grandTotal = serverGrandTotal;
         coupon = verifiedCoupon;
-
-        const processedItems = pricing.validatedItems.map(item => optimizeItemSnapshot(item));
+        const finalValidatedItems = couponRewardItem
+            ? [...pricing.validatedItems, couponRewardItem]
+            : pricing.validatedItems;
+        const processedItems = finalValidatedItems.map(item => optimizeItemSnapshot(item));
 
         // --- Post-paid Dine-In ---
         console.log(`[API /order/create] 🔍 Checking dine-in conditions: deliveryType='${deliveryType}', dineInModel='${businessData.dineInModel}'`);
@@ -1806,6 +1964,13 @@ const optimizeItemSnapshot = (item) => {
     const portionCount = Number(item.portionCount ?? (Array.isArray(item.portions) ? item.portions.length : 0));
     if (Number.isFinite(portionCount) && portionCount > 0) {
         snapshot.portionCount = portionCount;
+    }
+
+    if (item.isCouponReward === true) {
+        snapshot.isCouponReward = true;
+        snapshot.couponRewardMeta = item.couponRewardMeta || null;
+        if (item.originalUnitPrice !== undefined) snapshot.originalUnitPrice = item.originalUnitPrice;
+        if (item.originalTotalPrice !== undefined) snapshot.originalTotalPrice = item.originalTotalPrice;
     }
 
     return snapshot;
