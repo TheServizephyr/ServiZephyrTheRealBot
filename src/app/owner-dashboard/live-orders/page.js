@@ -2505,7 +2505,7 @@ export default function LiveOrdersPage() {
                                         onNext: (newStatus) => handleUpdateStatus(order.id, newStatus),
                                         onRevert: (newStatus) => handleUpdateStatus(order.id, newStatus),
                                         onRejectClick: (order) => setRejectionModalData({ isOpen: true, order: order }),
-                                        onPrintClick: () => setPrintModalData({ isOpen: true, order: order }),
+                                        onPrintClick: () => setAutoPrintOrder(order),
                                         onAssignClick: (orders) => setAssignModalData({ isOpen: true, orders }),
                                         onSendPaymentRequest: handleSendPaymentRequest,
                                         onMarkManualPaid: handleMarkManualPaid,
@@ -2663,7 +2663,7 @@ export default function LiveOrdersPage() {
                                                     onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                     onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                                     onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
-                                                    onPrintClick={() => setPrintModalData({ isOpen: true, order: order })}
+                                                    onPrintClick={() => setAutoPrintOrder(order)}
                                                     onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                                     onSendPaymentRequest={handleSendPaymentRequest}
                                                     onMarkManualPaid={handleMarkManualPaid}
