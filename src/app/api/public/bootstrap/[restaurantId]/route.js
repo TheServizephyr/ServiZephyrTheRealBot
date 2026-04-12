@@ -13,6 +13,7 @@ import { getFreshMenuSnapshot } from '@/lib/server/menuSnapshot';
 import { getOrSetSharedCache } from '@/lib/server/sharedCache';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 import { resolveBusinessCustomerProfileRef } from '@/lib/customer-profiles';
+import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,24 +124,27 @@ export async function GET(req, { params }) {
 
     const publicSettings = menuSnapshot ? null : buildPublicSettingsFromData(businessData);
     const activeOrder = Array.isArray(activeOrderResult?.activeOrders) ? activeOrderResult.activeOrders[0] || null : null;
+    const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
-    const businessPayload = menuSnapshot?.business || {
+    const businessPayload = {
+      ...(menuSnapshot?.business || {}),
       id: businessId,
-      type: business.type || businessData?.businessType || 'restaurant',
-      name: businessData?.name || '',
-      logoUrl: businessData?.logoUrl || '',
-      bannerUrls: businessData?.bannerUrls || [],
-      approvalStatus: businessData?.approvalStatus || 'approved',
-      isOpen: true,
+      type: menuSnapshot?.business?.type || business.type || businessData?.businessType || 'restaurant',
+      name: businessData?.name || menuSnapshot?.business?.name || '',
+      logoUrl: businessData?.logoUrl || menuSnapshot?.business?.logoUrl || '',
+      bannerUrls: businessData?.bannerUrls || menuSnapshot?.business?.bannerUrls || [],
+      approvalStatus: businessData?.approvalStatus || menuSnapshot?.business?.approvalStatus || 'approved',
+      isOpen: effectiveIsOpen,
       location: {
-        lat: businessData?.coordinates?.lat ?? null,
-        lng: businessData?.coordinates?.lng ?? null,
+        lat: businessData?.coordinates?.lat ?? menuSnapshot?.business?.location?.lat ?? null,
+        lng: businessData?.coordinates?.lng ?? menuSnapshot?.business?.location?.lng ?? null,
       },
-      address: businessData?.address || null,
+      address: businessData?.address || menuSnapshot?.business?.address || null,
       hours: {
-        opening: businessData?.openingTime || '09:00',
-        closing: businessData?.closingTime || '22:00',
-        timeZone: businessData?.timeZone || businessData?.timezone || 'Asia/Kolkata',
+        ...(menuSnapshot?.business?.hours || {}),
+        opening: businessData?.openingTime || menuSnapshot?.business?.hours?.opening || '09:00',
+        closing: businessData?.closingTime || menuSnapshot?.business?.hours?.closing || '22:00',
+        timeZone: businessData?.timeZone || businessData?.timezone || menuSnapshot?.business?.hours?.timeZone || 'Asia/Kolkata',
         autoScheduleEnabled: businessData?.autoScheduleEnabled === true,
       },
     };
