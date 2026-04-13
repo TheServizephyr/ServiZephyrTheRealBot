@@ -16,7 +16,7 @@ const CUSTOMER_LOOKUP_TTL_MS = 60 * 1000;
 const RESTAURANT_BOOTSTRAP_TTL_MS = 60 * 1000;
 const ORDER_STATUS_TTL_MS = 8 * 1000;
 const ACTIVE_ORDER_TTL_MS = 15 * 1000;
-const USE_PUBLIC_BOOTSTRAP = process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP === 'true';
+const SHOULD_ATTEMPT_PUBLIC_BOOTSTRAP = process.env.NEXT_PUBLIC_USE_PUBLIC_BOOTSTRAP !== 'false';
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 const getTokenSignature = (value) => String(value || '').slice(-24);
@@ -336,7 +336,7 @@ export async function fetchCachedRestaurantBootstrap({
         if (ref) query.set('ref', ref);
 
         const encodedRestaurantId = encodeURIComponent(String(restaurantId));
-        if (USE_PUBLIC_BOOTSTRAP) {
+        if (SHOULD_ATTEMPT_PUBLIC_BOOTSTRAP) {
             try {
                 const bootstrapData = await fetchJsonOrThrow(`/api/public/bootstrap/${encodedRestaurantId}?${query.toString()}`);
                 const menuData = toLegacyMenuDataFromBootstrap(bootstrapData);
@@ -372,9 +372,7 @@ export async function fetchCachedRestaurantBootstrap({
                     bootstrapData,
                 };
             } catch (error) {
-                if (error?.status !== 404 && error?.status !== 409) {
-                    console.warn('[runtimeFetchers] Bootstrap route failed, falling back to legacy path:', error?.message || error);
-                }
+                console.warn('[runtimeFetchers] Bootstrap route unavailable, falling back to legacy path:', error?.message || error);
             }
         }
 

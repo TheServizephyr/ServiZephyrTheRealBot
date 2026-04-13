@@ -7,8 +7,7 @@ export default function OrderLayout({ children, params }) {
     // These preload instructions tell Next.js to inject <link rel="preload"> tags into the HTML <head>.
     // The browser will start downloading the APIs concurrently with HTML parsing,
     // dramatically lowering LCP (Largest Contentful Paint).
-    preload(`/api/public/menu/${restaurantId}`, { as: 'fetch', crossOrigin: 'anonymous' });
-    preload(`/api/public/settings/${restaurantId}`, { as: 'fetch', crossOrigin: 'anonymous' });
+    preload(`/api/public/bootstrap/${restaurantId}`, { as: 'fetch', crossOrigin: 'anonymous' });
 
     return <>{children}</>;
 }

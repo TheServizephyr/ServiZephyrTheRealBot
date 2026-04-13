@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { MapPin, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, User, Phone, Lock, Maximize2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import {
     markCustomerAddressesUpdatedAt,
     upsertCustomerAddressSnapshot,
 } from '@/lib/client/runtimeFetchers';
+import { useCustomerFlowSafeMode } from '@/lib/browser/customerFlowSafeMode';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
     ssr: false,
@@ -105,6 +106,38 @@ const stripLeadingAddressNoise = (value = '') => {
     return withoutPlusCode;
 };
 
+const safeDecodeURIComponent = (value = '') => {
+    const text = String(value || '');
+    if (!text) return '';
+    try {
+        return decodeURIComponent(text);
+    } catch {
+        return text;
+    }
+};
+
+const parseSerializedAddressData = (value = '') => {
+    const text = String(value || '').trim();
+    if (!text) return null;
+
+    const candidates = text === safeDecodeURIComponent(text)
+        ? [text]
+        : [text, safeDecodeURIComponent(text)];
+
+    for (const candidate of candidates) {
+        try {
+            const parsed = JSON.parse(candidate);
+            if (parsed && typeof parsed === 'object') {
+                return parsed;
+            }
+        } catch {
+            // Try the next candidate.
+        }
+    }
+
+    return null;
+};
+
 const getNestedParamFromReturnUrl = (returnUrl, key) => {
     const safeReturnUrl = String(returnUrl || '').trim();
     if (!safeReturnUrl || !key) return '';
@@ -122,7 +155,7 @@ const extractRestaurantIdFromReturnUrl = (returnUrl = '') => {
     try {
         const nestedUrl = new URL(safeReturnUrl, 'http://localhost');
         const match = nestedUrl.pathname.match(/^\/order\/([^/?#]+)/i);
-        return match?.[1] ? decodeURIComponent(match[1]) : '';
+        return match?.[1] ? safeDecodeURIComponent(match[1]) : '';
     } catch {
         return '';
     }
@@ -259,6 +292,7 @@ const AddAddressPageInternal = () => {
     const lastGeocodeStartAtRef = useRef(0);
     const idleSuppressionCenterRef = useRef(normalizeCoords(DEFAULT_MAP_CENTER));
     const initialLocationResolvedRef = useRef(false);
+    const customerFlowSafeMode = useCustomerFlowSafeMode();
 
     const { user, isUserLoading } = useUser();
 
@@ -516,8 +550,12 @@ const AddAddressPageInternal = () => {
     // Initialize edit data
     useEffect(() => {
         if (!editDataRaw || !isTokenValid) return;
+        const data = parseSerializedAddressData(editDataRaw);
+        if (!data) {
+            console.error('[Add Address] Failed to parse editData payload.');
+            return;
+        }
         try {
-            const data = JSON.parse(decodeURIComponent(editDataRaw));
             setAddressDetails({
                 street: data.street || '',
                 city: data.city || '',
@@ -545,7 +583,7 @@ const AddAddressPageInternal = () => {
             }
             setLoading(false);
         } catch (e) {
-            console.error('[Add Address] Failed to parse editData:', e);
+            console.error('[Add Address] Failed to apply editData:', e);
         }
     }, [editDataRaw, isTokenValid]);
 
@@ -1085,7 +1123,11 @@ const AddAddressPageInternal = () => {
                             <AlertTriangle size={16} /> {error}
                         </div>
                     ) : addressDetails ? (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+                        <motion.div
+                            initial={customerFlowSafeMode ? false : { opacity: 0 }}
+                            animate={customerFlowSafeMode ? undefined : { opacity: 1 }}
+                            className="space-y-4"
+                        >
                             <div>
                                 <div className="flex items-center justify-between gap-3">
                                     <Label htmlFor="fullAddress">Complete Address *</Label>
@@ -1115,9 +1157,14 @@ const AddAddressPageInternal = () => {
                                     <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2" /> Home</Button>
                                     <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2" /> Work</Button>
                                     <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2" /> Other</Button>
-                                    <AnimatePresence>
+                                    <AnimatePresence initial={false}>
                                         {addressLabel === 'Other' && (
-                                            <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }} exit={{ width: 0, opacity: 0 }} className="overflow-hidden">
+                                            <motion.div
+                                                initial={customerFlowSafeMode ? false : { width: 0, opacity: 0 }}
+                                                animate={customerFlowSafeMode ? undefined : { width: 'auto', opacity: 1 }}
+                                                exit={customerFlowSafeMode ? undefined : { width: 0, opacity: 0 }}
+                                                className="overflow-hidden"
+                                            >
                                                 <Input type="text" value={customAddressLabel} onChange={e => setCustomAddressLabel(e.target.value)} placeholder="Custom Label (e.g., Gym)" className="h-9" />
                                             </motion.div>
                                         )}
@@ -1139,7 +1186,9 @@ const AddAddressPageInternal = () => {
 
 const AddAddressPage = () => (
     <Suspense fallback={<AddAddressPageSkeleton />}>
-        <AddAddressPageInternal />
+        <MotionConfig reducedMotion="user">
+            <AddAddressPageInternal />
+        </MotionConfig>
     </Suspense>
 );
 
