@@ -50,6 +50,7 @@ import { calculateDeliveryChargeForBusiness } from '@/services/delivery/delivery
 import { paymentService } from '@/services/payment/payment.service';
 import { getEffectiveBusinessOpenStatus } from '@/lib/businessSchedule';
 
+
 // Repositories
 import { orderRepository } from '@/repositories/order.repository';
 import { businessRepository } from '@/repositories/business.repository';
@@ -63,6 +64,14 @@ import {
     buildDineInPostPaidResponse,
     buildErrorResponse
 } from './orderResponseBuilder';
+
+// --- HELPER: Firestore Timeout Wrapper ---
+const withFirestoreTimeout = (promise, ms, label = 'FirestoreOperation') => {
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`[${label}] Firestore operation timed out after ${ms}ms`)), ms)
+    );
+    return Promise.race([promise, timeout]);
+};
 
 // --- HELPER: Optimize Item Snapshot (Reduce Document Size) ---
 const optimizeItemSnapshot = (item) => {
@@ -678,6 +687,18 @@ export async function createOrderV2(req, options = {}) {
         console.log(`[createOrderV2] ⏱️ Discovery Phase 2 completed in ${Date.now() - discoveryStart}ms`);
 
         // 3.2 Idempotency Check
+        // ✅ FIX for iPhone: 'isInProgress' means another request with the same key is still
+        // running (e.g. Safari double-send / slow-network retry). Return 409 so the client
+        // backs off and retries instead of silently failing.
+        if (idempotencyResult.isInProgress) {
+            console.warn(`[createOrderV2] Request in progress for idempotency key — returning 409 for client retry`);
+            return buildErrorResponse({
+                message: 'Your order is being processed. Please wait a moment and try again.',
+                status: 409,
+                retryAfter: 3
+            });
+        }
+
         if (idempotencyResult.isDuplicate) {
             console.log(`[createOrderV2] Duplicate request detected, returning existing order`);
             const existingOrder = await orderRepository.getById(idempotencyResult.orderId);
@@ -1529,7 +1550,9 @@ export async function createOrderV2(req, options = {}) {
                             status: 'active',
                             updatedAt: FieldValue.serverTimestamp()
                         });
-                        await batch.commit();
+                        // ✅ FIX: Wrap batch.commit() in a timeout to prevent 193s+ hanging promises
+                        // that cause Unhandled Rejections and process crashes (exit 128).
+                        await withFirestoreTimeout(batch.commit(), 15000, 'tabUpdate:existingTab');
                         console.log(`[createOrderV2] Updated existing tab ${dineInTabId} (${tabStatus}->active): +Rs${serverGrandTotal}`);
                     } else {
                         console.warn(`[createOrderV2] Tab ${dineInTabId} status=${tabStatus}, cannot add order`);
@@ -1555,7 +1578,8 @@ export async function createOrderV2(req, options = {}) {
                         status: 'pending',
                         createdAt: FieldValue.serverTimestamp()
                     });
-                    await batch.commit();
+                    // ✅ FIX: Wrap batch.commit() in a timeout to prevent 193s+ hanging promises
+                    await withFirestoreTimeout(batch.commit(), 15000, 'tabUpdate:newTab');
                     console.log(`[createOrderV2] Created new tab ${dineInTabId} with order ${orderId}`);
                 }
             } catch (tabErr) {
@@ -1599,6 +1623,10 @@ export async function createOrderV2(req, options = {}) {
 
 /**
  * Generate secure tracking token (same as V1)
+ */
+/**
+ * @deprecated Use the `needsTokenPersist` + `tokenPersistPromise` pattern instead.
+ * This function is no longer called anywhere; kept for reference only.
  */
 async function generateSecureToken(firestore, userId) {
     const token = nanoid(24);

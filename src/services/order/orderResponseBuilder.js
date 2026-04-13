@@ -1,11 +1,11 @@
 /**
  * ORDER RESPONSE BUILDER
- * 
+ *
  * CRITICAL: Response contract safety
- * 
+ *
  * This ensures V2 returns EXACTLY the same response structure as V1.
  * Any deviation breaks frontend compatibility.
- * 
+ *
  * Phase 5 Step 2.6
  */
 
@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server';
 
 /**
  * Build COD/Counter order success response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,
@@ -43,7 +43,7 @@ export function buildCODResponse({ orderId, token, dineInTabId, tableId, dineInT
 
 /**
  * Build Razorpay order response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,
@@ -68,7 +68,7 @@ export function buildRazorpayResponse({ razorpayOrderId, orderId, token, dineInT
 
 /**
  * Build PhonePe order response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,
@@ -95,7 +95,7 @@ export function buildPhonePeResponse({ phonePeOrderId, orderId, token, amount, d
 
 /**
  * Build add-on order success response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,
@@ -115,7 +115,7 @@ export function buildAddonResponse({ orderId, token }) {
 
 /**
  * Build split bill response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,
@@ -143,17 +143,27 @@ export function buildSplitBillResponse({ orderId, token, pendingData }) {
 
 /**
  * Build error response
+ *
+ * @param {string} message - Human-readable error message
+ * @param {string} [code]  - Machine-readable error code
+ * @param {number} [status=400] - HTTP status code
+ * @param {number} [retryAfter=null] - Seconds to wait before retry (sets Retry-After header).
+ *   Used for 409 "Request already in progress" so iPhone Safari retries gracefully.
  */
-export function buildErrorResponse({ message, code, status = 400 }) {
+export function buildErrorResponse({ message, code, status = 400, retryAfter = null }) {
     const response = { message };
     if (code) response.error = code;
+    if (retryAfter) response.retryAfter = retryAfter;
 
-    return NextResponse.json(response, { status });
+    const headers = {};
+    if (retryAfter) headers['Retry-After'] = String(retryAfter);
+
+    return NextResponse.json(response, { status, headers });
 }
 
 /**
  * Build dine-in post-paid response
- * 
+ *
  * V1 Contract:
  * {
  *   message: string,

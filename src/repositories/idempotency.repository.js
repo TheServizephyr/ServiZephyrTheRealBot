@@ -128,10 +128,13 @@ export class IdempotencyRepository {
                     };
                 }
 
-                // If reserved recently, reject
+                // If reserved recently (within 45s), signal to retry
+                // This happens on iPhones when Safari retries a slow request.
+                // We do NOT throw — instead return a special flag so the caller
+                // can return a 409 Conflict to the client who will retry after a delay.
                 const reservedAt = data.createdAt?.toDate();
-                if (reservedAt && (Date.now() - reservedAt.getTime() < 30000)) {
-                    throw new Error('Request already in progress');
+                if (reservedAt && (Date.now() - reservedAt.getTime() < 45000)) {
+                    return { isDuplicate: false, isInProgress: true };
                 }
             }
 

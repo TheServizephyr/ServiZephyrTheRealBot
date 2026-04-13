@@ -2021,6 +2021,16 @@ const CheckoutPageInternal = () => {
             } else {
                 console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
             }
+            if (res.status === 409) {
+                setOrderState(ORDER_STATE.IDLE);
+                setIsProcessingPayment(false);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Processing Order',
+                    message: "We're already processing your order. Please wait a moment depending on your network connection before trying again."
+                });
+                return;
+            }
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             // If split_bill, return the response for SplitBillInterface

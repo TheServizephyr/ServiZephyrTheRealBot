@@ -377,6 +377,18 @@ const CartPageInternal = () => {
             });
 
             const data = await res.json();
+
+            // 409 = Slow network mein duplicate request detect hui.
+            if (res.status === 409) {
+                setOrderState(ORDER_STATE.IDLE);
+                setInfoDialog({
+                    isOpen: true,
+                    title: 'Processing Order',
+                    message: "We're already processing your order. Please wait a moment depending on your network connection before trying again."
+                });
+                return;
+            }
+
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             console.log("[Cart Page] Order successful:", data);

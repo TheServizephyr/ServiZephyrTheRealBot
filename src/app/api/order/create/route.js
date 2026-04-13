@@ -1,3 +1,5 @@
+import { NextResponse } from 'next/server';
+
 /**
  * ORDER CREATE API ROUTE (THIN CONTROLLER)
  * 
@@ -154,7 +156,13 @@ export async function POST(req) {
         statusCode = error?.status || 500;
         errorMessage = error?.message || 'Order creation failed';
         void trackFunnelEvent('order_create_failed', flow);
-        throw error;
+        // ✅ FIX: Never re-throw in a route handler — always return a Response.
+        // Re-throwing causes an Unhandled Rejection which crashes the Node.js process (exit 128).
+        console.error('[Order Create API] Unhandled error in POST handler:', error?.message || error);
+        return NextResponse.json(
+            { message: errorMessage },
+            { status: statusCode }
+        );
     } finally {
         void trackApiTelemetry({
             endpoint: 'api.order.create',
