@@ -296,26 +296,31 @@ const TokenVerificationLock = ({ message }) => (
 
 // ✅ NEW: Helper for managing Back Button state for modals
 const BackButtonHandler = ({ onClose }) => {
-    useEffect(() => {
-        // Push state on mount
-        const state = { modalOpen: true, timestamp: Date.now() };
-        window.history.pushState(state, '', window.location.href);
+    const onCloseRef = useRef(onClose);
 
-        const handlePopState = (event) => {
-            // If popstate fires, it means user pressed back (or forward)
-            // We should close the modal
-            onClose();
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    useEffect(() => {
+        // Push state only once per mount to avoid rapid history churn.
+        const state = { modalOpen: true, timestamp: Date.now() };
+        try {
+            window.history.pushState(state, '', window.location.href);
+        } catch {
+            // Ignore pushState errors (Safari can throttle).
+        }
+
+        const handlePopState = () => {
+            onCloseRef.current?.();
         };
 
         window.addEventListener('popstate', handlePopState);
 
         return () => {
             window.removeEventListener('popstate', handlePopState);
-            // We assume if we unmount without popstate (e.g. manual close), 
-            // the parent handles the history.back() or we don't care about the stale state 
-            // (actually we DO care, but manual check is harder here without ref)
         };
-    }, [onClose]);
+    }, []);
 
     return null;
 };
