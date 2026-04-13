@@ -1,15 +1,19 @@
 package com.servizephyr.callsync
 
 import android.content.Context
+import okhttp3.Dns
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.dnsoverhttps.DnsOverHttps
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStream
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.InetAddress
+import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.TimeUnit
 
 data class CallSyncEvent(
     val phone: String,
@@ -62,8 +66,42 @@ object CallSyncPushService {
     private const val PREFS = "call_sync_helper"
     private const val KEY_PENDING_EVENTS = "pending_events"
     private const val KEY_LAST_SUCCESS_AT = "last_success_at"
+    private const val KEY_LAST_WARM_AT = "last_warm_at"
     private const val MAX_PENDING_EVENTS = 25
     private const val LIVE_RINGING_MAX_AGE_MS = 8_000L
+    private const val WARM_COOLDOWN_MS = 2 * 60 * 1000L
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    private fun buildBaseClient(
+        connectTimeoutMs: Long = 15_000L,
+        readTimeoutMs: Long = 15_000L,
+        dns: Dns = Dns.SYSTEM
+    ): OkHttpClient = OkHttpClient.Builder()
+        .dns(dns)
+        .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
+        .readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
+        .callTimeout(readTimeoutMs + 2_000L, TimeUnit.MILLISECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    private fun buildDohDns(): Dns {
+        val bootstrapClient = buildBaseClient(connectTimeoutMs = 8_000L, readTimeoutMs = 8_000L)
+        return DnsOverHttps.Builder()
+            .client(bootstrapClient)
+            .url("https://dns.google/dns-query".toHttpUrl())
+            .bootstrapDnsHosts(
+                InetAddress.getByName("8.8.8.8"),
+                InetAddress.getByName("8.8.4.4")
+            )
+            .includeIPv6(false)
+            .resolvePrivateAddresses(false)
+            .build()
+    }
+
+    private val dohDns: Dns by lazy { buildDohDns() }
+    private val standardClient: OkHttpClient by lazy { buildBaseClient() }
+    private val dohClient: OkHttpClient by lazy { buildBaseClient(dns = dohDns) }
 
     fun enqueueEvent(context: Context, event: CallSyncEvent) {
         if (!isQueueable(event)) {
@@ -79,6 +117,9 @@ object CallSyncPushService {
 
     fun getLastSuccessAt(context: Context): Long =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_SUCCESS_AT, 0L)
+
+    fun getLastWarmAt(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_WARM_AT, 0L)
 
     fun flushPendingEvents(context: Context, config: CallSyncConfig): PushAttemptResult {
         val sanitization = sanitizePendingEvents(loadPendingEvents(context))
@@ -207,6 +248,48 @@ object CallSyncPushService {
         )
     }
 
+    fun warmHosts(context: Context, config: CallSyncConfig, force: Boolean = false): PushAttemptResult {
+        val now = System.currentTimeMillis()
+        if (!force && (now - getLastWarmAt(context)) < WARM_COOLDOWN_MS) {
+            return PushAttemptResult(success = true, message = "Host warm skipped (cooldown)")
+        }
+
+        val candidateBaseUrls = CallSyncStore.buildCandidateBaseUrls(config)
+        if (candidateBaseUrls.isEmpty()) {
+            return PushAttemptResult(success = false, message = "No server base URL configured")
+        }
+
+        val results = candidateBaseUrls.map { baseUrl ->
+            val outcome = executeRequest(
+                client = standardClient,
+                request = Request.Builder().url(baseUrl).get().build()
+            )
+            if (outcome.success) {
+                baseUrl to outcome
+            } else {
+                baseUrl to executeRequest(
+                    client = dohClient,
+                    request = Request.Builder().url(baseUrl).get().build()
+                )
+            }
+        }
+
+        val success = results.any { it.second.success }
+        if (success) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_LAST_WARM_AT, now)
+                .apply()
+        }
+
+        return PushAttemptResult(
+            success = success,
+            message = results.joinToString(" | ") { (baseUrl, result) ->
+                "$baseUrl -> ${result.message}"
+            }
+        )
+    }
+
     private fun loadPendingEvents(context: Context): List<CallSyncEvent> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_PENDING_EVENTS, "[]")
@@ -283,7 +366,23 @@ object CallSyncPushService {
 
         for (baseUrl in candidateBaseUrls) {
             val endpoint = "${baseUrl.trimEnd('/')}/api/call-sync/push"
-            val result = executePost(endpoint, payload, 0)
+            val request = Request.Builder()
+                .url(endpoint)
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            val result = executeRequest(standardClient, request).let { standard ->
+                if (standard.success || !shouldRetryWithDoh(standard.message)) {
+                    standard
+                } else {
+                    val dohResult = executeRequest(dohClient, request)
+                    if (dohResult.success) {
+                        dohResult.copy(message = "${dohResult.message} (DoH)")
+                    } else {
+                        dohResult.copy(message = "${standard.message} | DoH: ${dohResult.message}")
+                    }
+                }
+            }
             if (result.success) {
                 return result.copy(message = "${result.message} via $baseUrl", attemptedBaseUrl = baseUrl)
             }
@@ -324,106 +423,66 @@ object CallSyncPushService {
         )
     }
 
-    private fun executePost(endpoint: String, payload: String, redirectDepth: Int): PushAttemptResult {
-        val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 15000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Content-Type", "application/json")
-        }
-
-        try {
-            OutputStreamWriter(connection.outputStream).use { writer ->
-                writer.write(payload)
-                writer.flush()
-            }
-
-            val responseCode = connection.responseCode
-            val redirectLocation = connection.getHeaderField("Location")
-            if (
-                responseCode in listOf(
-                    HttpURLConnection.HTTP_MOVED_PERM,
-                    HttpURLConnection.HTTP_MOVED_TEMP,
-                    HttpURLConnection.HTTP_SEE_OTHER,
-                    307,
-                    308
-                ) &&
-                !redirectLocation.isNullOrBlank() &&
-                redirectDepth < 3
-            ) {
-                val redirectedResult = executePost(redirectLocation, payload, redirectDepth + 1)
-                return if (redirectedResult.success) {
-                    redirectedResult
-                } else {
-                    redirectedResult.copy(
-                        message = "Redirected to $redirectLocation -> ${redirectedResult.message}"
-                    )
-                }
-            }
-
-            val responseText = readStream(
-                if (responseCode in 200..299) connection.inputStream else connection.errorStream
-            )
-
-            return PushAttemptResult(
-                success = responseCode in 200..299,
-                message = buildString {
-                    append("HTTP ")
-                    append(responseCode)
-                    if (responseText.isNotBlank()) {
-                        append(": ")
-                        append(responseText.take(180))
+    private fun executeRequest(client: OkHttpClient, request: Request): PushAttemptResult {
+        return try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                PushAttemptResult(
+                    success = response.isSuccessful,
+                    message = buildString {
+                        append("HTTP ")
+                        append(response.code)
+                        if (body.isNotBlank()) {
+                            append(": ")
+                            append(body.take(180))
+                        }
                     }
-                }
-            )
+                )
+            }
         } catch (error: UnknownHostException) {
-            return PushAttemptResult(
+            PushAttemptResult(
                 success = false,
-                message = "DNS failed for ${URL(endpoint).host}"
+                message = "DNS failed for ${request.url.host}"
+            )
+        } catch (error: SocketTimeoutException) {
+            PushAttemptResult(
+                success = false,
+                message = "Timeout for ${request.url.host}"
             )
         } catch (error: Exception) {
-            return PushAttemptResult(
+            PushAttemptResult(
                 success = false,
                 message = "Error: ${error.message ?: "unknown"}"
             )
-        } finally {
-            connection.disconnect()
         }
     }
 
     private fun executeReachabilityCheck(baseUrl: String): Pair<Boolean, String> {
-        val endpoint = baseUrl.trimEnd('/')
-        return try {
-            val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 6000
-                instanceFollowRedirects = true
-            }
-            try {
-                val responseCode = connection.responseCode
-                val ok = responseCode in 200..399
-                ok to if (ok) {
-                    "$baseUrl OK (HTTP $responseCode)"
-                } else {
-                    "$baseUrl HTTP $responseCode"
-                }
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: UnknownHostException) {
-            false to "$baseUrl DNS failed"
-        } catch (error: Exception) {
-            false to "$baseUrl ${error.message ?: "check failed"}"
+        val request = Request.Builder().url(baseUrl.trimEnd('/')).get().build()
+        val direct = executeRequest(standardClient.newBuilder()
+            .connectTimeout(6_000L, TimeUnit.MILLISECONDS)
+            .readTimeout(6_000L, TimeUnit.MILLISECONDS)
+            .callTimeout(8_000L, TimeUnit.MILLISECONDS)
+            .build(), request)
+        if (direct.success) {
+            return true to "$baseUrl OK (${direct.message})"
+        }
+
+        val doh = executeRequest(dohClient.newBuilder()
+            .connectTimeout(6_000L, TimeUnit.MILLISECONDS)
+            .readTimeout(6_000L, TimeUnit.MILLISECONDS)
+            .callTimeout(8_000L, TimeUnit.MILLISECONDS)
+            .build(), request)
+
+        return if (doh.success) {
+            true to "$baseUrl OK (${doh.message}, DoH)"
+        } else {
+            false to "$baseUrl ${direct.message} | DoH ${doh.message}"
         }
     }
 
-    private fun readStream(stream: InputStream?): String {
-        if (stream == null) return ""
-        return BufferedReader(InputStreamReader(stream)).use { reader ->
-            reader.readText()
-        }
+    private fun shouldRetryWithDoh(message: String): Boolean {
+        val normalized = message.lowercase()
+        return normalized.contains("dns failed") || normalized.contains("timeout")
     }
 }

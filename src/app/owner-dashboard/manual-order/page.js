@@ -590,6 +590,8 @@ function ManualOrderPage() {
         const normalizedPhone = normalizeIndianPhoneLoose(suggestion?.phone);
         if (normalizedPhone.length !== 10) return;
 
+        setOrderType('delivery');
+        setActiveTable(null);
         setCustomerDetails((prev) => ({ ...prev, phone: normalizedPhone }));
         setAttachedCallContext({
             phone: normalizedPhone,

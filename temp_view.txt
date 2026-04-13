@@ -1,0 +1,100 @@
+        if (loading) return;
+        const pendingCount = orders.filter((order) => order.status === 'pending').length;
+        if (pendingCount === 0) {
+            emitAppNotification({
+                scope: 'owner',
+                action: 'stop_alarm',
+                alarmId: 'live_orders_pending'
+            });
+        }
+    }, [orders, loading]);
+
+
+    const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+
+        let url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            url.searchParams.append('employee_of', employeeOfOwnerId);
+        }
+        if (method === 'GET' && body) {
+            Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
+        }
+
+        const res = await fetch(url.toString(), {
+            method,
+            headers: method !== 'GET' ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` } : { 'Authorization': `Bearer ${idToken}` },
+            body: method !== 'GET' ? JSON.stringify(body) : undefined,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.message || 'API call failed');
+        }
+        return data;
+    };
+
+    const handleUpdateStatus = async (orderId, newStatus) => {
+        // OPTIMISTIC UPDATE - Update UI instantly for better UX!
+        const previousOrders = orders;
+        const previousStatus = previousOrders.find(order => order.id === orderId)?.status || null;
+        rememberOptimisticStatus(orderId, newStatus);
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                order.id === orderId
+                    ? { ...order, status: newStatus }
+                    : order
+            )
+        );
+
+        try {
+            await handleAPICall('PATCH', { orderId, newStatus });
+            // No need to refresh - Firestore listener will update automatically!
+            // Or if not using listener (impersonation), manual refresh happens
+            if (impersonatedOwnerId || employeeOfOwnerId) {
+                await fetchInitialData(true);
+            }
+            if (previousStatus === 'pending' && newStatus === 'confirmed') {
+                const sourceOrder = previousOrders.find((order) => order.id === orderId);
+                if (sourceOrder) {
+                    setAutoPrintOrder({ ...sourceOrder, status: newStatus });
+                }
+            }
+            if (
+                (previousStatus === 'pending' && newStatus !== 'pending') ||
+                (previousStatus === 'confirmed' && newStatus !== 'confirmed')
+            ) {
+                // Alarm will be stopped naturally by the orders state listener if no pending orders remain.
+            }
+        } catch (error) {
+            // REVERT optimistic update on error
+            clearOptimisticStatus(orderId);
+            setOrders(previousOrders);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Error updating status: ${error.message}` });
+        }
+    };
+
+    const handleAssignRider = async (orderIds, riderId, activateRider) => {
+        setUpdatingOrderId(orderIds[0]);
+
+        // OPTIMISTIC UPDATE - Update UI instantly
+        const previousOrders = orders;
+        setOrders(prevOrders =>
+            prevOrders.map(order =>
+                orderIds.includes(order.id)
+                    ? { ...order, status: 'ready_for_pickup', deliveryBoyId: riderId } // ✅ Optimistic to ready_for_pickup
+                    : order
+            )
+        );
+
+        try {
+            if (activateRider) {
+                await handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
+            }
+
+            await handleAPICall('PATCH', { orderIds, newStatus: 'ready_for_pickup', deliveryBoyId: riderId }); // ✅ Status -> ready_for_pickup (Notification suppressed)
+            // Firestore listener will confirm the update
+            if (impersonatedOwnerId || employeeOfOwnerId) {

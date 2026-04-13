@@ -8,6 +8,7 @@ data class CallSyncConfig(
     val token: String,
     val deviceId: String,
     val isSyncEnabled: Boolean,
+    val isDarkMode: Boolean,
     val isScheduleEnabled: Boolean,
     val openMinutes: Int,
     val closeMinutes: Int
@@ -23,6 +24,7 @@ object CallSyncStore {
     private const val KEY_TOKEN = "token"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_SYNC_ENABLED = "sync_enabled"
+    private const val KEY_DARK_MODE = "dark_mode"
     private const val KEY_SCHEDULE_ENABLED = "schedule_enabled"
     private const val KEY_OPEN_MINUTES = "open_minutes"
     private const val KEY_CLOSE_MINUTES = "close_minutes"
@@ -59,6 +61,7 @@ object CallSyncStore {
             token = prefs.getString(KEY_TOKEN, "") ?: "",
             deviceId = deviceId,
             isSyncEnabled = prefs.getBoolean(KEY_SYNC_ENABLED, true),
+            isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
             isScheduleEnabled = prefs.getBoolean(KEY_SCHEDULE_ENABLED, false),
             openMinutes = prefs.getInt(KEY_OPEN_MINUTES, 10 * 60),
             closeMinutes = prefs.getInt(KEY_CLOSE_MINUTES, 23 * 60)
@@ -121,6 +124,13 @@ object CallSyncStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_SYNC_ENABLED, enabled)
+            .apply()
+    }
+
+    fun setDarkMode(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_DARK_MODE, enabled)
             .apply()
     }
 

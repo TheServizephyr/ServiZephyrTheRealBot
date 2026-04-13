@@ -1,73 +1,118 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawerLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:background="#F6F3EA">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
-        <com.google.android.material.card.MaterialCardView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#19151F"
-            app:cardCornerRadius="28dp"
-            app:strokeColor="#2A2532"
-            app:strokeWidth="1dp">
+            android:orientation="vertical"
+            android:padding="20dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                <ImageButton
+                    android:id="@+id/menuButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@android:color/transparent"
+                    android:contentDescription="@string/open_settings"
+                    android:padding="10dp"
+                    android:src="@android:drawable/ic_menu_sort_by_size"
+                    android:tint="#17131E" />
 
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
                     android:layout_weight="1"
                     android:orientation="vertical">
 
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/app_name"
-                            android:textColor="#F8F4FF"
-                            android:textSize="24sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:text="@string/helper_subtitle"
-                            android:textColor="#C7BFDB"
-                            android:textSize="15sp" />
-                    </LinearLayout>
-
-                    <Button
-                        android:id="@+id/settingsToggleButton"
+                    <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:minWidth="0dp"
-                        android:text="@string/open_settings" />
+                        android:text="@string/app_name"
+                        android:textColor="#17131E"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="@string/helper_subtitle"
+                        android:textColor="#5C5668"
+                        android:textSize="13sp" />
                 </LinearLayout>
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/themeSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_toggle_label"
+                    android:textColor="#17131E" />
+            </LinearLayout>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/warningBannerCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:visibility="gone"
+                app:cardCornerRadius="20dp"
+                app:strokeWidth="0dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/warningTitleText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="#17131E"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/warningMessageText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="#17131E"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="#17131E"
+                app:cardCornerRadius="28dp"
+                app:strokeColor="#EBC14A"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
                     android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:padding="22dp">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -80,39 +125,48 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/sync_on_label"
-                            android:textColor="#F8F4FF"
-                            android:textSize="20sp"
+                            android:textColor="#FFFFFF"
+                            android:textSize="24sp"
                             android:textStyle="bold" />
 
                         <TextView
                             android:id="@+id/statusText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="6dp"
+                            android:layout_marginTop="8dp"
                             android:text="@string/permissions_missing"
-                            android:textColor="#C7BFDB"
+                            android:textColor="#E9E3F3"
                             android:textSize="14sp" />
 
                         <TextView
                             android:id="@+id/scheduleSummaryText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
+                            android:layout_marginTop="10dp"
                             android:text="@string/schedule_summary_off"
                             android:textColor="#FFCC1B"
                             android:textSize="13sp"
                             android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/quickStatusText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:text="@string/quick_status_placeholder"
+                            android:textColor="#C9C1D6"
+                            android:textSize="12sp" />
                     </LinearLayout>
 
                     <com.google.android.material.card.MaterialCardView
                         android:id="@+id/syncButtonCard"
-                        android:layout_width="92dp"
-                        android:layout_height="92dp"
-                        android:layout_marginStart="16dp"
-                        app:cardBackgroundColor="#2A2532"
-                        app:cardCornerRadius="46dp"
-                        app:strokeColor="#5B526D"
-                        app:strokeWidth="1dp">
+                        android:layout_width="126dp"
+                        android:layout_height="126dp"
+                        android:layout_marginStart="18dp"
+                        app:cardBackgroundColor="#FFCC1B"
+                        app:cardCornerRadius="63dp"
+                        app:strokeColor="#FFF2B5"
+                        app:strokeWidth="2dp">
 
                         <ImageButton
                             android:id="@+id/syncPowerButton"
@@ -120,309 +174,362 @@
                             android:layout_height="match_parent"
                             android:background="@android:color/transparent"
                             android:contentDescription="@string/sync_toggle_label"
-                            android:padding="24dp"
+                            android:padding="30dp"
                             android:scaleType="centerInside"
                             android:src="@android:drawable/ic_lock_power_off"
-                            android:tint="#FFFFFF" />
+                            android:tint="#17131E" />
                     </com.google.android.material.card.MaterialCardView>
                 </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+            </com.google.android.material.card.MaterialCardView>
 
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/quickActionsCard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#141118"
-            app:cardCornerRadius="24dp"
-            app:strokeColor="#2B2434"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
-                android:id="@+id/settingsActionsRow"
+            <Button
+                android:id="@+id/testConnectionButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
+                android:layout_marginTop="18dp"
+                android:text="@string/test_connection" />
 
-                <Button
-                    android:id="@+id/permissionButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/grant_permissions" />
-
-                <Button
-                    android:id="@+id/networkCheckButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/check_network_dns" />
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="#FFFDF7"
+                app:cardCornerRadius="24dp"
+                app:strokeColor="#E9DFC2"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
-                    <Button
-                        android:id="@+id/testConnectionButton"
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/test_connection" />
+                        android:text="@string/main_panel_heading"
+                        android:textColor="#17131E"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
 
-                    <Space
-                        android:layout_width="12dp"
-                        android:layout_height="1dp" />
-
-                    <Button
-                        android:id="@+id/retryPendingButton"
-                        android:layout_width="0dp"
+                    <TextView
+                        android:id="@+id/mainInfoText"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/retry_pending" />
+                        android:layout_marginTop="8dp"
+                        android:text="@string/main_info_placeholder"
+                        android:textColor="#5C5668"
+                        android:textSize="13sp" />
                 </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </ScrollView>
 
-        <com.google.android.material.card.MaterialCardView
+    <ScrollView
+        android:layout_width="320dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:background="#17131E">
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#1F1A26"
-            app:cardCornerRadius="24dp"
-            app:strokeColor="#30283A"
-            app:strokeWidth="1dp">
+            android:orientation="vertical"
+            android:padding="18dp">
 
-            <LinearLayout
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_heading"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
+                android:layout_marginTop="6dp"
+                android:text="@string/settings_subtitle_compact"
+                android:textColor="#C4BCD1"
+                android:textSize="13sp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/debug_heading"
-                    android:textColor="#F8F4FF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/debugText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/debug_placeholder"
-                    android:textColor="#D7D0E8"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/pendingStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/pending_events_placeholder"
-                    android:textColor="#BFB5D4"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/lastSuccessText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/last_success_never"
-                    android:textColor="#BFB5D4"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:id="@+id/networkStatusText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/network_status_placeholder"
-                    android:textColor="#BFB5D4"
-                    android:textSize="13sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/settingsCard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            app:cardBackgroundColor="#141118"
-            app:cardCornerRadius="24dp"
-            app:strokeColor="#2B2434"
-            app:strokeWidth="1dp">
-
-            <LinearLayout
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_heading"
-                    android:textColor="#F8F4FF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/settings_subtitle_compact"
-                    android:textColor="#B9B0CC"
-                    android:textSize="13sp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:text="@string/schedule_heading"
-                    android:textColor="#F8F4FF"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <com.google.android.material.switchmaterial.SwitchMaterial
-                    android:id="@+id/scheduleSwitch"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="@string/schedule_toggle"
-                    android:textColor="#F8F4FF" />
+                android:layout_marginTop="18dp"
+                app:cardBackgroundColor="#221B2B"
+                app:cardCornerRadius="20dp"
+                app:strokeColor="#3C3148"
+                app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
                     <LinearLayout
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
 
                         <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/token_section_title"
+                            android:textColor="#FFFFFF"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/tokenEditButton"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/open_time_label"
-                            android:textColor="#8C809F"
-                            android:textSize="12sp"
+                            android:minWidth="0dp"
+                            android:text="@string/edit_label" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/server_base_url"
+                        android:textColor="#A99FBC"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/primaryUrlValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/backup_server_base_url"
+                        android:textColor="#A99FBC"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/backupUrlValue"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="#FFFFFF"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/call_sync_token"
+                        android:textColor="#A99FBC"
+                        android:textSize="12sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <EditText
+                            android:id="@+id/tokenInput"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:backgroundTint="#6A5E80"
+                            android:enabled="false"
+                            android:hint="@string/call_sync_token"
+                            android:inputType="textNoSuggestions|textPassword"
+                            android:textColor="#FFFFFF"
+                            android:textColorHint="#8C809F" />
+
+                        <ImageButton
+                            android:id="@+id/tokenVisibilityButton"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:layout_marginStart="8dp"
+                            android:background="@android:color/transparent"
+                            android:contentDescription="@string/show_token"
+                            android:src="@android:drawable/ic_menu_view"
+                            android:tint="#FFCC1B" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="#221B2B"
+                app:cardCornerRadius="20dp"
+                app:strokeColor="#3C3148"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/schedule_heading"
+                            android:textColor="#FFFFFF"
+                            android:textSize="16sp"
                             android:textStyle="bold" />
+
+                        <Button
+                            android:id="@+id/scheduleEditButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minWidth="0dp"
+                            android:text="@string/edit_label" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/scheduleSwitch"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:enabled="false"
+                        android:text="@string/schedule_toggle"
+                        android:textColor="#FFFFFF" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
 
                         <Button
                             android:id="@+id/openTimeButton"
-                            android:layout_width="match_parent"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
+                            android:layout_weight="1"
+                            android:enabled="false"
                             android:text="@string/pick_time" />
-                    </LinearLayout>
 
-                    <Space
-                        android:layout_width="12dp"
-                        android:layout_height="1dp" />
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/close_time_label"
-                            android:textColor="#8C809F"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
+                        <Space
+                            android:layout_width="12dp"
+                            android:layout_height="1dp" />
 
                         <Button
                             android:id="@+id/closeTimeButton"
-                            android:layout_width="match_parent"
+                            android:layout_width="0dp"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
+                            android:layout_weight="1"
+                            android:enabled="false"
                             android:text="@string/pick_time" />
                     </LinearLayout>
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <TextView
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardBackgroundColor="#221B2B"
+                app:cardCornerRadius="20dp"
+                app:strokeColor="#3C3148"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/server_base_url"
-                    android:textColor="#8C809F"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-                <TextView
-                    android:id="@+id/primaryUrlValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:background="@android:color/transparent"
-                    android:paddingBottom="2dp"
-                    android:textColor="#F8F4FF"
-                    android:textSize="15sp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/system_check_heading"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:text="@string/backup_server_base_url"
-                    android:textColor="#8C809F"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
+                    <Button
+                        android:id="@+id/networkCheckButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/check_network_dns" />
 
-                <TextView
-                    android:id="@+id/backupUrlValue"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:paddingBottom="2dp"
-                    android:textColor="#F8F4FF"
-                    android:textSize="15sp" />
+                    <Button
+                        android:id="@+id/retryPendingButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/retry_pending" />
 
-                <EditText
-                    android:id="@+id/tokenInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:backgroundTint="#6A5E80"
-                    android:hint="@string/call_sync_token"
-                    android:inputType="textNoSuggestions"
-                    android:textColor="#F8F4FF"
-                    android:textColorHint="#8C809F" />
+                    <Button
+                        android:id="@+id/dummyCallButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/dummy_call_button" />
 
-                <Button
-                    android:id="@+id/saveButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/save_settings" />
+                    <TextView
+                        android:id="@+id/networkStatusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="@string/network_status_placeholder"
+                        android:textColor="#D8D0E8"
+                        android:textSize="13sp" />
 
-                <Button
-                    android:id="@+id/dummyCallButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="@string/dummy_call_button" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    <TextView
+                        android:id="@+id/pendingStatusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/pending_events_placeholder"
+                        android:textColor="#D8D0E8"
+                        android:textSize="13sp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:gravity="center"
-            android:text="@string/made_by_team"
-            android:textColor="#B9B0CC"
-            android:textSize="12sp" />
-    </LinearLayout>
+                    <TextView
+                        android:id="@+id/lastSuccessText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/last_success_never"
+                        android:textColor="#D8D0E8"
+                        android:textSize="13sp" />
 
-</ScrollView>
+                    <TextView
+                        android:id="@+id/debugText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/debug_placeholder"
+                        android:textColor="#D8D0E8"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:gravity="center"
+                android:text="@string/build_via"
+                android:textColor="#A99FBC"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+
+</androidx.drawerlayout.widget.DrawerLayout>
