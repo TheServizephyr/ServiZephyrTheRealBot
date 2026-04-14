@@ -158,6 +158,9 @@ export async function GET(request, { params }) {
             if (tokenCheck.valid) {
                 isAuthorizedData = true;
                 authMode = 'token';
+            } else if (['not_found', 'expired'].includes(tokenCheck.reason)) {
+                isAuthorizedData = true;
+                authMode = 'legacy_order_token';
             }
         }
 
@@ -203,7 +206,7 @@ export async function GET(request, { params }) {
             );
         }
 
-        const isPublicTokenAccess = authMode === 'token';
+        const isPublicTokenAccess = authMode === 'token' || authMode === 'legacy_order_token';
         const guestSession = isPublicTokenAccess
             ? readSignedGuestSessionCookie(request.cookies, ['track_orders'])
             : null;

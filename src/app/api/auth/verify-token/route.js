@@ -17,6 +17,8 @@ const getClientIp = (req) => {
     return forwardedFor.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
 };
 
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+
 export async function POST(req) {
     let auditActorUid = null;
     const auditTokenId = hashAuditValue((await req.clone().json().catch(() => ({})))?.token || '');
@@ -66,16 +68,69 @@ export async function POST(req) {
             req,
             auditContext: 'auth_verify_token',
         });
+        let tokenData = tokenCheck.tokenData || {};
+        let legacyOrderTokenFallback = null;
         if (!tokenCheck.valid) {
-            console.warn('[API verify-token] Token invalid:', tokenCheck.reason);
-            return respond({ message: 'Invalid or expired session token.' }, 403, {
-                outcome: 'invalid_token',
-                reason: tokenCheck.reason,
-                hasRef: !!ref,
-            });
+            if (['not_found', 'expired'].includes(tokenCheck.reason)) {
+                const legacyOrderSnap = await firestore.collection('orders')
+                    .where('trackingToken', '==', token)
+                    .limit(5)
+                    .get();
+
+                if (!legacyOrderSnap.empty) {
+                    let resolvedRefSession = null;
+                    if (ref) {
+                        resolvedRefSession = await resolveGuestAccessRef(firestore, ref, {
+                            requiredScopes: ['customer_lookup'],
+                            allowLegacy: true,
+                            touch: true,
+                        });
+                    }
+
+                    const normalizedPhone = normalizePhone(phone);
+                    const matchedOrderDoc = legacyOrderSnap.docs.find((doc) => {
+                        const orderData = doc.data() || {};
+                        const orderSubjectId = String(orderData.userId || orderData.customerId || '').trim();
+                        const orderPhone = normalizePhone(orderData.customerPhone || orderData.customer?.phone || '');
+                        if (resolvedRefSession?.subjectId && orderSubjectId === resolvedRefSession.subjectId) {
+                            return true;
+                        }
+                        if (normalizedPhone && orderPhone && normalizedPhone === orderPhone) {
+                            return true;
+                        }
+                        return false;
+                    });
+
+                    if (matchedOrderDoc) {
+                        const matchedOrderData = matchedOrderDoc.data() || {};
+                        legacyOrderTokenFallback = {
+                            orderId: matchedOrderDoc.id,
+                            subjectId: String(matchedOrderData.userId || matchedOrderData.customerId || '').trim(),
+                            subjectType: String(matchedOrderData.userId || matchedOrderData.customerId || '').trim().startsWith('g_') ? 'guest' : 'user',
+                            phone: normalizePhone(matchedOrderData.customerPhone || matchedOrderData.customer?.phone || ''),
+                            reason: tokenCheck.reason,
+                        };
+                        tokenData = {
+                            ...matchedOrderData,
+                            type: 'tracking',
+                            userId: legacyOrderTokenFallback.subjectId || undefined,
+                            guestId: legacyOrderTokenFallback.subjectId?.startsWith('g_') ? legacyOrderTokenFallback.subjectId : undefined,
+                            phone: legacyOrderTokenFallback.phone || phone || '',
+                        };
+                    }
+                }
+            }
+
+            if (!legacyOrderTokenFallback) {
+                console.warn('[API verify-token] Token invalid:', tokenCheck.reason);
+                return respond({ message: 'Invalid or expired session token.' }, 403, {
+                    outcome: 'invalid_token',
+                    reason: tokenCheck.reason,
+                    hasRef: !!ref,
+                });
+            }
         }
-        const tokenData = tokenCheck.tokenData || {};
-        auditActorUid = String(tokenData.userId || tokenData.guestId || tokenData.uid || '').trim() || null;
+        auditActorUid = String(tokenData.userId || tokenData.guestId || tokenData.uid || legacyOrderTokenFallback?.subjectId || '').trim() || null;
 
         // --- DINE-IN FLOW (Unchanged) ---
         if (tokenData.type === 'dine-in') {
@@ -93,11 +148,17 @@ export async function POST(req) {
 
         // --- GUEST IDENTITY FLOW (New) ---
         if (ref) {
-            const refSession = await resolveGuestAccessRef(firestore, ref, {
-                requiredScopes: ['customer_lookup'],
-                allowLegacy: true,
-                touch: true,
-            });
+            const refSession = legacyOrderTokenFallback?.subjectId
+                ? {
+                    subjectId: legacyOrderTokenFallback.subjectId,
+                    subjectType: legacyOrderTokenFallback.subjectType,
+                    sessionId: ref,
+                }
+                : await resolveGuestAccessRef(firestore, ref, {
+                    requiredScopes: ['customer_lookup'],
+                    allowLegacy: true,
+                    touch: true,
+                });
             if (!refSession?.subjectId) {
                 console.error("[API verify-token] Failed to resolve ref.");
                 return respond({ message: 'Invalid link format.' }, 400, {
@@ -129,7 +190,7 @@ export async function POST(req) {
                 type: 'guest',
                 guestId: refSession.subjectId
             }, 200, {
-                outcome: 'verified',
+                outcome: legacyOrderTokenFallback ? 'verified_legacy_order_token' : 'verified',
                 tokenType: tokenData.type,
                 sessionType: 'guest',
             });
@@ -138,9 +199,10 @@ export async function POST(req) {
         // --- LEGACY PHONE FLOW & NEW USERID FLOW (Backward Compatibility) ---
         if (tokenData.type === 'whatsapp' || tokenData.type === 'tracking') {
             // Support both new userId field and legacy phone field
-            const tokenPhone = tokenData.phone;
+            const tokenPhone = normalizePhone(tokenData.phone);
+            const normalizedRequestPhone = normalizePhone(phone);
 
-            if (tokenPhone && (!phone || tokenPhone !== phone)) {
+            if (tokenPhone && (!normalizedRequestPhone || tokenPhone !== normalizedRequestPhone)) {
                 console.warn(`[API verify-token] Phone mismatch for legacy token.`);
                 return respond({ message: 'Invalid session.' }, 403, {
                     outcome: 'phone_mismatch',
@@ -148,7 +210,7 @@ export async function POST(req) {
                 });
             }
             return respond({ message: 'Token is valid.', type: 'legacy_phone' }, 200, {
-                outcome: 'verified',
+                outcome: legacyOrderTokenFallback ? 'verified_legacy_order_token' : 'verified',
                 tokenType: tokenData.type,
                 sessionType: 'legacy_phone',
             });

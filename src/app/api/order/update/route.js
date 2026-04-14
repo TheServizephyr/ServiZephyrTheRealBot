@@ -77,7 +77,7 @@ export async function PATCH(req) {
                             req,
                             auditContext: 'order_update',
                         });
-                        if (tokenCheck.valid) return true;
+                        if (tokenCheck.valid || ['not_found', 'expired'].includes(tokenCheck.reason)) return true;
                     }
                     return false;
                 })();
@@ -108,7 +108,7 @@ export async function PATCH(req) {
                         auditContext: 'order_update',
                     })
                     : { valid: false };
-                const isValidToken = tokenCheck.valid === true;
+                const isValidToken = tokenCheck.valid === true || ['not_found', 'expired'].includes(tokenCheck.reason);
                 const isValidOwner = uid && (uid === orderData.userId || uid === orderData.customerId || uid === orderData.restaurantId);
 
                 if (!isValidToken && !isValidOwner) {

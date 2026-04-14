@@ -41,15 +41,6 @@ export async function GET(request, { params }) {
 
         const linkData = linkSnap.data() || {};
         const expiresAt = coerceDate(linkData.expiresAt);
-        if (expiresAt && expiresAt.getTime() < Date.now()) {
-            await linkRef.set({
-                status: 'expired',
-                expiredAt: new Date(),
-                lastAccessedAt: new Date(),
-                accessCount: FieldValue.increment(1),
-            }, { merge: true });
-            return new NextResponse('This link has expired. Please request a new link.', { status: 410 });
-        }
 
         const targetPath = normalizeTargetPath(linkData.targetPath);
         if (!targetPath) {
@@ -59,6 +50,9 @@ export async function GET(request, { params }) {
         await linkRef.set({
             status: 'used',
             lastAccessedAt: new Date(),
+            ...(expiresAt && expiresAt.getTime() < Date.now()
+                ? { revivedAt: new Date() }
+                : {}),
             accessCount: FieldValue.increment(1),
         }, { merge: true });
 

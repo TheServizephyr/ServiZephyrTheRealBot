@@ -10,7 +10,7 @@ const DEFAULT_GUEST_SCOPES = ['customer_lookup', 'active_orders', 'checkout', 't
 const DEFAULT_GUEST_SESSION_MAX_AGE_SEC = 24 * 60 * 60;
 const DEFAULT_GUEST_SESSION_TTL_MS = DEFAULT_GUEST_SESSION_MAX_AGE_SEC * 1000;
 export const WHATSAPP_GUEST_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const WHATSAPP_GUEST_SESSION_RENEW_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+const PERSISTENT_PUBLIC_SESSION_CHANNELS = new Set(['whatsapp', 'manual_call']);
 const RATE_LIMIT_MEMORY_BUCKETS = globalThis.__servizephyrRateLimitBuckets || new Map();
 globalThis.__servizephyrRateLimitBuckets = RATE_LIMIT_MEMORY_BUCKETS;
 
@@ -285,15 +285,13 @@ export async function resolveGuestAccessRef(firestore, ref, {
       };
     }
 
-    const renewableWhatsappSession =
+    const renewablePublicSession =
       expired
       && !revoked
-      && safeChannel === 'whatsapp'
-      && expiresAt
-      && (Date.now() - expiresAt.getTime()) <= WHATSAPP_GUEST_SESSION_RENEW_GRACE_MS
+      && PERSISTENT_PUBLIC_SESSION_CHANNELS.has(safeChannel)
       && scopesSatisfied(effectiveScopes, requiredScopes);
 
-    if (renewableWhatsappSession) {
+    if (renewablePublicSession) {
       const renewedExpiresAt = new Date(Date.now() + WHATSAPP_GUEST_SESSION_TTL_MS);
       await sessionDoc.ref.set({
         expiresAt: renewedExpiresAt,
