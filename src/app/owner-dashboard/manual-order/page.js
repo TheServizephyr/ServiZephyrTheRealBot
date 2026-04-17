@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical, X } from 'lucide-react';
+import { Plus, Minus, Search, Printer, User, Phone, MapPin, RotateCcw, Edit, Trash2, PlusCircle, CheckCircle, ChevronDown, Lock, GripVertical, X, Menu as MenuIcon, Mic, MicOff, SlidersHorizontal } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from "@/components/ui/use-toast";
 import { isKioskPrintMode, resolvePreferredPrintMode } from '@/lib/printMode';
 import { generateCustomerOrderId } from '@/utils/generateCustomerOrderId';
+import VoiceBillingPanel from '@/components/manual-order/VoiceBillingPanel';
 import {
     buildActiveCallSyncUserPath,
     buildCallSyncEventKey,
@@ -38,6 +39,15 @@ import { isDesktopApp } from '@/lib/desktop/runtime';
 import { appendOfflineQueueItem, getOfflineNamespaces, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import { getBestEffortIdToken } from '@/lib/client-session';
 import { silentPrintElement } from '@/lib/desktop/print';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { useVoiceCommandCapture } from '@/hooks/useVoiceCommandCapture';
+import {
+    buildVoiceMenuIndex,
+    findVoiceTableMatch,
+    normalizeVoiceText,
+    parseManualOrderVoiceCommand,
+    serializeVoiceResolverPayload,
+} from '@/lib/manual-order-voice';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -311,6 +321,13 @@ function ManualOrderPage() {
     const [isCustomOpenItemModalOpen, setIsCustomOpenItemModalOpen] = useState(false);
     const [customOpenItemName, setCustomOpenItemName] = useState('');
     const [customOpenItemPrice, setCustomOpenItemPrice] = useState('');
+    const [voiceCommandLog, setVoiceCommandLog] = useState([]);
+    const [voicePendingItems, setVoicePendingItems] = useState([]);
+    const [voiceLastTranscript, setVoiceLastTranscript] = useState('');
+    const [voiceLastAction, setVoiceLastAction] = useState('');
+    const [isVoiceCommandProcessing, setIsVoiceCommandProcessing] = useState(false);
+    const [isVoiceAiResolving, setIsVoiceAiResolving] = useState(false);
+    const [isVoiceFallbackTranscribing, setIsVoiceFallbackTranscribing] = useState(false);
     const hasHydratedFromCacheRef = useRef(false);
     const phoneInputFocusRef = useRef(false);
     const phoneSuggestionBoxRef = useRef(null);
@@ -321,6 +338,16 @@ function ManualOrderPage() {
     const searchInputRef = useRef(null);
     const sidebarRef = useRef(null);
     const isResizing = useRef(false);
+    const cartRef = useRef([]);
+    const voiceTranscriptQueueRef = useRef([]);
+    const isVoiceQueueRunningRef = useRef(false);
+    const voiceBrowserResultQueueRef = useRef([]);
+    const voiceCapturedSegmentQueueRef = useRef([]);
+    const voicePendingAudioSkipCountRef = useRef(0);
+    const isVoiceHybridQueueRunningRef = useRef(false);
+    const browserVoiceRecognitionSupportedRef = useRef(false);
+    const voiceCaptureSupportedRef = useRef(false);
+    const voiceUseBrowserPrimaryRef = useRef(true);
     const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
 
     const billContainerRef = useRef(null);
@@ -328,7 +355,13 @@ function ManualOrderPage() {
     const [billSidebarWidth, setBillSidebarWidth] = useState(340);
     const [isCustomerDetailsOpen, setIsCustomerDetailsOpen] = useState(true);
     const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
+    const [isMobileViewport, setIsMobileViewport] = useState(false);
+    const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+    const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+    const [isStandalonePwa, setIsStandalonePwa] = useState(false);
     const [, setTableTimeTick] = useState(0);
+    const mobileSwipeStartRef = useRef(null);
+    const voiceLastCartMutationRef = useRef({ timestamp: 0, source: '', mode: '', tableId: '' });
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
         : employeeOfOwnerId
@@ -347,6 +380,77 @@ function ManualOrderPage() {
         }
         prevCartLengthRef.current = cart.length;
     }, [cart.length]);
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+
+        const mediaQuery = window.matchMedia('(max-width: 1023px)');
+        const applyViewportState = () => {
+            setIsMobileViewport(mediaQuery.matches);
+            if (!mediaQuery.matches) {
+                setIsMobileCartOpen(false);
+                setIsMobileToolsOpen(false);
+            }
+        };
+
+        applyViewportState();
+        if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', applyViewportState);
+            return () => mediaQuery.removeEventListener('change', applyViewportState);
+        }
+
+        mediaQuery.addListener(applyViewportState);
+        return () => mediaQuery.removeListener(applyViewportState);
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+
+        const standaloneMediaQuery = typeof window.matchMedia === 'function'
+            ? window.matchMedia('(display-mode: standalone)')
+            : null;
+
+        const applyStandaloneState = () => {
+            const isStandalone = Boolean(
+                standaloneMediaQuery?.matches ||
+                window.navigator?.standalone ||
+                String(document.referrer || '').startsWith('android-app://')
+            );
+            setIsStandalonePwa(isStandalone);
+        };
+
+        applyStandaloneState();
+
+        if (standaloneMediaQuery && typeof standaloneMediaQuery.addEventListener === 'function') {
+            standaloneMediaQuery.addEventListener('change', applyStandaloneState);
+            return () => standaloneMediaQuery.removeEventListener('change', applyStandaloneState);
+        }
+
+        if (standaloneMediaQuery?.addListener) {
+            standaloneMediaQuery.addListener(applyStandaloneState);
+            return () => standaloneMediaQuery.removeListener(applyStandaloneState);
+        }
+
+        return undefined;
+    }, []);
+
+    useEffect(() => {
+        if (isMobileViewport) {
+            setIsCustomerDetailsOpen(false);
+        }
+    }, [isMobileViewport]);
+
+    useEffect(() => {
+        if (!isMobileViewport || (!isMobileCartOpen && !isMobileToolsOpen) || typeof document === 'undefined') return undefined;
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [isMobileCartOpen, isMobileToolsOpen, isMobileViewport]);
+    useEffect(() => {
+        cartRef.current = cart;
+    }, [cart]);
 
     const cacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
@@ -882,7 +986,7 @@ function ManualOrderPage() {
         }
         setCacheStatus('local-hit');
         setLoading(false);
-    }, [buildScopedUrl, readCachedPayload]);
+    }, [buildScopedUrl, fetchWithDesktopMutationTimeout, getDesktopActionIdToken, readCachedPayload]);
 
     useEffect(() => {
         if (!desktopRuntime) return;
@@ -1451,16 +1555,20 @@ function ManualOrderPage() {
             const offlineTables = await resolveCachedManualTables();
             if (isDesktopOfflineMode(desktopRuntime)) {
                 if (offlineTables.length > 0) {
-                    setManualTables(sortManualTablesByName(offlineTables));
+                    const sortedOfflineTables = sortManualTablesByName(offlineTables);
+                    setManualTables(sortedOfflineTables);
+                    return sortedOfflineTables;
                 }
-                return;
+                return [];
             }
             const user = auth.currentUser;
             if (!user) {
                 if (offlineTables.length > 0) {
-                    setManualTables(sortManualTablesByName(offlineTables));
+                    const sortedOfflineTables = sortManualTablesByName(offlineTables);
+                    setManualTables(sortedOfflineTables);
+                    return sortedOfflineTables;
                 }
-                return;
+                return [];
             }
             const idToken = await getDesktopActionIdToken(user);
             const res = await fetchWithDesktopMutationTimeout(buildScopedUrl('/api/owner/manual-tables'), {
@@ -1471,22 +1579,26 @@ function ManualOrderPage() {
                 const sortedTables = sortManualTablesByName(data.tables || []);
                 setManualTables(sortedTables);
                 writeCachedManualTables(sortedTables);
+                return sortedTables;
             }
         } catch (error) {
             console.error('Error fetching manual tables:', error);
             const offlineTables = await resolveCachedManualTables();
             if (offlineTables.length > 0) {
-                setManualTables(sortManualTablesByName(offlineTables));
+                const sortedOfflineTables = sortManualTablesByName(offlineTables);
+                setManualTables(sortedOfflineTables);
                 toast({
                     title: 'Offline Tables Loaded',
                     description: 'Using locally cached dine-in tables because the network is unavailable.',
                     variant: 'warning',
                 });
+                return sortedOfflineTables;
             }
         } finally {
             setIsLoadingTables(false);
         }
-    }, [buildScopedUrl, desktopRuntime, fetchWithDesktopMutationTimeout, resolveCachedManualTables, toast, writeCachedManualTables]);
+        return [];
+    }, [buildScopedUrl, desktopRuntime, fetchWithDesktopMutationTimeout, getDesktopActionIdToken, resolveCachedManualTables, toast, writeCachedManualTables]);
 
     useEffect(() => {
         if (orderType === 'dine-in') {
@@ -1535,6 +1647,10 @@ function ManualOrderPage() {
         entries.push(['open-items', sortedOpenItems]);
         return entries;
     }, [menu, openItems, normalizedSearchQuery]);
+    const voiceMenuIndex = useMemo(
+        () => buildVoiceMenuIndex(menu, openItems, businessType),
+        [menu, openItems, businessType]
+    );
 
     // Calculate dynamic default width based on the longest category name
     const defaultSidebarWidth = useMemo(() => {
@@ -1839,8 +1955,10 @@ function ManualOrderPage() {
         return () => window.removeEventListener('keydown', handleBackspaceUndo);
     }, [itemHistory, handleUndo]);
 
-    const resetCurrentBill = () => {
+    const resetCurrentBill = useCallback(() => {
+        cartRef.current = [];
         setCart([]);
+        setQtyInputMap({});
         setItemHistory([]);
         setBillDraftId(createBillDraftId());
         setLastSavedOrderData(null);
@@ -1860,11 +1978,862 @@ function ManualOrderPage() {
         setDiscountInput('0');
         setPaymentMode('cash');
         setCallSyncStatus('listening');
-    };
+        setVoicePendingItems([]);
+        voiceLastCartMutationRef.current = { timestamp: 0, source: '', mode: '', tableId: '' };
+    }, []);
 
-    const handleClear = () => {
+    const handleClear = useCallback(() => {
         resetCurrentBill();
-    };
+    }, [resetCurrentBill]);
+
+    const addVoiceLogEntry = useCallback((summary, transcript = '') => {
+        const normalizedSummary = String(summary || '').trim();
+        if (!normalizedSummary) return;
+        setVoiceCommandLog((prev) => ([
+            {
+                id: `voice-log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                summary: normalizedSummary,
+                transcript: String(transcript || '').trim(),
+            },
+            ...prev,
+        ].slice(0, 5)));
+        setVoiceLastAction(normalizedSummary);
+        if (transcript) {
+            setVoiceLastTranscript(String(transcript).trim());
+        }
+    }, []);
+
+    const resolveVoiceSaleOption = useCallback((entry, explicitPortionName = '', requestedPortion = '') => {
+        const options = Array.isArray(entry?.saleOptions) ? entry.saleOptions : [];
+        if (!options.length) return null;
+
+        const findOption = (needle) => {
+            const normalizedNeedle = normalizeVoiceText(needle);
+            if (!normalizedNeedle) return null;
+            return options.find((option) => {
+                const optionName = normalizeVoiceText(option?.name);
+                const optionLabel = normalizeVoiceText(option?.label);
+                return (
+                    optionName === normalizedNeedle ||
+                    optionLabel === normalizedNeedle ||
+                    optionName.includes(normalizedNeedle) ||
+                    optionLabel.includes(normalizedNeedle)
+                );
+            }) || null;
+        };
+
+        const explicitMatch = findOption(explicitPortionName);
+        if (explicitMatch) return explicitMatch;
+
+        const requestedMatch = findOption(requestedPortion);
+        if (requestedMatch) return requestedMatch;
+
+        if (options.length === 1) return options[0];
+        return options.find((option) => {
+            const normalizedLabel = normalizeVoiceText(option?.label || option?.name);
+            return normalizedLabel === 'regular' || normalizedLabel === 'full' || normalizedLabel === 'unit';
+        }) || options[0];
+    }, []);
+
+    const buildResolvedVoiceSelection = useCallback((selection = {}) => {
+        const entryId = String(selection?.entryId || selection?.itemId || '').trim();
+        if (!entryId) return null;
+
+        const entry = voiceMenuIndex.find((candidate) => candidate.entryId === entryId || candidate.itemId === entryId);
+        if (!entry?.item) return null;
+
+        const selectedOption = resolveVoiceSaleOption(entry, selection?.portionName, selection?.requestedPortion);
+        if (!selectedOption) return null;
+
+        return {
+            lineId: selection?.lineId || null,
+            entry,
+            item: entry.item,
+            quantity: Math.max(1, parseInt(selection?.quantity, 10) || 1),
+            requestedPortion: selection?.requestedPortion || '',
+            selectedOption,
+        };
+    }, [resolveVoiceSaleOption, voiceMenuIndex]);
+
+    const appendResolvedVoiceItemsToCart = useCallback((resolvedSelections = []) => {
+        if (!Array.isArray(resolvedSelections) || resolvedSelections.length === 0) {
+            return { addedLabels: [], blockedLabels: [] };
+        }
+
+        const nextCart = [...cartRef.current];
+        const nextHistory = [];
+        const addedLabels = [];
+        const blockedLabels = [];
+        const touchedCartItemIds = new Set();
+
+        resolvedSelections.forEach((selection) => {
+            if (!selection?.item || !selection?.selectedOption) return;
+
+            const sourceItem = selection.item;
+            const selectedOption = selection.selectedOption;
+            const quantityToAdd = Math.max(1, parseInt(selection.quantity, 10) || 1);
+            const cartItemId = `${sourceItem.id}-${selectedOption.name}`;
+            const existingIndex = nextCart.findIndex((cartItem) => cartItem.cartItemId === cartItemId);
+            const existingItem = existingIndex >= 0 ? nextCart[existingIndex] : null;
+            const nextQuantity = (existingItem?.quantity || 0) + quantityToAdd;
+
+            if (!enforceCartStockLimit(sourceItem, nextQuantity)) {
+                blockedLabels.push(sourceItem.name || 'Item');
+                return;
+            }
+
+            if (existingItem) {
+                nextCart[existingIndex] = {
+                    ...existingItem,
+                    quantity: nextQuantity,
+                    totalPrice: existingItem.price * nextQuantity,
+                };
+            } else {
+                const { portions, ...itemWithoutPortions } = sourceItem;
+                const hasMultiplePortions = Array.isArray(portions) && portions.length > 1;
+                const portionCount = Array.isArray(portions) ? portions.length : 0;
+                const newCartItem = {
+                    ...itemWithoutPortions,
+                    quantity: quantityToAdd,
+                    cartItemId,
+                    price: selectedOption.price,
+                    totalPrice: selectedOption.price * quantityToAdd,
+                };
+
+                if (portionCount > 0) {
+                    newCartItem.portionCount = portionCount;
+                }
+                if (hasMultiplePortions) {
+                    newCartItem.portion = selectedOption;
+                }
+
+                nextCart.push(newCartItem);
+            }
+
+            for (let i = 0; i < quantityToAdd; i += 1) {
+                nextHistory.push(cartItemId);
+            }
+            touchedCartItemIds.add(cartItemId);
+
+            const portionLabel = Array.isArray(sourceItem?.portions) && sourceItem.portions.length > 1
+                ? ` (${selectedOption.label || selectedOption.name})`
+                : '';
+            addedLabels.push(`${quantityToAdd} x ${sourceItem.name}${portionLabel}`);
+        });
+
+        if (addedLabels.length > 0) {
+            cartRef.current = nextCart;
+            setCart(nextCart);
+            setItemHistory((prev) => [...prev, ...nextHistory]);
+            setQtyInputMap((prev) => {
+                const nextMap = { ...prev };
+                touchedCartItemIds.forEach((cartItemId) => {
+                    delete nextMap[cartItemId];
+                });
+                return nextMap;
+            });
+            voiceLastCartMutationRef.current = {
+                timestamp: Date.now(),
+                source: 'voice',
+                mode: orderType,
+                tableId: activeTable?.id || '',
+            };
+        }
+
+        return { addedLabels, blockedLabels };
+    }, [activeTable?.id, enforceCartStockLimit, orderType]);
+
+    const activateTableContextFromVoice = useCallback((table) => {
+        if (!table?.id) {
+            return { ok: false, message: 'Table not found.' };
+        }
+
+        if (table.status === 'occupied') {
+            if (table?.currentOrder?.isFinalized) {
+                setSelectedOccupiedTable(table);
+                return { ok: false, message: `${table.name} is locked. Reopen it manually to edit.` };
+            }
+
+            const order = table.currentOrder || {};
+            const nextItems = Array.isArray(order.items) ? order.items : [];
+            cartRef.current = nextItems;
+            setCart(nextItems);
+            setItemHistory([]);
+            setQtyInputMap({});
+            setCustomerDetails({
+                name: '',
+                phone: '',
+                address: '',
+                notes: '',
+                ...(order.customerDetails || {}),
+            });
+            setDeliveryChargeInput(String(order.deliveryCharge || 0));
+            setAdditionalChargeInput(String(order.additionalCharge || 0));
+            setAdditionalChargeNameInput(String(order.additionalChargeLabel || ''));
+            setDiscountInput(String(order.discount || 0));
+            setPaymentMode(order.paymentMode || 'cash');
+        } else if (activeTable?.id !== table.id) {
+            resetCurrentBill();
+        }
+
+        setOrderType('dine-in');
+        setActiveTable(table);
+        setSelectedOccupiedTable(null);
+        return { ok: true, message: `${table.name} selected for billing.` };
+    }, [activeTable?.id, resetCurrentBill]);
+
+    const resolveAiVoiceCandidates = useCallback(async (parsedCommand, availableTables = []) => {
+        const resolverPayload = serializeVoiceResolverPayload(parsedCommand);
+        if (!resolverPayload?.unresolvedItems?.length) {
+            return { resolvedSelections: [], unresolvedLineIds: new Set(), fallbackError: '' };
+        }
+
+        const unresolvedLookup = new Map(
+            resolverPayload.unresolvedItems.map((item) => [item.lineId, item])
+        );
+        const unresolvedLineIds = new Set(unresolvedLookup.keys());
+
+        setIsVoiceAiResolving(true);
+        try {
+            const currentUser = auth.currentUser;
+            if (!currentUser) {
+                return { resolvedSelections: [], unresolvedLineIds, fallbackError: 'Authentication required for AI fallback.' };
+            }
+
+            const idToken = await currentUser.getIdToken();
+            const res = await fetch(buildScopedUrl('/api/owner/manual-order/voice-parse'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    ...resolverPayload,
+                    currentMode: orderType,
+                    activeTableId: activeTable?.id || null,
+                    tableOptions: (availableTables || []).map((table) => ({
+                        id: table.id,
+                        name: table.name,
+                        status: table.status,
+                        isFinalized: !!table?.currentOrder?.isFinalized,
+                    })),
+                }),
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                return {
+                    resolvedSelections: [],
+                    unresolvedLineIds,
+                    fallbackError: payload?.message || 'AI fallback could not resolve the spoken items.',
+                };
+            }
+
+            const resolvedSelections = Array.isArray(payload?.items)
+                ? payload.items
+                    .filter((item) => Number(item?.confidence || 0) >= 0.72)
+                    .map((item) => {
+                        const unresolved = unresolvedLookup.get(item.lineId);
+                        return buildResolvedVoiceSelection({
+                            lineId: item.lineId,
+                            entryId: item.entryId,
+                            portionName: item.portionName,
+                            quantity: unresolved?.quantity || 1,
+                            requestedPortion: unresolved?.requestedPortion || '',
+                        });
+                    })
+                    .filter(Boolean)
+                : [];
+
+            const stillUnresolved = new Set(unresolvedLineIds);
+            resolvedSelections.forEach((item) => {
+                if (item?.lineId) stillUnresolved.delete(item.lineId);
+            });
+            (Array.isArray(payload?.unresolvedLineIds) ? payload.unresolvedLineIds : []).forEach((lineId) => {
+                if (lineId) stillUnresolved.add(lineId);
+            });
+
+            return {
+                resolvedSelections,
+                unresolvedLineIds: stillUnresolved,
+                fallbackError: '',
+            };
+        } catch (error) {
+            return {
+                resolvedSelections: [],
+                unresolvedLineIds,
+                fallbackError: error?.message || 'AI fallback is unavailable right now.',
+            };
+        } finally {
+            setIsVoiceAiResolving(false);
+        }
+    }, [activeTable?.id, buildResolvedVoiceSelection, buildScopedUrl, orderType]);
+
+    const processVoiceCommandTranscript = useCallback(async (spokenTranscript) => {
+        const transcript = String(spokenTranscript || '').trim();
+        if (!transcript) return;
+
+        setVoiceLastTranscript(transcript);
+        setIsVoiceCommandProcessing(true);
+
+        try {
+            let availableTables = manualTables;
+            let parsedCommand = parseManualOrderVoiceCommand({
+                transcript,
+                menuIndex: voiceMenuIndex,
+                manualTables: availableTables,
+                currentMode: orderType,
+            });
+
+            if (parsedCommand.requestedTableReference && !parsedCommand.matchedTableId) {
+                const fetchedTables = await fetchManualTables();
+                if (Array.isArray(fetchedTables) && fetchedTables.length > 0) {
+                    availableTables = fetchedTables;
+                    parsedCommand = parseManualOrderVoiceCommand({
+                        transcript,
+                        menuIndex: voiceMenuIndex,
+                        manualTables: fetchedTables,
+                        currentMode: orderType,
+                    });
+                }
+            }
+
+        const targetMode = parsedCommand.desiredMode || orderType;
+        if (isStoreBusinessType(businessType) && targetMode === 'dine-in') {
+            const message = 'Dine-in mode is not available for this store outlet.';
+            addVoiceLogEntry(message, transcript);
+            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                return;
+            }
+
+            const targetTable = parsedCommand.matchedTableId
+                ? availableTables.find((table) => table.id === parsedCommand.matchedTableId)
+                : (parsedCommand.requestedTableReference ? findVoiceTableMatch(availableTables, parsedCommand.requestedTableReference) : null);
+
+        const currentHasItems = cartRef.current.length > 0;
+        const currentTableId = activeTable?.id || '';
+        const targetTableId = targetTable?.id || '';
+        const contextChangesMode = targetMode !== orderType;
+        const contextChangesTable = Boolean(targetTableId && targetTableId !== currentTableId);
+        const hasCommandItems = parsedCommand.items.some((item) => String(item?.spokenText || '').trim());
+        const recentVoiceDraft = (
+            voiceLastCartMutationRef.current?.source === 'voice' &&
+            (Date.now() - Number(voiceLastCartMutationRef.current?.timestamp || 0)) <= 30000
+        );
+        const canReplaceFreshVoiceDraft = (
+            currentHasItems &&
+            targetTable &&
+            !hasCommandItems &&
+            !currentTableId &&
+            recentVoiceDraft
+        );
+
+        if (canReplaceFreshVoiceDraft) {
+            resetCurrentBill();
+        }
+
+        if (!canReplaceFreshVoiceDraft && currentHasItems && (contextChangesMode || contextChangesTable)) {
+            const message = targetTable
+                ? `Current bill active hai. ${targetTable.name} par switch karne se pehle save ya clear karo.`
+                : `Current bill active hai. ${targetMode.replace(/-/g, ' ')} mode me switch karne se pehle save ya clear karo.`;
+            addVoiceLogEntry(message, transcript);
+            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                return;
+            }
+
+            if (targetMode !== orderType) {
+                setOrderType(targetMode);
+                if (targetMode !== 'dine-in') {
+                    setActiveTable(null);
+                }
+            }
+
+            if (targetTable) {
+                const tableActivation = activateTableContextFromVoice(targetTable);
+                if (!tableActivation.ok) {
+                    addVoiceLogEntry(tableActivation.message, transcript);
+                    toast({ title: 'Voice Billing', description: tableActivation.message, variant: 'warning' });
+                    return;
+                }
+                if (canReplaceFreshVoiceDraft) {
+                    addVoiceLogEntry(`${targetTable.name} selected. Previous voice draft cleared.`, transcript);
+                }
+            } else if (parsedCommand.requestedTableReference) {
+                const message = `Table "${parsedCommand.requestedTableReference}" match nahi hua.`;
+                addVoiceLogEntry(message, transcript);
+                toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                return;
+            }
+
+            const localResolvedSelections = parsedCommand.items
+                .filter((item) => item.status === 'resolved')
+                .map((item) => buildResolvedVoiceSelection({
+                    lineId: item.lineId,
+                    entryId: item.selectedEntry?.entryId || item.selectedEntry?.itemId,
+                    portionName: item.selectedOption?.label || item.selectedOption?.name,
+                    quantity: item.quantity,
+                    requestedPortion: item.requestedPortion,
+                }))
+                .filter(Boolean);
+
+            let pendingItems = parsedCommand.items
+                .filter((item) => item.status === 'pending' && Array.isArray(item.candidates) && item.candidates.length > 0)
+                .map((item) => ({
+                    id: item.lineId,
+                    spokenText: item.spokenText,
+                    quantity: item.quantity,
+                    requestedPortion: item.requestedPortion,
+                    candidates: item.candidates,
+                }));
+
+            let aiFallbackError = '';
+            if (pendingItems.length > 0) {
+                const aiResolution = await resolveAiVoiceCandidates(parsedCommand, availableTables);
+                aiFallbackError = aiResolution.fallbackError || '';
+
+                const resolvedByAiLineIds = new Set(
+                    aiResolution.resolvedSelections.map((selection) => selection.lineId).filter(Boolean)
+                );
+                pendingItems = pendingItems.filter((item) => aiResolution.unresolvedLineIds.has(item.id) && !resolvedByAiLineIds.has(item.id));
+                localResolvedSelections.push(...aiResolution.resolvedSelections);
+            }
+
+            const unresolvedWithoutCandidates = parsedCommand.items.filter((item) => item.status === 'unresolved');
+            if (pendingItems.length > 0) {
+                setVoicePendingItems((prev) => {
+                    const nextMap = new Map(prev.map((item) => [item.id, item]));
+                    pendingItems.forEach((item) => {
+                        nextMap.set(item.id, item);
+                    });
+                    return Array.from(nextMap.values());
+                });
+            }
+
+            const { addedLabels, blockedLabels } = appendResolvedVoiceItemsToCart(localResolvedSelections);
+            const summaryParts = [];
+
+            if (targetTable?.name) {
+                summaryParts.push(`${targetTable.name} selected`);
+            } else if (targetMode !== orderType) {
+                summaryParts.push(`${targetMode.replace(/-/g, ' ')} mode selected`);
+            }
+
+            if (addedLabels.length > 0) {
+                summaryParts.push(`Added ${addedLabels.join(', ')}`);
+            }
+            if (pendingItems.length > 0) {
+                summaryParts.push(`Confirm ${pendingItems.map((item) => `"${item.spokenText}"`).join(', ')}`);
+            }
+            if (unresolvedWithoutCandidates.length > 0) {
+                summaryParts.push(`Could not match ${unresolvedWithoutCandidates.map((item) => `"${item.spokenText}"`).join(', ')}`);
+            }
+            if (blockedLabels.length > 0) {
+                summaryParts.push(`Stock blocked ${blockedLabels.join(', ')}`);
+            }
+            if (!summaryParts.length) {
+                summaryParts.push('No cart changes were applied.');
+            }
+
+            const summary = summaryParts.join('. ');
+            addVoiceLogEntry(summary, transcript);
+
+            if (pendingItems.length > 0) {
+                toast({
+                    title: 'Voice Billing',
+                    description: 'Some items need confirmation before they are added.',
+                    variant: 'warning',
+                });
+            } else if (unresolvedWithoutCandidates.length > 0) {
+                toast({
+                    title: 'Voice Billing',
+                    description: 'Some spoken items could not be matched. Please try again.',
+                    variant: 'warning',
+                });
+            } else if (aiFallbackError && addedLabels.length === 0) {
+                toast({
+                    title: 'Voice Billing',
+                    description: aiFallbackError,
+                    variant: 'warning',
+                });
+            }
+        } catch (error) {
+            const message = error?.message || 'Voice command could not be processed.';
+            addVoiceLogEntry(message, transcript);
+            toast({ title: 'Voice Billing', description: message, variant: 'destructive' });
+        } finally {
+            setIsVoiceCommandProcessing(false);
+        }
+    }, [
+        activeTable?.id,
+        activateTableContextFromVoice,
+        addVoiceLogEntry,
+        appendResolvedVoiceItemsToCart,
+        buildResolvedVoiceSelection,
+        businessType,
+        fetchManualTables,
+        manualTables,
+        orderType,
+        resetCurrentBill,
+        resolveAiVoiceCandidates,
+        toast,
+        voiceMenuIndex,
+    ]);
+
+    const handleVoiceCommandResult = useCallback((spokenTranscript) => {
+        const transcript = String(spokenTranscript || '').trim();
+        if (!transcript) return;
+
+        voiceTranscriptQueueRef.current.push(transcript);
+        if (isVoiceQueueRunningRef.current) return;
+
+        isVoiceQueueRunningRef.current = true;
+        void (async () => {
+            while (voiceTranscriptQueueRef.current.length > 0) {
+                const nextTranscript = voiceTranscriptQueueRef.current.shift();
+                if (!nextTranscript) continue;
+                // Process voice commands serially so consecutive spoken lines do not race each other.
+                // This keeps cart and mode updates deterministic during busy counter sessions.
+                // eslint-disable-next-line no-await-in-loop
+                await processVoiceCommandTranscript(nextTranscript);
+            }
+            isVoiceQueueRunningRef.current = false;
+        })();
+    }, [processVoiceCommandTranscript]);
+
+    const handleVoicePendingCandidate = useCallback((pendingItemId, candidate) => {
+        const pendingItem = voicePendingItems.find((item) => item.id === pendingItemId);
+        if (!pendingItem || !candidate) return;
+
+        const resolvedSelection = buildResolvedVoiceSelection({
+            lineId: pendingItem.id,
+            entryId: candidate.entryId || candidate.itemId,
+            portionName: candidate.portionName,
+            quantity: pendingItem.quantity,
+            requestedPortion: pendingItem.requestedPortion,
+        });
+        if (!resolvedSelection) return;
+
+        const { addedLabels } = appendResolvedVoiceItemsToCart([resolvedSelection]);
+        setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
+        if (addedLabels.length > 0) {
+            addVoiceLogEntry(`Added ${addedLabels.join(', ')}`, `Resolved "${pendingItem.spokenText}" manually`);
+        }
+    }, [addVoiceLogEntry, appendResolvedVoiceItemsToCart, buildResolvedVoiceSelection, voicePendingItems]);
+
+    const dismissVoicePendingItem = useCallback((pendingItemId) => {
+        setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
+    }, []);
+
+    const resetVoiceHybridQueues = useCallback(() => {
+        voiceBrowserResultQueueRef.current = [];
+        voiceCapturedSegmentQueueRef.current = [];
+        voicePendingAudioSkipCountRef.current = 0;
+    }, []);
+
+    const transcribeVoiceSegment = useCallback(async (audioBlob, metadata = {}) => {
+        if (!(audioBlob instanceof Blob)) return;
+
+        const idToken = await getDesktopActionIdToken(auth.currentUser, { timeoutMs: 3000 });
+        if (!idToken) {
+            throw new Error('Voice billing ke liye login session required hai.');
+        }
+
+        const formData = new FormData();
+        const mimeType = String(metadata?.mimeType || audioBlob.type || 'audio/webm').trim() || 'audio/webm';
+        formData.append('audio', audioBlob, `voice-segment-${Date.now()}.webm`);
+        formData.append('mimeType', mimeType);
+
+        const res = await fetch(buildScopedUrl('/api/owner/manual-order/voice-transcribe'), {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${idToken}`,
+            },
+            body: formData,
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            if (res.status === 422) return;
+            throw new Error(payload?.message || 'Voice transcription failed.');
+        }
+
+        const transcript = String(payload?.transcript || '').trim();
+        return {
+            transcript,
+            provider: String(payload?.provider || '').trim(),
+            fallbackUsed: !!payload?.fallbackUsed,
+            confidence: Number(payload?.confidence || 0),
+        };
+    }, [buildScopedUrl, getDesktopActionIdToken]);
+
+    const assessBrowserVoiceTranscript = useCallback((spokenTranscript, browserMeta = {}) => {
+        const normalizedTranscript = normalizeVoiceText(spokenTranscript);
+        const tokenCount = normalizedTranscript ? normalizedTranscript.split(/\s+/).filter(Boolean).length : 0;
+
+        if (!tokenCount) {
+            return {
+                shouldUsePaidFallback: true,
+                browserConfidence: 0,
+                highestItemConfidence: 0,
+            };
+        }
+
+        const preview = parseManualOrderVoiceCommand({
+            transcript: spokenTranscript,
+            menuIndex: voiceMenuIndex,
+            manualTables,
+            currentMode: orderType,
+        });
+        const items = Array.isArray(preview?.items) ? preview.items : [];
+        const resolvedCount = items.filter((item) => item.status === 'resolved').length;
+        const pendingCount = items.filter((item) => item.status === 'pending' && Array.isArray(item.candidates) && item.candidates.length > 0).length;
+        const unresolvedCount = items.filter((item) => item.status === 'unresolved').length;
+        const highestItemConfidence = items.reduce(
+            (maxScore, item) => Math.max(maxScore, Number(item?.confidence || 0)),
+            0
+        );
+        const browserConfidence = Number(browserMeta?.confidence || 0);
+        const tableContextNeedsHelp = Boolean(preview?.requestedTableReference && !preview?.matchedTableId);
+        const contextCommandDetected = Boolean(
+            (preview?.requestedTableReference && preview?.matchedTableId) ||
+            preview?.matchedTableId ||
+            (preview?.desiredMode && preview.desiredMode !== (orderType || 'delivery'))
+        );
+        const parserConfident = (
+            highestItemConfidence >= 0.84 ||
+            (resolvedCount > 0 && highestItemConfidence >= 0.74) ||
+            (pendingCount > 0 && highestItemConfidence >= 0.68)
+        );
+        const browserConfident = browserConfidence >= 0.82;
+        const shouldUsePaidFallback = (
+            (tableContextNeedsHelp && !browserConfident) ||
+            (
+                !contextCommandDetected &&
+                !browserConfident &&
+                !parserConfident &&
+                resolvedCount === 0 &&
+                pendingCount === 0 &&
+                (unresolvedCount > 0 || items.length === 0)
+            )
+        );
+
+        return {
+            shouldUsePaidFallback,
+            browserConfidence,
+            highestItemConfidence,
+        };
+    }, [manualTables, orderType, voiceMenuIndex]);
+
+    const processHybridVoiceQueues = useCallback(() => {
+        if (isVoiceHybridQueueRunningRef.current) return;
+        isVoiceHybridQueueRunningRef.current = true;
+
+        void (async () => {
+            try {
+                while (true) {
+                    while (voicePendingAudioSkipCountRef.current > 0 && voiceCapturedSegmentQueueRef.current.length > 0) {
+                        voiceCapturedSegmentQueueRef.current.shift();
+                        voicePendingAudioSkipCountRef.current = Math.max(0, voicePendingAudioSkipCountRef.current - 1);
+                    }
+
+                    if (!voiceUseBrowserPrimaryRef.current) {
+                        const nextAudioSegment = voiceCapturedSegmentQueueRef.current.shift();
+                        if (!nextAudioSegment) break;
+
+                        setIsVoiceFallbackTranscribing(true);
+                        try {
+                            const paidTranscript = await transcribeVoiceSegment(nextAudioSegment.audioBlob, nextAudioSegment.metadata);
+                            if (paidTranscript?.transcript) {
+                                handleVoiceCommandResult(paidTranscript.transcript);
+                            }
+                        } catch (error) {
+                            const message = error?.message || 'Voice transcription failed.';
+                            addVoiceLogEntry(message, '');
+                            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                        } finally {
+                            setIsVoiceFallbackTranscribing(false);
+                        }
+                        continue;
+                    }
+
+                    const nextBrowserResult = voiceBrowserResultQueueRef.current[0];
+                    if (!nextBrowserResult) break;
+
+                    const nextAudioSegment = voiceCapturedSegmentQueueRef.current[0];
+                    const assessment = assessBrowserVoiceTranscript(nextBrowserResult.transcript, nextBrowserResult.meta);
+                    const fallbackWaitExpired = (Date.now() - Number(nextBrowserResult.createdAt || 0)) >= 1200;
+                    const canUsePaidFallback = voiceCaptureSupportedRef.current && Boolean(nextAudioSegment);
+
+                    if (assessment.shouldUsePaidFallback && voiceCaptureSupportedRef.current && !nextAudioSegment && !fallbackWaitExpired) {
+                        break;
+                    }
+
+                    if (!assessment.shouldUsePaidFallback || !canUsePaidFallback || fallbackWaitExpired) {
+                        voiceBrowserResultQueueRef.current.shift();
+                        handleVoiceCommandResult(nextBrowserResult.transcript);
+
+                        if (nextAudioSegment) {
+                            voiceCapturedSegmentQueueRef.current.shift();
+                        } else if (voiceCaptureSupportedRef.current) {
+                            voicePendingAudioSkipCountRef.current += 1;
+                        }
+                        continue;
+                    }
+
+                    voiceBrowserResultQueueRef.current.shift();
+                    voiceCapturedSegmentQueueRef.current.shift();
+
+                    setIsVoiceFallbackTranscribing(true);
+                    try {
+                        const paidTranscript = await transcribeVoiceSegment(nextAudioSegment.audioBlob, nextAudioSegment.metadata);
+                        const resolvedTranscript = String(paidTranscript?.transcript || nextBrowserResult.transcript || '').trim();
+                        if (resolvedTranscript) {
+                            handleVoiceCommandResult(resolvedTranscript);
+                        }
+                    } catch (error) {
+                        const browserTranscript = String(nextBrowserResult.transcript || '').trim();
+                        if (browserTranscript) {
+                            handleVoiceCommandResult(browserTranscript);
+                        } else {
+                            const message = error?.message || 'Voice transcription failed.';
+                            addVoiceLogEntry(message, '');
+                            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                        }
+                    } finally {
+                        setIsVoiceFallbackTranscribing(false);
+                    }
+                }
+            } finally {
+                isVoiceHybridQueueRunningRef.current = false;
+            }
+        })();
+    }, [
+        addVoiceLogEntry,
+        assessBrowserVoiceTranscript,
+        handleVoiceCommandResult,
+        toast,
+        transcribeVoiceSegment,
+    ]);
+
+    const handleCapturedVoiceSegment = useCallback((audioBlob, metadata = {}) => {
+        if (!(audioBlob instanceof Blob)) return;
+        voiceCapturedSegmentQueueRef.current.push({
+            id: `voice-audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            audioBlob,
+            metadata,
+        });
+        processHybridVoiceQueues();
+    }, [processHybridVoiceQueues]);
+
+    const handleBrowserVoiceResult = useCallback((spokenTranscript, meta = {}) => {
+        const transcript = String(spokenTranscript || '').trim();
+        if (!transcript) return;
+
+        voiceBrowserResultQueueRef.current.push({
+            id: `voice-browser-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            transcript,
+            meta,
+            createdAt: Date.now(),
+        });
+        processHybridVoiceQueues();
+        window.setTimeout(() => {
+            processHybridVoiceQueues();
+        }, 1300);
+    }, [processHybridVoiceQueues]);
+
+    const {
+        isSupported: isBrowserVoiceRecognitionSupported,
+        isListening: isBrowserVoiceListening,
+        error: browserVoiceRecognitionError,
+        permissionState: browserVoicePermissionState,
+        lastErrorCode: browserVoiceRecognitionErrorCode,
+        microphoneProbe: browserVoiceMicrophoneProbe,
+        startListening: startBrowserVoiceListening,
+        stopListening: stopBrowserVoiceListening,
+        runMicrophoneProbe: runBrowserVoiceMicrophoneProbe,
+    } = useSpeechRecognition({
+        lang: 'en-IN',
+        onFinalResult: handleBrowserVoiceResult,
+    });
+
+    const {
+        isSupported: isVoiceCaptureSupported,
+        isListening: isVoiceCaptureListening,
+        isTranscribing: isVoiceCaptureTranscribing,
+        error: voiceCaptureError,
+        permissionState: voiceCapturePermissionState,
+        lastErrorCode: voiceCaptureErrorCode,
+        microphoneProbe: voiceCaptureMicrophoneProbe,
+        startListening: startVoiceCaptureListening,
+        stopListening: stopVoiceCaptureListening,
+        runMicrophoneProbe: runVoiceCaptureMicrophoneProbe,
+    } = useVoiceCommandCapture({
+        onSegmentReady: handleCapturedVoiceSegment,
+    });
+
+    browserVoiceRecognitionSupportedRef.current = isBrowserVoiceRecognitionSupported;
+    voiceCaptureSupportedRef.current = isVoiceCaptureSupported;
+
+    useEffect(() => {
+        if (browserVoiceRecognitionErrorCode === 'not-allowed' || browserVoiceRecognitionErrorCode === 'service-not-allowed') {
+            voiceUseBrowserPrimaryRef.current = false;
+            processHybridVoiceQueues();
+        }
+    }, [browserVoiceRecognitionErrorCode, processHybridVoiceQueues]);
+
+    const isVoiceRecognitionSupported = isBrowserVoiceRecognitionSupported || isVoiceCaptureSupported;
+    const isVoiceListening = isBrowserVoiceListening || isVoiceCaptureListening;
+    const voiceRecognitionError = voiceCaptureError || browserVoiceRecognitionError;
+    const voicePermissionState = browserVoicePermissionState !== 'unknown'
+        ? browserVoicePermissionState
+        : voiceCapturePermissionState;
+    const voiceRecognitionErrorCode = browserVoiceRecognitionErrorCode || voiceCaptureErrorCode;
+    const voiceMicrophoneProbe = browserVoiceMicrophoneProbe?.status && browserVoiceMicrophoneProbe.status !== 'unknown'
+        ? browserVoiceMicrophoneProbe
+        : voiceCaptureMicrophoneProbe;
+
+    const startVoiceListening = useCallback(async () => {
+        resetVoiceHybridQueues();
+
+        const captureStarted = isVoiceCaptureSupported
+            ? await startVoiceCaptureListening()
+            : false;
+        const browserStarted = isBrowserVoiceRecognitionSupported
+            ? startBrowserVoiceListening()
+            : false;
+        voiceUseBrowserPrimaryRef.current = Boolean(browserStarted);
+
+        return Boolean(captureStarted || browserStarted);
+    }, [
+        isBrowserVoiceRecognitionSupported,
+        isVoiceCaptureSupported,
+        resetVoiceHybridQueues,
+        startBrowserVoiceListening,
+        startVoiceCaptureListening,
+    ]);
+
+    const stopVoiceListening = useCallback(() => {
+        stopBrowserVoiceListening();
+        stopVoiceCaptureListening();
+        resetVoiceHybridQueues();
+        setIsVoiceFallbackTranscribing(false);
+        voiceUseBrowserPrimaryRef.current = true;
+    }, [resetVoiceHybridQueues, stopBrowserVoiceListening, stopVoiceCaptureListening]);
+
+    const toggleVoiceListening = useCallback(async () => {
+        if (isVoiceListening) {
+            stopVoiceListening();
+            return false;
+        }
+        return startVoiceListening();
+    }, [isVoiceListening, startVoiceListening, stopVoiceListening]);
+
+    const runVoiceMicrophoneProbe = useCallback(async () => {
+        if (isVoiceCaptureSupported) {
+            return runVoiceCaptureMicrophoneProbe();
+        }
+        return runBrowserVoiceMicrophoneProbe();
+    }, [isVoiceCaptureSupported, runBrowserVoiceMicrophoneProbe, runVoiceCaptureMicrophoneProbe]);
 
     const shortcutScope = useMemo(() => ({
         impersonatedOwnerId,
@@ -1915,6 +2884,7 @@ function ManualOrderPage() {
                 { combo: 'Alt+Z', description: 'Undo last added item' },
                 { combo: 'Alt+X', description: 'Clear current bill' },
                 { combo: 'Alt+P', description: 'Open print bill dialog' },
+                { combo: 'Alt+V', description: 'Start or stop voice billing' },
                 { combo: '?', description: 'Show shortcut help' },
             ],
         },
@@ -1933,7 +2903,8 @@ function ManualOrderPage() {
         { key: 'z', altKey: true, action: handleUndo },
         { key: 'x', altKey: true, action: handleClear },
         { key: 'p', altKey: true, action: openPrintShortcut },
-    ]), [focusManualSearch, handleClear, handleUndo, navigateWithShortcut, openPrintShortcut, switchOrderMode]);
+        { key: 'v', altKey: true, action: toggleVoiceListening },
+    ]), [focusManualSearch, handleClear, handleUndo, navigateWithShortcut, openPrintShortcut, switchOrderMode, toggleVoiceListening]);
 
     useOwnerDashboardShortcuts({
         shortcuts: ownerDashboardShortcuts,
@@ -2337,7 +3308,7 @@ function ManualOrderPage() {
             });
         }
         return data;
-    }, [accessQuery, additionalCharge, additionalChargeLabel, billDraftId, cart, cgst, currentBillCustomerOrderId, customerDetails, discount, grandTotal, orderType, paymentMode, subtotal, sgst, deliveryCharge, writeCustomerSuggestionCache]);
+    }, [accessQuery, additionalCharge, additionalChargeLabel, billDraftId, cart, cgst, currentBillCustomerOrderId, customerDetails, deliveryCharge, discount, fetchWithDesktopMutationTimeout, getDesktopActionIdToken, grandTotal, orderType, paymentMode, sgst, subtotal, writeCustomerSuggestionCache]);
 
     const validatePhoneNumber = () => {
         const phone = customerDetails.phone?.trim() || '';
@@ -2844,6 +3815,81 @@ function ManualOrderPage() {
         }
     };
 
+    const mobileCartItemCount = useMemo(
+        () => cart.reduce((sum, item) => sum + Number(item?.quantity || 0), 0),
+        [cart]
+    );
+
+    const mobileVoiceStatusLabel = isVoiceListening
+        ? 'Listening'
+        : (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing)
+            ? 'Processing'
+            : 'Ready';
+    const isMobilePwaHoldToTalk = isMobileViewport && isStandalonePwa;
+    const isMobileMicBusy = (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing) && !isVoiceListening;
+
+    const handleMobileSwipeStart = useCallback((event) => {
+        if (!isMobileViewport) return;
+        if (event.target?.closest?.('[data-mobile-swipe-ignore="true"]')) return;
+        const touch = event.touches?.[0];
+        if (!touch) return;
+        mobileSwipeStartRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+        };
+    }, [isMobileViewport]);
+
+    const handleMobileSwipeEnd = useCallback((event) => {
+        if (!isMobileViewport) return;
+        const start = mobileSwipeStartRef.current;
+        mobileSwipeStartRef.current = null;
+        if (!start) return;
+
+        const touch = event.changedTouches?.[0];
+        if (!touch) return;
+
+        const deltaX = touch.clientX - start.x;
+        const deltaY = touch.clientY - start.y;
+        if (Math.abs(deltaX) < 64 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.2) return;
+
+        if (deltaX < 0) {
+            setIsMobileCartOpen(true);
+            return;
+        }
+        setIsMobileCartOpen(false);
+    }, [isMobileViewport]);
+
+    const openMobileCartDrawer = useCallback(() => {
+        setIsMobileToolsOpen(false);
+        setIsMobileCartOpen(true);
+    }, []);
+
+    const toggleMobileToolsPanel = useCallback(() => {
+        setIsMobileCartOpen(false);
+        setIsMobileToolsOpen((prev) => !prev);
+    }, []);
+
+    const handleMobileMicPressStart = useCallback(async (event) => {
+        if (!isMobilePwaHoldToTalk || isMobileMicBusy || isVoiceListening) return;
+        event.preventDefault();
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        await startVoiceListening();
+    }, [isMobileMicBusy, isMobilePwaHoldToTalk, isVoiceListening, startVoiceListening]);
+
+    const handleMobileMicPressEnd = useCallback((event) => {
+        if (!isMobilePwaHoldToTalk) return;
+        event.preventDefault();
+        event.currentTarget?.releasePointerCapture?.(event.pointerId);
+        if (isVoiceListening) {
+            stopVoiceListening();
+        }
+    }, [isMobilePwaHoldToTalk, isVoiceListening, stopVoiceListening]);
+
+    const handleMobileMicFabClick = useCallback(() => {
+        if (isMobilePwaHoldToTalk || isMobileMicBusy) return;
+        void toggleVoiceListening();
+    }, [isMobileMicBusy, isMobilePwaHoldToTalk, toggleVoiceListening]);
+
     return (
         <div className="text-foreground bg-background h-full overflow-hidden flex flex-col">
             <Dialog open={isNoAddressDialogOpen} onOpenChange={setIsNoAddressDialogOpen}>
@@ -3216,49 +4262,69 @@ function ManualOrderPage() {
                 }
             `}</style>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-                {/* Left Side: Menu Selection (Flexible) */}
-                <div className="flex-1 min-w-0 min-h-0 bg-card flex flex-col overflow-hidden">
-                    <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-center sm:justify-between px-3 pt-2 pb-2 border-b border-border shrink-0">
-                        <div className="flex items-center flex-wrap gap-2">
-                            <h1 className="text-lg font-bold tracking-tight">
-                                {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
-                            </h1>
-                            <OfflineDesktopStatus />
+            {isMobileViewport && (isMobileCartOpen || isMobileToolsOpen) && (
+                <button
+                    type="button"
+                    aria-label="Close mobile overlay"
+                    className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[2px] lg:hidden"
+                    onClick={() => {
+                        setIsMobileCartOpen(false);
+                        setIsMobileToolsOpen(false);
+                    }}
+                />
+            )}
 
-                            <div className="flex bg-muted p-1 rounded-lg ml-0 sm:ml-2">
-                                {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (
-                                    <button
-                                        key={mode}
-                                        onClick={() => {
-                                            setOrderType(mode);
-                                            if (mode !== 'dine-in') setActiveTable(null);
-                                        }}
-                                        className={cn(
-                                            "px-3 py-1.5 text-sm font-semibold rounded-md capitalize transition-colors",
-                                            orderType === mode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10"
-                                        )}
-                                    >
-                                        {mode.replace('-', ' ')}
-                                    </button>
-                                ))}
-                            </div>
+            {isMobileViewport && (
+                <div
+                    className={cn(
+                        'fixed inset-x-0 bottom-0 z-50 rounded-t-[28px] border border-border bg-background/98 px-4 pb-5 pt-4 shadow-2xl shadow-slate-950/20 backdrop-blur transition-transform duration-300 ease-out lg:hidden',
+                        isMobileToolsOpen ? 'translate-y-0' : 'translate-y-[104%] pointer-events-none'
+                    )}
+                >
+                    <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-border" />
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground">Quick Tools</p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">Billing controls ab yahan compact mode me hain.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsMobileToolsOpen(false)}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-background text-foreground transition-colors hover:bg-muted"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
 
-                            <Link href={historyUrl}>
-                                <Button
+                    <div className="mt-4 space-y-4">
+                        <div className={cn(
+                            'grid gap-2 rounded-2xl bg-muted p-1',
+                            isStoreBusinessType(businessType) ? 'grid-cols-2' : 'grid-cols-3'
+                        )}>
+                            {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (
+                                <button
+                                    key={`mobile-mode-${mode}`}
                                     type="button"
-                                    variant="outline"
-                                    className="h-9 px-3 text-xs font-semibold"
+                                    onClick={() => {
+                                        setOrderType(mode);
+                                        if (mode !== 'dine-in') setActiveTable(null);
+                                        setIsMobileToolsOpen(false);
+                                    }}
+                                    className={cn(
+                                        'rounded-xl px-2 py-2 text-xs font-semibold capitalize transition-colors',
+                                        orderType === mode
+                                            ? 'bg-background text-foreground shadow-sm'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                    )}
                                 >
-                                    View Bill History
-                                </Button>
-                            </Link>
+                                    {mode.replace('-', ' ')}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Only show Search, Clear, Undo if NOT in Dine In OR if a specific table is active */}
                         {(orderType !== 'dine-in' || activeTable) && (
-                            <div className="w-full grid grid-cols-[1fr_auto_auto] gap-2 sm:w-auto sm:flex sm:items-center">
-                                <div className="relative min-w-0">
+                            <div className="space-y-2">
+                                <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
                                     <input
                                         ref={searchInputRef}
@@ -3266,35 +4332,222 @@ function ManualOrderPage() {
                                         placeholder={isStoreBusinessType(businessType) ? 'Search item, SKU, or barcode...' : 'Search menu...'}
                                         value={searchQuery}
                                         onChange={e => setSearchQuery(e.target.value)}
-                                        className="w-full min-w-0 pl-9 pr-4 py-2 h-10 rounded-lg bg-input border border-border text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                        className="h-11 w-full rounded-2xl border border-border bg-input py-2 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
-                                <Button
-                                    onClick={handleClear}
-                                    disabled={cart.length === 0}
-                                    variant="outline"
-                                    className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-destructive/60 text-destructive hover:bg-destructive/10 font-bold transition-all shadow-sm"
-                                    title="Clear entire cart"
-                                >
-                                    <Trash2 size={16} />
-                                    <span className="hidden sm:inline">Clear</span>
-                                </Button>
-                                <Button
-                                    onClick={handleUndo}
-                                    disabled={itemHistory.length === 0}
-                                    variant="outline"
-                                    className="h-10 px-2 sm:px-4 gap-1 sm:gap-2 border-2 border-primary/60 text-foreground hover:bg-primary/10 font-bold transition-all shadow-sm"
-                                    title="Undo last item added"
-                                >
-                                    <RotateCcw size={16} />
-                                    <span className="hidden sm:inline">Undo</span>
-                                </Button>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button
+                                        onClick={handleClear}
+                                        disabled={cart.length === 0}
+                                        variant="outline"
+                                        className="h-11 gap-2 rounded-2xl border-2 border-destructive/40 px-3 text-sm font-semibold text-destructive hover:bg-destructive/10"
+                                    >
+                                        <Trash2 size={16} />
+                                        Clear
+                                    </Button>
+                                    <Button
+                                        onClick={handleUndo}
+                                        disabled={itemHistory.length === 0}
+                                        variant="outline"
+                                        className="h-11 gap-2 rounded-2xl border-2 border-primary/40 px-3 text-sm font-semibold text-foreground hover:bg-primary/10"
+                                    >
+                                        <RotateCcw size={16} />
+                                        Undo
+                                    </Button>
+                                </div>
                             </div>
                         )}
+
+                        <Link href={historyUrl} className="block">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-11 w-full rounded-2xl px-3 text-sm font-semibold"
+                            >
+                                View Bill History
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+            )}
+
+            {isMobileViewport && (
+                <button
+                    type="button"
+                    data-mobile-swipe-ignore="true"
+                    onClick={handleMobileMicFabClick}
+                    onPointerDown={handleMobileMicPressStart}
+                    onPointerUp={handleMobileMicPressEnd}
+                    onPointerCancel={handleMobileMicPressEnd}
+                    onPointerLeave={handleMobileMicPressEnd}
+                    disabled={isMobileMicBusy}
+                    className={cn(
+                        'fixed bottom-5 right-4 z-50 inline-flex h-16 w-16 items-center justify-center rounded-[24px] border shadow-2xl transition-all lg:hidden',
+                        isVoiceListening
+                            ? 'border-rose-700 bg-rose-600 text-white shadow-rose-950/35'
+                            : 'border-primary/30 bg-primary text-primary-foreground shadow-primary/25',
+                        isMobileMicBusy && 'opacity-70'
+                    )}
+                    style={{ touchAction: 'none' }}
+                    aria-label={isMobilePwaHoldToTalk ? 'Hold to talk' : 'Toggle voice billing'}
+                    title={isMobilePwaHoldToTalk ? 'Hold to talk' : 'Tap to start voice billing'}
+                >
+                    {isVoiceListening ? <MicOff size={24} /> : <Mic size={24} />}
+                </button>
+            )}
+
+            <div
+                className="flex-1 min-h-0 overflow-hidden flex flex-col gap-3 lg:flex-row lg:gap-0"
+                onTouchStart={handleMobileSwipeStart}
+                onTouchEnd={handleMobileSwipeEnd}
+            >
+                {/* Left Side: Menu Selection (Flexible) */}
+                <div className="order-1 flex-1 min-w-0 min-h-0 bg-card flex flex-col overflow-hidden">
+                    <div className="shrink-0 border-b border-border px-3 pb-2 pt-2 lg:pb-3">
+                        <div className="sticky top-0 z-20 -mx-3 mb-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur lg:hidden">
+                            <div className="flex items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-[15px] font-black tracking-tight">
+                                        {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
+                                    </p>
+                                    <p className="truncate text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                                        {mobileVoiceStatusLabel} • {String(orderType || 'delivery').replace(/-/g, ' ')}
+                                        {activeTable?.name ? ` • ${activeTable.name}` : ''}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={toggleMobileToolsPanel}
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-border bg-background text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-primary/5"
+                                >
+                                    <SlidersHorizontal size={17} />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={openMobileCartDrawer}
+                                    className="inline-flex min-w-[64px] shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-border bg-background px-3 py-2 text-sm font-semibold shadow-sm transition-all hover:border-primary/40 hover:bg-primary/5"
+                                >
+                                    <MenuIcon size={18} />
+                                    <span>{mobileCartItemCount}</span>
+                                </button>
+                            </div>
+                            {voiceRecognitionError ? (
+                                <p className="mt-2 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[10px] font-medium text-destructive">
+                                    {voiceRecognitionError}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h1 className="hidden text-lg font-bold tracking-tight lg:block">
+                                        {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
+                                    </h1>
+                                    <div className="hidden lg:block">
+                                        <OfflineDesktopStatus />
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 hidden flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:flex">
+                                    <div className="flex w-full items-center overflow-x-auto rounded-lg bg-muted p-1 sm:w-auto">
+                                        {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (
+                                            <button
+                                                key={mode}
+                                                onClick={() => {
+                                                    setOrderType(mode);
+                                                    if (mode !== 'dine-in') setActiveTable(null);
+                                                }}
+                                                className={cn(
+                                                    "whitespace-nowrap px-3 py-1.5 text-sm font-semibold rounded-md capitalize transition-colors",
+                                                    orderType === mode ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10"
+                                                )}
+                                            >
+                                                {mode.replace('-', ' ')}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <Link href={historyUrl} className="w-full sm:w-auto">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-9 w-full px-3 text-xs font-semibold sm:w-auto"
+                                        >
+                                            View Bill History
+                                        </Button>
+                                    </Link>
+                                </div>
+                            </div>
+
+                            <div className="hidden w-full flex-col gap-2 xl:max-w-[560px] lg:flex">
+                                <VoiceBillingPanel
+                                    className="w-full"
+                                    supported={isVoiceRecognitionSupported}
+                                    listening={isVoiceListening}
+                                    processing={isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing}
+                                    aiResolving={isVoiceAiResolving}
+                                    lastTranscript={voiceLastTranscript}
+                                    lastAction={voiceLastAction}
+                                    error={voiceRecognitionError}
+                                    permissionState={voicePermissionState}
+                                    rawErrorCode={voiceRecognitionErrorCode}
+                                    microphoneProbe={voiceMicrophoneProbe}
+                                    currentModeLabel={orderType}
+                                    activeTableLabel={activeTable?.name || ''}
+                                    logEntries={voiceCommandLog}
+                                    pendingItems={voicePendingItems}
+                                    onToggleListening={toggleVoiceListening}
+                                    onStopListening={stopVoiceListening}
+                                    onRunMicrophoneProbe={runVoiceMicrophoneProbe}
+                                    onUsePendingCandidate={handleVoicePendingCandidate}
+                                    onDismissPendingItem={dismissVoicePendingItem}
+                                />
+
+                                {(orderType !== 'dine-in' || activeTable) && (
+                                    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
+                                        <div className="relative min-w-0 col-span-2 sm:col-span-1">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                                            <input
+                                                ref={searchInputRef}
+                                                type="text"
+                                                placeholder={isStoreBusinessType(businessType) ? 'Search item, SKU, or barcode...' : 'Search menu...'}
+                                                value={searchQuery}
+                                                onChange={e => setSearchQuery(e.target.value)}
+                                                className="h-10 w-full min-w-0 rounded-lg border border-border bg-input py-2 pl-9 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-primary/20"
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={handleClear}
+                                            disabled={cart.length === 0}
+                                            variant="outline"
+                                            className="h-10 w-full gap-1 border-2 border-destructive/60 px-2 font-bold text-destructive shadow-sm transition-all hover:bg-destructive/10 sm:w-auto sm:px-4 sm:gap-2"
+                                            title="Clear entire cart"
+                                        >
+                                            <Trash2 size={16} />
+                                            <span className="hidden sm:inline">Clear</span>
+                                        </Button>
+                                        <Button
+                                            onClick={handleUndo}
+                                            disabled={itemHistory.length === 0}
+                                            variant="outline"
+                                            className="h-10 w-full gap-1 border-2 border-primary/60 px-2 font-bold text-foreground shadow-sm transition-all hover:bg-primary/10 sm:w-auto sm:px-4 sm:gap-2"
+                                            title="Undo last item added"
+                                        >
+                                            <RotateCcw size={16} />
+                                            <span className="hidden sm:inline">Undo</span>
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {orderType === 'dine-in' && !activeTable ? (
-                        <div className="flex-1 overflow-y-auto p-4 bg-muted/20 border-t border-border mt-4 rounded-xl">
+                        <div className="mt-4 flex-1 overflow-y-auto rounded-xl border-t border-border bg-muted/20 p-4">
                             {isLoadingTables ? (
                                 <div className="flex justify-center items-center h-full">
                                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -3513,10 +4766,30 @@ function ManualOrderPage() {
                                 <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
                             </div>
 
+                            <div className="absolute left-0 right-0 top-0 z-10 border-b border-border bg-card/95 px-3 py-2 backdrop-blur md:hidden">
+                                <div className="flex gap-2 overflow-x-auto pb-1" data-mobile-swipe-ignore="true">
+                                    {visibleMenuEntries.map(([categoryId]) => (
+                                        <button
+                                            key={`mobile-cat-${categoryId}`}
+                                            type="button"
+                                            onClick={() => scrollToCategory(categoryId)}
+                                            className={cn(
+                                                'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition-colors',
+                                                activeCategory === categoryId
+                                                    ? 'border-primary bg-primary text-primary-foreground'
+                                                    : 'border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                                            )}
+                                        >
+                                            {formatCategoryLabel(categoryId)}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* ITEM LIST */}
                             <div
                                 ref={scrollContainerRef}
-                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain pl-5 pr-6 lg:pr-8 custom-scrollbar pt-2"
+                                className="flex-grow min-h-0 overflow-y-auto overscroll-contain px-3 pb-24 pt-16 custom-scrollbar md:pl-5 md:pr-6 md:pt-2 md:pb-4 lg:pr-8"
                             >
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
@@ -3748,9 +5021,42 @@ function ManualOrderPage() {
                 {/* Right Side: Live Bill Preview (Resizable) */}
                 <div
                     ref={billContainerRef}
-                    style={{ width: typeof window !== 'undefined' && window.innerWidth >= 1024 ? `${billSidebarWidth}px` : '100%' }}
-                    className="flex-shrink-0 flex flex-col gap-4 h-full lg:min-h-0 overflow-y-auto overscroll-contain pr-1"
+                    style={{ width: isMobileViewport ? undefined : `${billSidebarWidth}px` }}
+                    onTouchStart={handleMobileSwipeStart}
+                    onTouchEnd={handleMobileSwipeEnd}
+                    className={cn(
+                        'flex flex-shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain',
+                        isMobileViewport
+                            ? [
+                                'fixed inset-y-0 right-0 z-50 h-[100dvh] w-[min(92vw,420px)] max-w-full',
+                                'border-l border-border bg-background px-3 pb-3 pt-3 shadow-2xl shadow-slate-950/25',
+                                'transition-transform duration-300 ease-out',
+                                isMobileCartOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none',
+                            ]
+                            : 'order-2 h-full max-h-none min-h-0 overflow-y-auto px-0 pb-0 pr-1'
+                    )}
                 >
+                    {isMobileViewport && (
+                        <div className="sticky top-0 z-10 -mx-3 border-b border-border bg-background/95 px-3 pb-3 pt-1 backdrop-blur">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground">Current Order</p>
+                                    <p className="mt-1 truncate text-sm font-semibold text-foreground">
+                                        {mobileCartItemCount} item(s) • {formatCurrency(grandTotal)}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsMobileCartOpen(false)}
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-background text-foreground transition-colors hover:bg-muted"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <p className="mt-2 text-[11px] text-muted-foreground">Swipe right to go back to menu.</p>
+                        </div>
+                    )}
+
                     {/* Collapsible Customer Details */}
                     <div className="bg-card border border-border rounded-xl overflow-visible flex-shrink-0">
                         {/* Accordion Header — always visible, click to toggle */}
@@ -3809,7 +5115,7 @@ function ManualOrderPage() {
                                         </div>
                                     </div>
                                 )}
-                                <div className="grid grid-cols-2 gap-2">
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <div className="space-y-1">
                                         <Label className="flex items-center gap-1.5 text-xs"><User size={13} /> Name</Label>
                                         <input
@@ -3921,7 +5227,7 @@ function ManualOrderPage() {
                                     </div>
                                     {orderType === 'delivery' && (
                                         <>
-                                            <div className="space-y-1 col-span-2">
+                                            <div className="space-y-1 sm:col-span-2">
                                                 <Label className="flex items-center gap-1.5 text-xs"><MapPin size={13} /> Address</Label>
                                                 <div className="relative" ref={addressSuggestionBoxRef}>
                                                     <textarea
@@ -3990,29 +5296,29 @@ function ManualOrderPage() {
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="space-y-1 col-span-1">
+                                            <div className="space-y-1">
                                                 <Label className="text-xs">Delivery Charge (Optional)</Label>
                                                 <input type="number" min="0" step="1" value={deliveryChargeInput} onChange={(e) => setDeliveryChargeInput(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="0" />
                                             </div>
-                                            <div className="space-y-1 col-span-1">
+                                            <div className="space-y-1">
                                                 <Label className="text-xs">Notes</Label>
                                                 <input value={customerDetails.notes || ''} onChange={e => setCustomerDetails({ ...customerDetails, notes: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="Extra spicy, no onion..." />
                                             </div>
                                         </>
                                     )}
                                     {orderType !== 'delivery' && (
-                                        <div className="space-y-1 col-span-2">
+                                        <div className="space-y-1 sm:col-span-2">
                                             <Label className="text-xs">Notes</Label>
                                             <input value={customerDetails.notes || ''} onChange={e => setCustomerDetails({ ...customerDetails, notes: e.target.value })} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="Special note for kitchen / packing..." />
                                         </div>
                                     )}
                                     {isStoreBusinessType(businessType) && (
                                         <>
-                                            <div className="space-y-1 col-span-1">
+                                            <div className="space-y-1">
                                                 <Label className="text-xs">Discount</Label>
                                                 <input type="number" min="0" step="1" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} onWheel={(e) => e.currentTarget.blur()} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border" placeholder="0" />
                                             </div>
-                                            <div className="space-y-1 col-span-1">
+                                            <div className="space-y-1">
                                                 <Label className="text-xs">Payment Mode</Label>
                                                 <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md bg-input border-border">
                                                     <option value="cash">Cash</option>
@@ -4041,9 +5347,9 @@ function ManualOrderPage() {
                     </div>
 
                     {/* Current Order Panel */}
-                    <div className="bg-card border border-border rounded-xl flex flex-col flex-grow min-h-0 overflow-hidden">
+                    <div className="bg-card border border-border rounded-xl flex min-h-[240px] flex-grow flex-col overflow-hidden lg:min-h-0">
                         {/* Panel Header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 flex-shrink-0">
                             <h2 className="font-bold text-base">Current Order</h2>
                             <button
                                 onClick={handleClear}
@@ -4063,15 +5369,15 @@ function ManualOrderPage() {
                                 </div>
                             ) : (
                                 cart.map((item) => (
-                                    <div key={item.cartItemId} className="flex items-center justify-between gap-2 p-2.5 bg-muted/20 border border-border/50 rounded-xl">
+                                    <div key={item.cartItemId} className="flex flex-col gap-3 rounded-xl border border-border/50 bg-muted/20 p-2.5 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="flex-1 min-w-0">
                                             <p className="font-semibold text-sm leading-tight truncate">{item.name}</p>
                                             <p className="text-xs text-muted-foreground">
                                                 {item.portion ? `${item.portion.name} · ` : ''}{formatCurrency(item.price)} each
                                             </p>
                                         </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <span className="text-xs font-semibold text-right w-14">{formatCurrency(item.totalPrice)}</span>
+                                        <div className="flex w-full flex-shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end">
+                                            <span className="text-xs font-semibold text-right sm:w-14">{formatCurrency(item.totalPrice)}</span>
                                             <div className="flex items-center border border-border rounded-lg bg-background overflow-hidden h-7">
                                                 <button
                                                     onClick={() => updateQuantity(item.cartItemId, -1)}
@@ -4166,7 +5472,7 @@ function ManualOrderPage() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="p-3 border-t border-border flex gap-2 flex-shrink-0">
+                        <div className="sticky bottom-0 border-t border-border bg-card/95 p-3 backdrop-blur flex gap-2 flex-shrink-0">
                             {orderType === 'dine-in' ? (
                                 <Button
                                     onClick={handleOccupyTable}

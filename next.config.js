@@ -94,7 +94,7 @@ const nextConfig = {
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
       { key: 'Origin-Agent-Cluster', value: '?1' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' },
+      { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=(self)' },
       // Required for Firebase/Google popup auth flows to avoid window.close/window.closed COOP warnings.
       { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
     ];
