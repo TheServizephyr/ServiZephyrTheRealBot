@@ -617,8 +617,10 @@ const ActionButton = ({
     const showMarkPaidAction = showPaymentRequestAction && !!order.paymentRequestSentAt;
 
     if (isDineIn) {
-        const currentIndex = ['pending', 'confirmed', 'preparing', 'ready'].indexOf(status);
-        const prevStatus = currentIndex > 0 ? ['pending', 'confirmed', 'preparing', 'ready'][currentIndex - 1] : null;
+        const dineInCurrentIndex = ['pending', 'confirmed', 'preparing', 'ready'].indexOf(status);
+        const previousDineInStatus = dineInCurrentIndex > 0
+            ? ['pending', 'confirmed', 'preparing', 'ready'][dineInCurrentIndex - 1]
+            : null;
 
         const dineInUrl = employeeOfOwnerId
             ? `/owner-dashboard/dine-in?employee_of=${employeeOfOwnerId}`
@@ -633,13 +635,13 @@ const ActionButton = ({
                         <ConciergeBell size={16} className="mr-2" /> View on Dine-In Board
                     </Button>
                 </Link>
-                {prevStatus && (
+                {previousDineInStatus && (
                     <Button
-                        onClick={() => onRevert(prevStatus)}
+                        onClick={() => onRevert(previousDineInStatus)}
                         variant="ghost"
                         size="icon"
                         className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        title={`Revert to ${prevStatus}`}
+                        title={`Revert to ${previousDineInStatus}`}
                     >
                         <Undo2 size={16} />
                     </Button>
@@ -662,9 +664,9 @@ const ActionButton = ({
     }
 
     const nextStatus = statusFlow[currentIndex + 1];
-    let prevStatus = null;
+    let previousStatusForFlow = null;
     if (currentIndex > 0) {
-        prevStatus = statusFlow[currentIndex - 1];
+        previousStatusForFlow = statusFlow[currentIndex - 1];
     }
 
 
@@ -785,13 +787,13 @@ const ActionButton = ({
                     <Printer size={14} className="mr-2" /> Print Bill
                 </Button>
 
-                {prevStatus && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS)) && (
+                {previousStatusForFlow && (impersonatedOwnerId || hasPermission(userRole, PERMISSIONS.UPDATE_ORDER_STATUS)) && (
                     <Button
-                        onClick={() => onRevert(prevStatus)}
+                        onClick={() => onRevert(previousStatusForFlow)}
                         variant="ghost"
                         size="sm"
                         className="text-muted-foreground hover:text-foreground h-8 px-2"
-                        title={`Revert to ${prevStatus}`}
+                        title={`Revert to ${previousStatusForFlow}`}
                     >
                         <Undo2 size={14} className="mr-2" /> Revert
                     </Button>

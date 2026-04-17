@@ -3079,16 +3079,6 @@ function ManualOrderPage() {
         }
     }, []);
 
-    const scheduleHybridVoiceQueueDrain = useCallback((delayMs = 1450) => {
-        if (voiceAudioFallbackTimerRef.current) {
-            clearTimeout(voiceAudioFallbackTimerRef.current);
-        }
-        voiceAudioFallbackTimerRef.current = window.setTimeout(() => {
-            voiceAudioFallbackTimerRef.current = null;
-            processHybridVoiceQueues();
-        }, delayMs);
-    }, [processHybridVoiceQueues]);
-
     const transcribeVoiceSegment = useCallback(async (audioBlob, metadata = {}) => {
         if (!(audioBlob instanceof Blob)) return;
 
@@ -3370,6 +3360,16 @@ function ManualOrderPage() {
         toast,
         transcribeVoiceSegment,
     ]);
+
+    const scheduleHybridVoiceQueueDrain = useCallback((delayMs = 1450) => {
+        if (voiceAudioFallbackTimerRef.current) {
+            clearTimeout(voiceAudioFallbackTimerRef.current);
+        }
+        voiceAudioFallbackTimerRef.current = window.setTimeout(() => {
+            voiceAudioFallbackTimerRef.current = null;
+            processHybridVoiceQueues();
+        }, delayMs);
+    }, [processHybridVoiceQueues]);
 
     const handleCapturedVoiceSegment = useCallback((audioBlob, metadata = {}) => {
         if (!(audioBlob instanceof Blob)) return;
