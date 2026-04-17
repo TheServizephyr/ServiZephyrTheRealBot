@@ -87,12 +87,15 @@ function computeRms(dataArray) {
 
 export function useVoiceCommandCapture({
     onSegmentReady,
+    onDebugEvent,
     silenceDurationMs = 850,
     minSpeechDurationMs = 320,
     maxSegmentDurationMs = 7000,
     baseSpeechThreshold = 0.028,
+    keepDeviceWarmMs = 0,
 } = {}) {
     const onSegmentReadyRef = useRef(onSegmentReady);
+    const onDebugEventRef = useRef(onDebugEvent);
     const streamRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const audioContextRef = useRef(null);
@@ -111,6 +114,7 @@ export function useVoiceCommandCapture({
     const segmentStartedAtRef = useRef(0);
     const pendingUploadsRef = useRef(0);
     const uploadChainRef = useRef(Promise.resolve());
+    const warmCleanupTimeoutRef = useRef(null);
 
     const [isListening, setIsListening] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -126,6 +130,10 @@ export function useVoiceCommandCapture({
     useEffect(() => {
         onSegmentReadyRef.current = onSegmentReady;
     }, [onSegmentReady]);
+
+    useEffect(() => {
+        onDebugEventRef.current = onDebugEvent;
+    }, [onDebugEvent]);
 
     useEffect(() => {
         let cancelled = false;
@@ -166,6 +174,11 @@ export function useVoiceCommandCapture({
     }, []);
 
     const cleanupMediaGraph = useCallback(async () => {
+        if (warmCleanupTimeoutRef.current) {
+            clearTimeout(warmCleanupTimeoutRef.current);
+            warmCleanupTimeoutRef.current = null;
+        }
+
         if (animationFrameRef.current) {
             cancelAnimationFrame(animationFrameRef.current);
             animationFrameRef.current = null;
@@ -204,6 +217,22 @@ export function useVoiceCommandCapture({
         segmentStartedAtRef.current = 0;
     }, []);
 
+    const scheduleWarmCleanup = useCallback(() => {
+        if (!(Number(keepDeviceWarmMs) > 0)) {
+            void cleanupMediaGraph();
+            return;
+        }
+
+        if (warmCleanupTimeoutRef.current) {
+            clearTimeout(warmCleanupTimeoutRef.current);
+        }
+
+        warmCleanupTimeoutRef.current = setTimeout(() => {
+            warmCleanupTimeoutRef.current = null;
+            void cleanupMediaGraph();
+        }, Number(keepDeviceWarmMs));
+    }, [cleanupMediaGraph, keepDeviceWarmMs]);
+
     const runMicrophoneProbe = useCallback(async () => {
         const result = await probeMicrophoneDeviceAccess();
         setMicrophoneProbe({
@@ -219,8 +248,37 @@ export function useVoiceCommandCapture({
         return result;
     }, []);
 
+    const emitDebugEvent = useCallback((type, detail = {}) => {
+        onDebugEventRef.current?.({
+            type,
+            at: Date.now(),
+            ...detail,
+        });
+    }, []);
+
     const enqueueUpload = useCallback((audioBlob) => {
-        if (!(audioBlob instanceof Blob) || audioBlob.size < 1024) return;
+        if (!(audioBlob instanceof Blob)) {
+            emitDebugEvent('segment-dropped', {
+                reason: 'missing-audio',
+                size: 0,
+                mimeType: '',
+            });
+            return;
+        }
+
+        if (audioBlob.size < 1024) {
+            emitDebugEvent('segment-dropped', {
+                reason: 'audio-too-small',
+                size: audioBlob.size,
+                mimeType: audioBlob.type || 'audio/webm',
+            });
+            return;
+        }
+
+        emitDebugEvent('segment-queued', {
+            size: audioBlob.size,
+            mimeType: audioBlob.type || 'audio/webm',
+        });
 
         pendingUploadsRef.current += 1;
         setIsTranscribing(true);
@@ -234,6 +292,9 @@ export function useVoiceCommandCapture({
                         size: audioBlob.size,
                     });
                 } catch (uploadError) {
+                    emitDebugEvent('segment-upload-error', {
+                        message: String(uploadError?.message || 'Voice segment transcribe nahi ho paaya.'),
+                    });
                     setLastErrorCode('transcribe-error');
                     setError(String(uploadError?.message || 'Voice segment transcribe nahi ho paaya.'));
                 } finally {
@@ -243,7 +304,7 @@ export function useVoiceCommandCapture({
                     }
                 }
             });
-    }, []);
+    }, [emitDebugEvent]);
 
     const beginRecorderSegment = useCallback(() => {
         if (!streamRef.current || !isListeningRef.current) return false;
@@ -274,6 +335,18 @@ export function useVoiceCommandCapture({
 
             if (blob && hadSpeech) {
                 enqueueUpload(blob);
+            } else if (!hadSpeech) {
+                emitDebugEvent('segment-dropped', {
+                    reason: 'no-speech-detected',
+                    size: Number(blob?.size || 0),
+                    mimeType: recorder.mimeType || mimeType || 'audio/webm',
+                });
+            } else if (!blob) {
+                emitDebugEvent('segment-dropped', {
+                    reason: 'empty-segment',
+                    size: 0,
+                    mimeType: recorder.mimeType || mimeType || 'audio/webm',
+                });
             }
 
             if (shouldContinue && streamRef.current) {
@@ -281,7 +354,7 @@ export function useVoiceCommandCapture({
                 return;
             }
 
-            void cleanupMediaGraph();
+            scheduleWarmCleanup();
         };
 
         recorder.onerror = (event) => {
@@ -295,7 +368,7 @@ export function useVoiceCommandCapture({
         mediaRecorderRef.current = recorder;
         recorder.start();
         return true;
-    }, [cleanupMediaGraph, enqueueUpload, setListeningState]);
+    }, [cleanupMediaGraph, emitDebugEvent, enqueueUpload, scheduleWarmCleanup, setListeningState]);
 
     const finalizeCurrentSegment = useCallback((shouldContinue) => {
         continueListeningRef.current = shouldContinue;
@@ -339,6 +412,12 @@ export function useVoiceCommandCapture({
         const isSpeechFrame = rms >= speechThresholdRef.current;
 
         if (isSpeechFrame) {
+            if (!hasSpeechRef.current) {
+                emitDebugEvent('speech-detected', {
+                    rms,
+                    threshold: speechThresholdRef.current,
+                });
+            }
             hasSpeechRef.current = true;
             lastVoiceAtRef.current = now;
         }
@@ -364,7 +443,7 @@ export function useVoiceCommandCapture({
         }
 
         animationFrameRef.current = requestAnimationFrame(monitorSpeech);
-    }, [baseSpeechThreshold, finalizeCurrentSegment, maxSegmentDurationMs, minSpeechDurationMs, silenceDurationMs]);
+    }, [baseSpeechThreshold, emitDebugEvent, finalizeCurrentSegment, maxSegmentDurationMs, minSpeechDurationMs, silenceDurationMs]);
 
     const startListening = useCallback(async () => {
         if (!isSupported) {
@@ -381,6 +460,35 @@ export function useVoiceCommandCapture({
         setLastErrorCode('');
 
         try {
+            if (warmCleanupTimeoutRef.current) {
+                clearTimeout(warmCleanupTimeoutRef.current);
+                warmCleanupTimeoutRef.current = null;
+            }
+
+            if (streamRef.current && audioContextRef.current && analyserRef.current && sourceRef.current) {
+                try {
+                    if (audioContextRef.current.state === 'suspended') {
+                        await audioContextRef.current.resume();
+                    }
+                } catch {
+                    // ignore resume errors and continue with existing graph
+                }
+
+                noiseFloorRef.current = 0.008;
+                speechThresholdRef.current = baseSpeechThreshold;
+                calibrationEndsAtRef.current = Date.now() + 900;
+                continueListeningRef.current = true;
+                setPermissionState('granted');
+                setListeningState(true);
+                emitDebugEvent('stream-reused', {
+                    keepWarmMs: Number(keepDeviceWarmMs || 0),
+                });
+
+                beginRecorderSegment();
+                animationFrameRef.current = requestAnimationFrame(monitorSpeech);
+                return true;
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -414,18 +522,25 @@ export function useVoiceCommandCapture({
             continueListeningRef.current = true;
             setPermissionState('granted');
             setListeningState(true);
+            emitDebugEvent('stream-opened', {
+                keepWarmMs: Number(keepDeviceWarmMs || 0),
+            });
 
             beginRecorderSegment();
             animationFrameRef.current = requestAnimationFrame(monitorSpeech);
             return true;
         } catch (captureError) {
+            emitDebugEvent('capture-error', {
+                message: getCaptureErrorMessage(captureError),
+                errorName: String(captureError?.name || 'capture-error'),
+            });
             setPermissionState('denied');
             setLastErrorCode(String(captureError?.name || 'capture-error').toLowerCase());
             setError(getCaptureErrorMessage(captureError));
             setListeningState(false);
             return false;
         }
-    }, [baseSpeechThreshold, beginRecorderSegment, isSupported, monitorSpeech, setListeningState]);
+    }, [baseSpeechThreshold, beginRecorderSegment, emitDebugEvent, isSupported, keepDeviceWarmMs, monitorSpeech, setListeningState]);
 
     const stopListening = useCallback(() => {
         continueListeningRef.current = false;

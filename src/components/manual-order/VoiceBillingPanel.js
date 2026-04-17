@@ -21,15 +21,20 @@ export default function VoiceBillingPanel(props) {
         listening = false,
         processing = false,
         aiResolving = false,
+        lastTranscript = '',
+        lastAction = '',
+        diagnostics = null,
         error = '',
         permissionState = 'unknown',
         rawErrorCode = '',
         microphoneProbe = null,
         currentModeLabel = 'delivery',
         activeTableLabel = '',
+        logEntries = [],
         pendingItems = [],
         onToggleListening,
         onRunMicrophoneProbe,
+        onOpenDebug,
         onUsePendingCandidate,
         onDismissPendingItem,
         className = '',
@@ -97,6 +102,16 @@ export default function VoiceBillingPanel(props) {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        {onOpenDebug ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={onOpenDebug}
+                                className="h-9 px-3 text-xs font-semibold"
+                            >
+                                Voice Debug
+                            </Button>
+                        ) : null}
                         {error && supported ? (
                             <Button
                                 type="button"
@@ -128,6 +143,27 @@ export default function VoiceBillingPanel(props) {
                     </div>
                 </div>
 
+                {(lastTranscript || lastAction || diagnostics?.note || logEntries?.length) ? (
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        <div className="rounded-xl border border-border bg-background/80 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                Last Heard
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-xs font-medium text-foreground">
+                                {lastTranscript || diagnostics?.transcript || 'Waiting for transcript...'}
+                            </p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-background/80 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                Last Action
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-xs font-medium text-foreground">
+                                {lastAction || diagnostics?.note || 'No cart action yet.'}
+                            </p>
+                        </div>
+                    </div>
+                ) : null}
+
                 {error ? (
                     <div className="mt-2 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2">
                         <div className="flex items-start gap-2">
@@ -156,7 +192,7 @@ export default function VoiceBillingPanel(props) {
                     <DialogHeader className="border-b border-border px-5 pb-3 pt-5">
                         <DialogTitle>Confirm Voice Match</DialogTitle>
                         <DialogDescription>
-                            Sirf unclear items yahan dikh rahe hain. Sahi option choose karte hi item current cart me add ho jayega.
+                            Sirf unclear items yahan dikh rahe hain. Sahi option choose karte hi current bill update ho jayega.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -166,7 +202,15 @@ export default function VoiceBillingPanel(props) {
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <p className="text-sm font-semibold text-foreground">
-                                            &quot;{pendingItem.spokenText}&quot; verify karo
+                                            {pendingItem.reason === 'portion-required'
+                                                ? `"${pendingItem.spokenText}" ke liye portion choose karo`
+                                                : pendingItem.reason === 'family-ambiguous'
+                                                    ? `"${pendingItem.spokenText}" naam se multiple items mil rahe hain, sahi wala choose karo`
+                                                : pendingItem.commandAction === 'clear-item'
+                                                    ? `"${pendingItem.spokenText}" ko clear karne se pehle verify karo`
+                                                    : pendingItem.commandAction === 'subtract'
+                                                        ? `"${pendingItem.spokenText}" ko minus karne se pehle verify karo`
+                                                        : `"${pendingItem.spokenText}" verify karo`}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             Qty: {pendingItem.quantity}

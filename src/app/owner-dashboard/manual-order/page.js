@@ -57,6 +57,25 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 const createBillDraftId = () => `cb_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 const CALL_SUGGESTION_TTL_MS = 2 * 60 * 1000;
 const formatCategoryLabel = (categoryId = '') => String(categoryId).replace(/-/g, ' ').trim();
+const INITIAL_VOICE_DEBUG_SNAPSHOT = {
+    phase: 'idle',
+    source: '',
+    provider: '',
+    transcript: '',
+    confidence: null,
+    fallbackUsed: false,
+    audioMime: '',
+    audioSize: 0,
+    resolvedCount: 0,
+    pendingCount: 0,
+    unresolvedCount: 0,
+    requestedTableReference: '',
+    matchedTableName: '',
+    desiredMode: '',
+    note: '',
+    error: '',
+    updatedAt: 0,
+};
 const CUSTOMER_SUGGESTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const normalizeSuggestionPhone = (value = '') => String(value || '').replace(/\D/g, '').slice(-10);
 const normalizeAddressText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
@@ -325,6 +344,9 @@ function ManualOrderPage() {
     const [voicePendingItems, setVoicePendingItems] = useState([]);
     const [voiceLastTranscript, setVoiceLastTranscript] = useState('');
     const [voiceLastAction, setVoiceLastAction] = useState('');
+    const [voiceDebugEvents, setVoiceDebugEvents] = useState([]);
+    const [voiceDebugSnapshot, setVoiceDebugSnapshot] = useState(INITIAL_VOICE_DEBUG_SNAPSHOT);
+    const [isVoiceDebugDialogOpen, setIsVoiceDebugDialogOpen] = useState(false);
     const [isVoiceCommandProcessing, setIsVoiceCommandProcessing] = useState(false);
     const [isVoiceAiResolving, setIsVoiceAiResolving] = useState(false);
     const [isVoiceFallbackTranscribing, setIsVoiceFallbackTranscribing] = useState(false);
@@ -1991,6 +2013,31 @@ function ManualOrderPage() {
         resetCurrentBill();
     }, [resetCurrentBill]);
 
+    const updateVoiceDebugSnapshot = useCallback((patch = {}) => {
+        setVoiceDebugSnapshot((prev) => ({
+            ...prev,
+            ...patch,
+            updatedAt: Date.now(),
+        }));
+    }, []);
+
+    const appendVoiceDebugEvent = useCallback((title, detail = '', level = 'info') => {
+        const normalizedTitle = String(title || '').trim();
+        const normalizedDetail = String(detail || '').trim();
+        if (!normalizedTitle && !normalizedDetail) return;
+
+        setVoiceDebugEvents((prev) => ([
+            {
+                id: `voice-debug-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                title: normalizedTitle || 'Voice event',
+                detail: normalizedDetail,
+                level,
+                createdAt: Date.now(),
+            },
+            ...prev,
+        ].slice(0, 20)));
+    }, []);
+
     const addVoiceLogEntry = useCallback((summary, transcript = '') => {
         const normalizedSummary = String(summary || '').trim();
         if (!normalizedSummary) return;
@@ -2006,7 +2053,108 @@ function ManualOrderPage() {
         if (transcript) {
             setVoiceLastTranscript(String(transcript).trim());
         }
+        appendVoiceDebugEvent('Voice result', normalizedSummary, 'info');
+    }, [appendVoiceDebugEvent]);
+
+    const clearVoiceDebugData = useCallback(() => {
+        setVoiceDebugEvents([]);
+        setVoiceDebugSnapshot(INITIAL_VOICE_DEBUG_SNAPSHOT);
     }, []);
+
+    const handleVoiceCaptureDebugEvent = useCallback((event = {}) => {
+        const type = String(event?.type || '').trim();
+        if (!type) return;
+
+        if (type === 'speech-detected') {
+            updateVoiceDebugSnapshot({
+                phase: 'hearing',
+                note: `Speech detected above threshold ${Number(event?.threshold || 0).toFixed(3)}.`,
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                'Speech detected',
+                `rms ${Number(event?.rms || 0).toFixed(3)} • threshold ${Number(event?.threshold || 0).toFixed(3)}`,
+                'info'
+            );
+            return;
+        }
+
+        if (type === 'segment-queued') {
+            updateVoiceDebugSnapshot({
+                phase: 'segment-ready',
+                source: 'recorded-audio',
+                audioMime: String(event?.mimeType || '').trim(),
+                audioSize: Number(event?.size || 0),
+                note: 'Audio segment queued for transcription.',
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                'Segment queued',
+                `${String(event?.mimeType || 'audio/webm')} • ${Math.round(Number(event?.size || 0) / 1024)} KB`,
+                'info'
+            );
+            return;
+        }
+
+        if (type === 'segment-dropped') {
+            const reason = String(event?.reason || 'segment-dropped').trim();
+            const reasonLabel = ({
+                'no-speech-detected': 'Recorder ne speech threshold cross nahi ki.',
+                'audio-too-small': 'Audio segment bahut chhota tha.',
+                'empty-segment': 'Recorder ne empty segment return kiya.',
+                'missing-audio': 'Recorder se audio blob hi nahi mila.',
+            })[reason] || reason;
+
+            updateVoiceDebugSnapshot({
+                phase: 'segment-dropped',
+                source: 'recorded-audio',
+                audioMime: String(event?.mimeType || '').trim(),
+                audioSize: Number(event?.size || 0),
+                note: reasonLabel,
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                'Segment dropped',
+                `${reasonLabel}${Number(event?.size || 0) ? ` • ${Math.round(Number(event?.size || 0) / 1024)} KB` : ''}`,
+                'warning'
+            );
+            return;
+        }
+
+        if (type === 'stream-opened' || type === 'stream-reused') {
+            updateVoiceDebugSnapshot({
+                phase: 'listening',
+                source: 'recorded-audio',
+                note: type === 'stream-reused'
+                    ? 'Warm mic stream reused for faster capture.'
+                    : 'Mic stream opened successfully.',
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                type === 'stream-reused' ? 'Mic stream reused' : 'Mic stream opened',
+                Number(event?.keepWarmMs || 0) > 0
+                    ? `Warm reuse ${Math.round(Number(event.keepWarmMs) / 1000)} sec`
+                    : 'Fresh stream',
+                'info'
+            );
+            return;
+        }
+
+        if (type === 'capture-error' || type === 'segment-upload-error') {
+            const message = String(event?.message || 'Voice capture failed.').trim();
+            updateVoiceDebugSnapshot({
+                phase: 'error',
+                source: 'recorded-audio',
+                error: message,
+                note: message,
+            });
+            appendVoiceDebugEvent(
+                type === 'capture-error' ? 'Capture error' : 'Upload error',
+                message,
+                'error'
+            );
+        }
+    }, [appendVoiceDebugEvent, updateVoiceDebugSnapshot]);
 
     const resolveVoiceSaleOption = useCallback((entry, explicitPortionName = '', requestedPortion = '') => {
         const options = Array.isArray(entry?.saleOptions) ? entry.saleOptions : [];
@@ -2056,9 +2204,51 @@ function ManualOrderPage() {
             item: entry.item,
             quantity: Math.max(1, parseInt(selection?.quantity, 10) || 1),
             requestedPortion: selection?.requestedPortion || '',
+            commandAction: selection?.commandAction || 'add',
+            spokenText: selection?.spokenText || '',
             selectedOption,
         };
     }, [resolveVoiceSaleOption, voiceMenuIndex]);
+
+    const buildVoiceSelectionLabel = useCallback((selection = {}) => {
+        const itemName = String(selection?.item?.name || selection?.entry?.name || 'Item').trim() || 'Item';
+        const explicitPortion = String(selection?.requestedPortion || '').trim();
+        const selectedPortion = String(selection?.selectedOption?.label || selection?.selectedOption?.name || '').trim();
+        const shouldShowSelectedPortion = Boolean(
+            explicitPortion ||
+            (
+                (selection?.commandAction || 'add') === 'add' &&
+                Array.isArray(selection?.item?.portions) &&
+                selection.item.portions.length > 1
+            )
+        );
+        const portionLabel = explicitPortion || (shouldShowSelectedPortion ? selectedPortion : '');
+        return portionLabel ? `${itemName} (${portionLabel})` : itemName;
+    }, []);
+
+    const doesCartItemMatchVoiceSelection = useCallback((cartItem = {}, selection = {}, requireSpecificPortion = false) => {
+        const targetItemId = String(selection?.item?.id || selection?.entry?.itemId || '').trim();
+        if (!targetItemId || String(cartItem?.id || '').trim() !== targetItemId) {
+            return false;
+        }
+
+        if (!requireSpecificPortion) return true;
+
+        const cartPortion = normalizeVoiceText(cartItem?.portion?.label || cartItem?.portion?.name || 'regular');
+        const targetPortion = normalizeVoiceText(
+            selection?.selectedOption?.label ||
+            selection?.selectedOption?.name ||
+            selection?.requestedPortion ||
+            ''
+        );
+        return Boolean(targetPortion) && cartPortion === targetPortion;
+    }, []);
+
+    const rebuildItemHistoryFromCart = useCallback((items = []) => (
+        (Array.isArray(items) ? items : []).flatMap((item) => (
+            Array.from({ length: Math.max(0, Number(item?.quantity || 0)) }, () => item.cartItemId)
+        ))
+    ), []);
 
     const appendResolvedVoiceItemsToCart = useCallback((resolvedSelections = []) => {
         if (!Array.isArray(resolvedSelections) || resolvedSelections.length === 0) {
@@ -2148,6 +2338,125 @@ function ManualOrderPage() {
         return { addedLabels, blockedLabels };
     }, [activeTable?.id, enforceCartStockLimit, orderType]);
 
+    const subtractResolvedVoiceItemsFromCart = useCallback((resolvedSelections = []) => {
+        if (!Array.isArray(resolvedSelections) || resolvedSelections.length === 0) {
+            return { removedLabels: [], missingLabels: [] };
+        }
+
+        const nextCart = [...cartRef.current];
+        const removedLabels = [];
+        const missingLabels = [];
+        const touchedCartItemIds = new Set();
+
+        resolvedSelections.forEach((selection) => {
+            if (!selection?.item) return;
+
+            let remainingToRemove = Math.max(1, parseInt(selection.quantity, 10) || 1);
+            const requireSpecificPortion = Boolean(selection?.requestedPortion);
+            let removedCount = 0;
+
+            for (let index = nextCart.length - 1; index >= 0 && remainingToRemove > 0; index -= 1) {
+                const cartItem = nextCart[index];
+                if (!doesCartItemMatchVoiceSelection(cartItem, selection, requireSpecificPortion)) continue;
+
+                const nextQuantity = Number(cartItem.quantity || 0) - remainingToRemove;
+                touchedCartItemIds.add(cartItem.cartItemId);
+
+                if (nextQuantity > 0) {
+                    removedCount += remainingToRemove;
+                    nextCart[index] = {
+                        ...cartItem,
+                        quantity: nextQuantity,
+                        totalPrice: cartItem.price * nextQuantity,
+                    };
+                    remainingToRemove = 0;
+                } else {
+                    removedCount += Number(cartItem.quantity || 0);
+                    remainingToRemove -= Number(cartItem.quantity || 0);
+                    nextCart.splice(index, 1);
+                }
+            }
+
+            if (removedCount > 0) {
+                removedLabels.push(`${removedCount} x ${buildVoiceSelectionLabel(selection)}`);
+            } else {
+                missingLabels.push(buildVoiceSelectionLabel(selection));
+            }
+        });
+
+        if (removedLabels.length > 0) {
+            cartRef.current = nextCart;
+            setCart(nextCart);
+            setItemHistory(rebuildItemHistoryFromCart(nextCart));
+            setQtyInputMap((prev) => {
+                const nextMap = { ...prev };
+                touchedCartItemIds.forEach((cartItemId) => {
+                    delete nextMap[cartItemId];
+                });
+                return nextMap;
+            });
+            voiceLastCartMutationRef.current = {
+                timestamp: Date.now(),
+                source: 'voice',
+                mode: orderType,
+                tableId: activeTable?.id || '',
+            };
+        }
+
+        return { removedLabels, missingLabels };
+    }, [activeTable?.id, buildVoiceSelectionLabel, doesCartItemMatchVoiceSelection, orderType, rebuildItemHistoryFromCart]);
+
+    const clearResolvedVoiceItemsFromCart = useCallback((resolvedSelections = []) => {
+        if (!Array.isArray(resolvedSelections) || resolvedSelections.length === 0) {
+            return { clearedLabels: [], missingLabels: [] };
+        }
+
+        const currentCart = [...cartRef.current];
+        const removedCartItemIds = new Set();
+        const clearedLabels = [];
+        const missingLabels = [];
+
+        resolvedSelections.forEach((selection) => {
+            if (!selection?.item) return;
+            const requireSpecificPortion = Boolean(selection?.requestedPortion);
+            const matchingItems = currentCart.filter((cartItem) => (
+                doesCartItemMatchVoiceSelection(cartItem, selection, requireSpecificPortion)
+            ));
+
+            if (matchingItems.length === 0) {
+                missingLabels.push(buildVoiceSelectionLabel(selection));
+                return;
+            }
+
+            matchingItems.forEach((cartItem) => {
+                removedCartItemIds.add(cartItem.cartItemId);
+            });
+            clearedLabels.push(buildVoiceSelectionLabel(selection));
+        });
+
+        if (removedCartItemIds.size > 0) {
+            const nextCart = currentCart.filter((cartItem) => !removedCartItemIds.has(cartItem.cartItemId));
+            cartRef.current = nextCart;
+            setCart(nextCart);
+            setItemHistory(rebuildItemHistoryFromCart(nextCart));
+            setQtyInputMap((prev) => {
+                const nextMap = { ...prev };
+                removedCartItemIds.forEach((cartItemId) => {
+                    delete nextMap[cartItemId];
+                });
+                return nextMap;
+            });
+            voiceLastCartMutationRef.current = {
+                timestamp: Date.now(),
+                source: 'voice',
+                mode: orderType,
+                tableId: activeTable?.id || '',
+            };
+        }
+
+        return { clearedLabels, missingLabels };
+    }, [activeTable?.id, buildVoiceSelectionLabel, doesCartItemMatchVoiceSelection, orderType, rebuildItemHistoryFromCart]);
+
     const activateTableContextFromVoice = useCallback((table) => {
         if (!table?.id) {
             return { ok: false, message: 'Table not found.' };
@@ -2199,6 +2508,12 @@ function ManualOrderPage() {
         const unresolvedLineIds = new Set(unresolvedLookup.keys());
 
         setIsVoiceAiResolving(true);
+        updateVoiceDebugSnapshot({
+            phase: 'ai-resolving',
+            note: `Trying OpenRouter AI resolver for ${unresolvedLineIds.size} unresolved items.`,
+            error: '',
+        });
+        appendVoiceDebugEvent('OpenRouter AI started', `${unresolvedLineIds.size} unresolved items sent to AI resolver.`, 'info');
         try {
             const currentUser = auth.currentUser;
             if (!currentUser) {
@@ -2245,6 +2560,8 @@ function ManualOrderPage() {
                             portionName: item.portionName,
                             quantity: unresolved?.quantity || 1,
                             requestedPortion: unresolved?.requestedPortion || '',
+                            commandAction: unresolved?.commandAction || parsedCommand?.cartAction || 'add',
+                            spokenText: unresolved?.spokenText || '',
                         });
                     })
                     .filter(Boolean)
@@ -2258,21 +2575,37 @@ function ManualOrderPage() {
                 if (lineId) stillUnresolved.add(lineId);
             });
 
+            appendVoiceDebugEvent(
+                'OpenRouter AI result',
+                resolvedSelections.length > 0
+                    ? `AI resolved ${resolvedSelections.length} item(s).`
+                    : 'AI could not confidently resolve the pending items.',
+                resolvedSelections.length > 0 ? 'info' : 'warning'
+            );
+
             return {
                 resolvedSelections,
                 unresolvedLineIds: stillUnresolved,
                 fallbackError: '',
             };
         } catch (error) {
+            appendVoiceDebugEvent('OpenRouter AI failed', error?.message || 'AI fallback is unavailable right now.', 'warning');
             return {
                 resolvedSelections: [],
                 unresolvedLineIds,
                 fallbackError: error?.message || 'AI fallback is unavailable right now.',
             };
         } finally {
+            if (resolverPayload?.unresolvedItems?.length) {
+                appendVoiceDebugEvent(
+                    'OpenRouter AI finished',
+                    'Resolver completed candidate ranking for pending items.',
+                    'info'
+                );
+            }
             setIsVoiceAiResolving(false);
         }
-    }, [activeTable?.id, buildResolvedVoiceSelection, buildScopedUrl, orderType]);
+    }, [activeTable?.id, appendVoiceDebugEvent, buildResolvedVoiceSelection, buildScopedUrl, orderType, updateVoiceDebugSnapshot]);
 
     const processVoiceCommandTranscript = useCallback(async (spokenTranscript) => {
         const transcript = String(spokenTranscript || '').trim();
@@ -2280,6 +2613,13 @@ function ManualOrderPage() {
 
         setVoiceLastTranscript(transcript);
         setIsVoiceCommandProcessing(true);
+        updateVoiceDebugSnapshot({
+            phase: 'parsing',
+            transcript,
+            note: 'Parsing transcript against menu index.',
+            error: '',
+        });
+        appendVoiceDebugEvent('Parsing transcript', transcript, 'info');
 
         try {
             let availableTables = manualTables;
@@ -2303,11 +2643,51 @@ function ManualOrderPage() {
                 }
             }
 
-        const targetMode = parsedCommand.desiredMode || orderType;
-        if (isStoreBusinessType(businessType) && targetMode === 'dine-in') {
-            const message = 'Dine-in mode is not available for this store outlet.';
-            addVoiceLogEntry(message, transcript);
-            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+            const resolvedCount = parsedCommand.items.filter((item) => item.status === 'resolved').length;
+            const pendingCount = parsedCommand.items.filter((item) => item.status === 'pending').length;
+            const unresolvedCount = parsedCommand.items.filter((item) => item.status === 'unresolved').length;
+            updateVoiceDebugSnapshot({
+                phase: 'parsed',
+                transcript,
+                resolvedCount,
+                pendingCount,
+                unresolvedCount,
+                requestedTableReference: parsedCommand.requestedTableReference || '',
+                matchedTableName: parsedCommand.matchedTableName || '',
+                desiredMode: parsedCommand.desiredMode || orderType,
+                note: `Parser found ${resolvedCount} resolved, ${pendingCount} pending, ${unresolvedCount} unmatched items.`,
+            });
+            appendVoiceDebugEvent(
+                'Parser result',
+                `resolved ${resolvedCount} • pending ${pendingCount} • unmatched ${unresolvedCount}${parsedCommand.matchedTableName ? ` • table ${parsedCommand.matchedTableName}` : ''}`,
+                unresolvedCount > 0 && resolvedCount === 0 && pendingCount === 0 ? 'warning' : 'info'
+            );
+
+            const cartAction = String(parsedCommand?.cartAction || 'add').trim() || 'add';
+            if (cartAction === 'clear-all') {
+                const message = cartRef.current.length > 0 ? 'Current bill cleared.' : 'Current bill already empty tha.';
+                if (cartRef.current.length > 0) {
+                    resetCurrentBill();
+                }
+                updateVoiceDebugSnapshot({
+                    phase: 'completed',
+                    transcript,
+                    resolvedCount: 0,
+                    pendingCount: 0,
+                    unresolvedCount: 0,
+                    note: message,
+                    error: '',
+                });
+                addVoiceLogEntry(message, transcript);
+                return;
+            }
+
+            const targetMode = parsedCommand.desiredMode || orderType;
+            if (isStoreBusinessType(businessType) && targetMode === 'dine-in') {
+                const message = 'Dine-in mode is not available for this store outlet.';
+                updateVoiceDebugSnapshot({ phase: 'blocked', note: message, error: message });
+                addVoiceLogEntry(message, transcript);
+                toast({ title: 'Voice Billing', description: message, variant: 'warning' });
                 return;
             }
 
@@ -2315,34 +2695,35 @@ function ManualOrderPage() {
                 ? availableTables.find((table) => table.id === parsedCommand.matchedTableId)
                 : (parsedCommand.requestedTableReference ? findVoiceTableMatch(availableTables, parsedCommand.requestedTableReference) : null);
 
-        const currentHasItems = cartRef.current.length > 0;
-        const currentTableId = activeTable?.id || '';
-        const targetTableId = targetTable?.id || '';
-        const contextChangesMode = targetMode !== orderType;
-        const contextChangesTable = Boolean(targetTableId && targetTableId !== currentTableId);
-        const hasCommandItems = parsedCommand.items.some((item) => String(item?.spokenText || '').trim());
-        const recentVoiceDraft = (
-            voiceLastCartMutationRef.current?.source === 'voice' &&
-            (Date.now() - Number(voiceLastCartMutationRef.current?.timestamp || 0)) <= 30000
-        );
-        const canReplaceFreshVoiceDraft = (
-            currentHasItems &&
-            targetTable &&
-            !hasCommandItems &&
-            !currentTableId &&
-            recentVoiceDraft
-        );
+            const currentHasItems = cartRef.current.length > 0;
+            const currentTableId = activeTable?.id || '';
+            const targetTableId = targetTable?.id || '';
+            const contextChangesMode = targetMode !== orderType;
+            const contextChangesTable = Boolean(targetTableId && targetTableId !== currentTableId);
+            const hasCommandItems = parsedCommand.items.some((item) => String(item?.spokenText || '').trim());
+            const recentVoiceDraft = (
+                voiceLastCartMutationRef.current?.source === 'voice' &&
+                (Date.now() - Number(voiceLastCartMutationRef.current?.timestamp || 0)) <= 30000
+            );
+            const canReplaceFreshVoiceDraft = (
+                currentHasItems &&
+                targetTable &&
+                !hasCommandItems &&
+                !currentTableId &&
+                recentVoiceDraft
+            );
 
-        if (canReplaceFreshVoiceDraft) {
-            resetCurrentBill();
-        }
+            if (canReplaceFreshVoiceDraft) {
+                resetCurrentBill();
+            }
 
-        if (!canReplaceFreshVoiceDraft && currentHasItems && (contextChangesMode || contextChangesTable)) {
-            const message = targetTable
-                ? `Current bill active hai. ${targetTable.name} par switch karne se pehle save ya clear karo.`
-                : `Current bill active hai. ${targetMode.replace(/-/g, ' ')} mode me switch karne se pehle save ya clear karo.`;
-            addVoiceLogEntry(message, transcript);
-            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+            if (!canReplaceFreshVoiceDraft && currentHasItems && (contextChangesMode || contextChangesTable)) {
+                const message = targetTable
+                    ? `Current bill active hai. ${targetTable.name} par switch karne se pehle save ya clear karo.`
+                    : `Current bill active hai. ${targetMode.replace(/-/g, ' ')} mode me switch karne se pehle save ya clear karo.`;
+                updateVoiceDebugSnapshot({ phase: 'blocked', note: message, error: message });
+                addVoiceLogEntry(message, transcript);
+                toast({ title: 'Voice Billing', description: message, variant: 'warning' });
                 return;
             }
 
@@ -2356,6 +2737,7 @@ function ManualOrderPage() {
             if (targetTable) {
                 const tableActivation = activateTableContextFromVoice(targetTable);
                 if (!tableActivation.ok) {
+                    updateVoiceDebugSnapshot({ phase: 'blocked', note: tableActivation.message, error: tableActivation.message });
                     addVoiceLogEntry(tableActivation.message, transcript);
                     toast({ title: 'Voice Billing', description: tableActivation.message, variant: 'warning' });
                     return;
@@ -2365,6 +2747,7 @@ function ManualOrderPage() {
                 }
             } else if (parsedCommand.requestedTableReference) {
                 const message = `Table "${parsedCommand.requestedTableReference}" match nahi hua.`;
+                updateVoiceDebugSnapshot({ phase: 'blocked', note: message, error: message });
                 addVoiceLogEntry(message, transcript);
                 toast({ title: 'Voice Billing', description: message, variant: 'warning' });
                 return;
@@ -2378,6 +2761,8 @@ function ManualOrderPage() {
                     portionName: item.selectedOption?.label || item.selectedOption?.name,
                     quantity: item.quantity,
                     requestedPortion: item.requestedPortion,
+                    commandAction: item.commandAction || cartAction,
+                    spokenText: item.spokenText,
                 }))
                 .filter(Boolean);
 
@@ -2388,12 +2773,38 @@ function ManualOrderPage() {
                     spokenText: item.spokenText,
                     quantity: item.quantity,
                     requestedPortion: item.requestedPortion,
+                    commandAction: item.commandAction || cartAction,
+                    reason: item.reason || 'ambiguous-match',
                     candidates: item.candidates,
                 }));
 
             let aiFallbackError = '';
-            if (pendingItems.length > 0) {
-                const aiResolution = await resolveAiVoiceCandidates(parsedCommand, availableTables);
+            const aiEligiblePendingLineIds = new Set(
+                pendingItems
+                    .filter((item) => item.reason !== 'portion-required' && item.reason !== 'family-ambiguous')
+                    .map((item) => item.id)
+            );
+            if (pendingItems.some((item) => item.reason === 'portion-required')) {
+                appendVoiceDebugEvent(
+                    'Portion confirmation needed',
+                    'AI fallback skipped for items where half/full was not spoken clearly.',
+                    'info'
+                );
+            }
+            if (pendingItems.some((item) => item.reason === 'family-ambiguous')) {
+                appendVoiceDebugEvent(
+                    'Family confirmation needed',
+                    'AI fallback skipped because spoken name matches multiple items in the same family.',
+                    'info'
+                );
+            }
+            if (aiEligiblePendingLineIds.size > 0) {
+                const aiResolution = await resolveAiVoiceCandidates({
+                    ...parsedCommand,
+                    items: parsedCommand.items.filter((item) => (
+                        item.status !== 'pending' || aiEligiblePendingLineIds.has(item.lineId)
+                    )),
+                }, availableTables);
                 aiFallbackError = aiResolution.fallbackError || '';
 
                 const resolvedByAiLineIds = new Set(
@@ -2414,7 +2825,26 @@ function ManualOrderPage() {
                 });
             }
 
-            const { addedLabels, blockedLabels } = appendResolvedVoiceItemsToCart(localResolvedSelections);
+            let addedLabels = [];
+            let blockedLabels = [];
+            let removedLabels = [];
+            let clearedLabels = [];
+            let missingLabels = [];
+
+            if (cartAction === 'subtract') {
+                const subtractResult = subtractResolvedVoiceItemsFromCart(localResolvedSelections);
+                removedLabels = subtractResult.removedLabels;
+                missingLabels = subtractResult.missingLabels;
+            } else if (cartAction === 'clear-item') {
+                const clearResult = clearResolvedVoiceItemsFromCart(localResolvedSelections);
+                clearedLabels = clearResult.clearedLabels;
+                missingLabels = clearResult.missingLabels;
+            } else {
+                const addResult = appendResolvedVoiceItemsToCart(localResolvedSelections);
+                addedLabels = addResult.addedLabels;
+                blockedLabels = addResult.blockedLabels;
+            }
+
             const summaryParts = [];
 
             if (targetTable?.name) {
@@ -2426,8 +2856,22 @@ function ManualOrderPage() {
             if (addedLabels.length > 0) {
                 summaryParts.push(`Added ${addedLabels.join(', ')}`);
             }
+            if (removedLabels.length > 0) {
+                summaryParts.push(`Removed ${removedLabels.join(', ')}`);
+            }
+            if (clearedLabels.length > 0) {
+                summaryParts.push(`Cleared ${clearedLabels.join(', ')}`);
+            }
             if (pendingItems.length > 0) {
-                summaryParts.push(`Confirm ${pendingItems.map((item) => `"${item.spokenText}"`).join(', ')}`);
+                summaryParts.push(
+                    pendingItems
+                        .map((item) => (
+                            item.reason === 'portion-required'
+                                ? `Choose portion for "${item.spokenText}"`
+                                : `Confirm "${item.spokenText}"`
+                        ))
+                        .join(', ')
+                );
             }
             if (unresolvedWithoutCandidates.length > 0) {
                 summaryParts.push(`Could not match ${unresolvedWithoutCandidates.map((item) => `"${item.spokenText}"`).join(', ')}`);
@@ -2435,23 +2879,49 @@ function ManualOrderPage() {
             if (blockedLabels.length > 0) {
                 summaryParts.push(`Stock blocked ${blockedLabels.join(', ')}`);
             }
+            if (missingLabels.length > 0) {
+                summaryParts.push(`Not found in current cart ${missingLabels.join(', ')}`);
+            }
             if (!summaryParts.length) {
                 summaryParts.push('No cart changes were applied.');
             }
 
             const summary = summaryParts.join('. ');
+            updateVoiceDebugSnapshot({
+                phase: addedLabels.length > 0 || removedLabels.length > 0 || clearedLabels.length > 0
+                    ? 'items-added'
+                    : pendingItems.length > 0
+                        ? 'needs-confirmation'
+                        : unresolvedWithoutCandidates.length > 0
+                            ? 'unmatched'
+                            : 'completed',
+                transcript,
+                resolvedCount: addedLabels.length + removedLabels.length + clearedLabels.length,
+                pendingCount: pendingItems.length,
+                unresolvedCount: unresolvedWithoutCandidates.length,
+                note: summary,
+                error: '',
+            });
             addVoiceLogEntry(summary, transcript);
 
             if (pendingItems.length > 0) {
                 toast({
                     title: 'Voice Billing',
-                    description: 'Some items need confirmation before they are added.',
+                    description: pendingItems.some((item) => item.reason === 'portion-required')
+                        ? 'Some items need portion confirmation before the bill is updated.'
+                        : 'Some items need confirmation before the bill is updated.',
                     variant: 'warning',
                 });
             } else if (unresolvedWithoutCandidates.length > 0) {
                 toast({
                     title: 'Voice Billing',
                     description: 'Some spoken items could not be matched. Please try again.',
+                    variant: 'warning',
+                });
+            } else if (missingLabels.length > 0 && addedLabels.length === 0 && removedLabels.length === 0 && clearedLabels.length === 0) {
+                toast({
+                    title: 'Voice Billing',
+                    description: 'Selected item current cart me nahi mila.',
                     variant: 'warning',
                 });
             } else if (aiFallbackError && addedLabels.length === 0) {
@@ -2463,6 +2933,13 @@ function ManualOrderPage() {
             }
         } catch (error) {
             const message = error?.message || 'Voice command could not be processed.';
+            updateVoiceDebugSnapshot({
+                phase: 'error',
+                transcript,
+                error: message,
+                note: message,
+            });
+            appendVoiceDebugEvent('Voice pipeline error', message, 'error');
             addVoiceLogEntry(message, transcript);
             toast({ title: 'Voice Billing', description: message, variant: 'destructive' });
         } finally {
@@ -2475,13 +2952,17 @@ function ManualOrderPage() {
         appendResolvedVoiceItemsToCart,
         buildResolvedVoiceSelection,
         businessType,
+        clearResolvedVoiceItemsFromCart,
         fetchManualTables,
         manualTables,
         orderType,
         resetCurrentBill,
         resolveAiVoiceCandidates,
+        subtractResolvedVoiceItemsFromCart,
         toast,
+        updateVoiceDebugSnapshot,
         voiceMenuIndex,
+        appendVoiceDebugEvent,
     ]);
 
     const handleVoiceCommandResult = useCallback((spokenTranscript) => {
@@ -2515,15 +2996,39 @@ function ManualOrderPage() {
             portionName: candidate.portionName,
             quantity: pendingItem.quantity,
             requestedPortion: pendingItem.requestedPortion,
+            commandAction: pendingItem.commandAction || 'add',
+            spokenText: pendingItem.spokenText,
         });
         if (!resolvedSelection) return;
 
-        const { addedLabels } = appendResolvedVoiceItemsToCart([resolvedSelection]);
-        setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
-        if (addedLabels.length > 0) {
-            addVoiceLogEntry(`Added ${addedLabels.join(', ')}`, `Resolved "${pendingItem.spokenText}" manually`);
+        let summary = '';
+        if ((pendingItem.commandAction || 'add') === 'subtract') {
+            const { removedLabels, missingLabels } = subtractResolvedVoiceItemsFromCart([resolvedSelection]);
+            summary = removedLabels.length > 0
+                ? `Removed ${removedLabels.join(', ')}`
+                : `Could not find ${missingLabels.join(', ')} in current cart`;
+        } else if ((pendingItem.commandAction || 'add') === 'clear-item') {
+            const { clearedLabels, missingLabels } = clearResolvedVoiceItemsFromCart([resolvedSelection]);
+            summary = clearedLabels.length > 0
+                ? `Cleared ${clearedLabels.join(', ')}`
+                : `Could not find ${missingLabels.join(', ')} in current cart`;
+        } else {
+            const { addedLabels } = appendResolvedVoiceItemsToCart([resolvedSelection]);
+            summary = addedLabels.length > 0 ? `Added ${addedLabels.join(', ')}` : '';
         }
-    }, [addVoiceLogEntry, appendResolvedVoiceItemsToCart, buildResolvedVoiceSelection, voicePendingItems]);
+
+        setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
+        if (summary) {
+            addVoiceLogEntry(summary, `Resolved "${pendingItem.spokenText}" manually`);
+        }
+    }, [
+        addVoiceLogEntry,
+        appendResolvedVoiceItemsToCart,
+        buildResolvedVoiceSelection,
+        clearResolvedVoiceItemsFromCart,
+        subtractResolvedVoiceItemsFromCart,
+        voicePendingItems,
+    ]);
 
     const dismissVoicePendingItem = useCallback((pendingItemId) => {
         setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
@@ -2543,33 +3048,95 @@ function ManualOrderPage() {
             throw new Error('Voice billing ke liye login session required hai.');
         }
 
-        const formData = new FormData();
         const mimeType = String(metadata?.mimeType || audioBlob.type || 'audio/webm').trim() || 'audio/webm';
-        formData.append('audio', audioBlob, `voice-segment-${Date.now()}.webm`);
-        formData.append('mimeType', mimeType);
 
-        const res = await fetch(buildScopedUrl('/api/owner/manual-order/voice-transcribe'), {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${idToken}`,
-            },
-            body: formData,
-        });
+        const requestTranscript = async () => {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, `voice-segment-${Date.now()}.webm`);
+            formData.append('mimeType', mimeType);
 
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            if (res.status === 422) return;
-            throw new Error(payload?.message || 'Voice transcription failed.');
-        }
+            updateVoiceDebugSnapshot({
+                phase: 'transcribing',
+                source: 'recorded-audio',
+                provider: 'deepgram',
+                audioMime: mimeType,
+                audioSize: Number(audioBlob.size || 0),
+                note: 'Sending captured audio to Deepgram transcription.',
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                'Audio transcription started',
+                `${mimeType} • ${Math.round(Number(audioBlob.size || 0) / 1024)} KB`,
+                'info'
+            );
 
-        const transcript = String(payload?.transcript || '').trim();
-        return {
-            transcript,
-            provider: String(payload?.provider || '').trim(),
-            fallbackUsed: !!payload?.fallbackUsed,
-            confidence: Number(payload?.confidence || 0),
+            const res = await fetch(buildScopedUrl('/api/owner/manual-order/voice-transcribe'), {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: formData,
+            });
+
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                if (res.status === 422) {
+                    const provider = String(payload?.provider || 'deepgram').trim();
+                    updateVoiceDebugSnapshot({
+                        phase: 'no-speech',
+                        source: 'recorded-audio',
+                        provider,
+                        transcript: '',
+                        confidence: Number(payload?.confidence || 0),
+                        note: payload?.message || 'No speech detected in captured audio.',
+                    });
+                    appendVoiceDebugEvent('No speech detected', payload?.message || 'Recorder captured a segment but no transcript was returned.', 'warning');
+                    return {
+                        transcript: '',
+                        provider,
+                        fallbackUsed: false,
+                        confidence: Number(payload?.confidence || 0),
+                        noSpeech: true,
+                        message: String(payload?.message || '').trim(),
+                    };
+                }
+                updateVoiceDebugSnapshot({
+                    phase: 'error',
+                    source: 'recorded-audio',
+                    provider: 'deepgram',
+                    error: payload?.message || 'Voice transcription failed.',
+                    note: payload?.message || 'Voice transcription failed.',
+                });
+                appendVoiceDebugEvent('Transcription failed', payload?.message || 'Voice transcription failed.', 'error');
+                throw new Error(payload?.message || 'Voice transcription failed.');
+            }
+
+            const result = {
+                transcript: String(payload?.transcript || '').trim(),
+                provider: String(payload?.provider || '').trim(),
+                fallbackUsed: !!payload?.fallbackUsed,
+                confidence: Number(payload?.confidence || 0),
+            };
+            updateVoiceDebugSnapshot({
+                phase: 'transcribed',
+                source: 'recorded-audio',
+                provider: result.provider || 'deepgram',
+                transcript: result.transcript,
+                confidence: result.confidence,
+                fallbackUsed: result.fallbackUsed,
+                note: result.transcript ? 'Transcript received from audio capture.' : 'Transcript response was empty.',
+                error: '',
+            });
+            appendVoiceDebugEvent(
+                'Transcript received',
+                `${result.provider || 'unknown'} • conf ${result.confidence.toFixed(2)}${result.transcript ? ` • ${result.transcript}` : ''}`,
+                'info'
+            );
+            return result;
         };
-    }, [buildScopedUrl, getDesktopActionIdToken]);
+
+        return requestTranscript();
+    }, [appendVoiceDebugEvent, buildScopedUrl, getDesktopActionIdToken, updateVoiceDebugSnapshot]);
 
     const assessBrowserVoiceTranscript = useCallback((spokenTranscript, browserMeta = {}) => {
         const normalizedTranscript = normalizeVoiceText(spokenTranscript);
@@ -2722,18 +3289,41 @@ function ManualOrderPage() {
 
     const handleCapturedVoiceSegment = useCallback((audioBlob, metadata = {}) => {
         if (!(audioBlob instanceof Blob)) return;
+        updateVoiceDebugSnapshot({
+            phase: 'segment-captured',
+            source: 'recorded-audio',
+            audioMime: String(metadata?.mimeType || audioBlob.type || 'audio/webm').trim() || 'audio/webm',
+            audioSize: Number(metadata?.size || audioBlob.size || 0),
+            note: 'Captured one voice segment. Waiting to transcribe it.',
+            error: '',
+        });
+        appendVoiceDebugEvent(
+            'Audio captured',
+            `${String(metadata?.mimeType || audioBlob.type || 'audio/webm').trim() || 'audio/webm'} • ${Math.round(Number(metadata?.size || audioBlob.size || 0) / 1024)} KB`,
+            'info'
+        );
         voiceCapturedSegmentQueueRef.current.push({
             id: `voice-audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             audioBlob,
             metadata,
         });
         processHybridVoiceQueues();
-    }, [processHybridVoiceQueues]);
+    }, [appendVoiceDebugEvent, processHybridVoiceQueues, updateVoiceDebugSnapshot]);
 
     const handleBrowserVoiceResult = useCallback((spokenTranscript, meta = {}) => {
         const transcript = String(spokenTranscript || '').trim();
         if (!transcript) return;
 
+        updateVoiceDebugSnapshot({
+            phase: 'browser-transcript',
+            source: 'browser-speech',
+            provider: 'browser',
+            transcript,
+            confidence: Number(meta?.confidence || 0),
+            note: 'Browser speech recognition returned a transcript.',
+            error: '',
+        });
+        appendVoiceDebugEvent('Browser transcript', `${transcript} • conf ${Number(meta?.confidence || 0).toFixed(2)}`, 'info');
         voiceBrowserResultQueueRef.current.push({
             id: `voice-browser-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             transcript,
@@ -2744,7 +3334,7 @@ function ManualOrderPage() {
         window.setTimeout(() => {
             processHybridVoiceQueues();
         }, 1300);
-    }, [processHybridVoiceQueues]);
+    }, [appendVoiceDebugEvent, processHybridVoiceQueues, updateVoiceDebugSnapshot]);
 
     const {
         isSupported: isBrowserVoiceRecognitionSupported,
@@ -2774,6 +3364,8 @@ function ManualOrderPage() {
         runMicrophoneProbe: runVoiceCaptureMicrophoneProbe,
     } = useVoiceCommandCapture({
         onSegmentReady: handleCapturedVoiceSegment,
+        onDebugEvent: handleVoiceCaptureDebugEvent,
+        keepDeviceWarmMs: isMobileViewport ? 12000 : 0,
     });
 
     browserVoiceRecognitionSupportedRef.current = isBrowserVoiceRecognitionSupported;
@@ -2799,6 +3391,16 @@ function ManualOrderPage() {
     const shouldPreferRecordedAudioVoice = isVoiceCaptureSupported && (isMobileViewport || isStandalonePwa);
 
     useEffect(() => {
+        if (!voiceRecognitionError) return;
+        updateVoiceDebugSnapshot({
+            phase: 'error',
+            error: voiceRecognitionError,
+            note: voiceRecognitionError,
+        });
+        appendVoiceDebugEvent('Voice error', voiceRecognitionError, 'error');
+    }, [appendVoiceDebugEvent, updateVoiceDebugSnapshot, voiceRecognitionError]);
+
+    useEffect(() => {
         if (!shouldPreferRecordedAudioVoice) return;
         voiceUseBrowserPrimaryRef.current = false;
         processHybridVoiceQueues();
@@ -2806,6 +3408,13 @@ function ManualOrderPage() {
 
     const startVoiceListening = useCallback(async () => {
         resetVoiceHybridQueues();
+        updateVoiceDebugSnapshot({
+            phase: 'arming',
+            source: shouldPreferRecordedAudioVoice ? 'recorded-audio' : 'hybrid',
+            note: 'Voice capture requested. Waiting for mic input.',
+            error: '',
+        });
+        appendVoiceDebugEvent('Mic armed', shouldPreferRecordedAudioVoice ? 'Mobile recorded-audio mode active.' : 'Hybrid browser/capture mode active.', 'info');
 
         const captureStarted = isVoiceCaptureSupported
             ? await startVoiceCaptureListening()
@@ -2824,14 +3433,31 @@ function ManualOrderPage() {
             voiceUseBrowserPrimaryRef.current = Boolean(browserStarted);
         }
 
+        if (captureStarted || browserStarted) {
+            updateVoiceDebugSnapshot({
+                phase: 'listening',
+                source: shouldPreferRecordedAudioVoice ? 'recorded-audio' : (browserStarted ? 'browser-speech' : 'recorded-audio'),
+                note: 'Mic is listening. Speak now and then release.',
+                error: '',
+            });
+        } else {
+            updateVoiceDebugSnapshot({
+                phase: 'error',
+                note: 'Voice start request failed.',
+                error: 'Mic could not start.',
+            });
+        }
+
         return Boolean(captureStarted || browserStarted);
     }, [
+        appendVoiceDebugEvent,
         isBrowserVoiceRecognitionSupported,
         isVoiceCaptureSupported,
         resetVoiceHybridQueues,
         startBrowserVoiceListening,
         startVoiceCaptureListening,
         shouldPreferRecordedAudioVoice,
+        updateVoiceDebugSnapshot,
     ]);
 
     const stopVoiceListening = useCallback(() => {
@@ -2840,7 +3466,12 @@ function ManualOrderPage() {
         resetVoiceHybridQueues();
         setIsVoiceFallbackTranscribing(false);
         voiceUseBrowserPrimaryRef.current = true;
-    }, [resetVoiceHybridQueues, stopBrowserVoiceListening, stopVoiceCaptureListening]);
+        updateVoiceDebugSnapshot({
+            phase: 'stopped',
+            note: 'Mic released. Waiting for any pending transcription.',
+        });
+        appendVoiceDebugEvent('Mic released', 'Capture stopped by user.', 'info');
+    }, [appendVoiceDebugEvent, resetVoiceHybridQueues, stopBrowserVoiceListening, stopVoiceCaptureListening, updateVoiceDebugSnapshot]);
 
     const toggleVoiceListening = useCallback(async () => {
         if (isVoiceListening) {
@@ -4136,6 +4767,156 @@ function ManualOrderPage() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isVoiceDebugDialogOpen} onOpenChange={setIsVoiceDebugDialogOpen}>
+                <DialogContent className="max-w-3xl border-border bg-card p-0 text-foreground sm:rounded-2xl">
+                    <DialogHeader className="border-b border-border px-5 pb-3 pt-5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <DialogTitle>Voice Debug</DialogTitle>
+                                <DialogDescription>
+                                    Mic se parser tak poora pipeline yahan visible hai. Isse turant pata chalega issue capture, transcript, ya matching me hai.
+                                </DialogDescription>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 px-3 text-xs font-semibold"
+                                onClick={clearVoiceDebugData}
+                            >
+                                Clear Debug
+                            </Button>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="max-h-[78vh] space-y-5 overflow-y-auto px-5 py-4">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-2xl border border-border bg-muted/20 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Phase</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">{voiceDebugSnapshot.phase || 'idle'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border bg-muted/20 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Source</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">{voiceDebugSnapshot.source || 'n/a'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border bg-muted/20 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Provider</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">{voiceDebugSnapshot.provider || 'n/a'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border bg-muted/20 p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Updated</p>
+                                <p className="mt-1 text-sm font-semibold text-foreground">
+                                    {voiceDebugSnapshot.updatedAt
+                                        ? new Date(voiceDebugSnapshot.updatedAt).toLocaleTimeString('en-IN')
+                                        : 'Not yet'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                            <div className="space-y-3">
+                                <div className="rounded-2xl border border-border bg-background p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Last Transcript</p>
+                                    <p className="mt-2 min-h-[48px] text-sm font-medium leading-6 text-foreground">
+                                        {voiceDebugSnapshot.transcript || voiceLastTranscript || 'Abhi tak koi transcript capture nahi hua.'}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-border bg-background p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Last Action</p>
+                                    <p className="mt-2 min-h-[48px] text-sm font-medium leading-6 text-foreground">
+                                        {voiceLastAction || voiceDebugSnapshot.note || 'Abhi tak cart action record nahi hua.'}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-border bg-background p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Latest Note</p>
+                                    <p className="mt-2 text-sm leading-6 text-foreground">
+                                        {voiceDebugSnapshot.note || 'No extra diagnostic note yet.'}
+                                    </p>
+                                    {voiceDebugSnapshot.error ? (
+                                        <p className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive">
+                                            {voiceDebugSnapshot.error}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="rounded-2xl border border-border bg-background p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Parse Counts</p>
+                                    <div className="mt-3 grid grid-cols-3 gap-2">
+                                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3 text-center">
+                                            <p className="text-lg font-black text-emerald-700">{voiceDebugSnapshot.resolvedCount || 0}</p>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700/80">Resolved</p>
+                                        </div>
+                                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-3 text-center">
+                                            <p className="text-lg font-black text-amber-700">{voiceDebugSnapshot.pendingCount || 0}</p>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700/80">Pending</p>
+                                        </div>
+                                        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-3 text-center">
+                                            <p className="text-lg font-black text-rose-700">{voiceDebugSnapshot.unresolvedCount || 0}</p>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700/80">Unmatched</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-border bg-background p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Context</p>
+                                    <div className="mt-3 space-y-2 text-sm text-foreground">
+                                        <p><span className="font-semibold">Mode:</span> {voiceDebugSnapshot.desiredMode || orderType || 'n/a'}</p>
+                                        <p><span className="font-semibold">Table heard:</span> {voiceDebugSnapshot.requestedTableReference || 'n/a'}</p>
+                                        <p><span className="font-semibold">Table matched:</span> {voiceDebugSnapshot.matchedTableName || activeTable?.name || 'n/a'}</p>
+                                        <p><span className="font-semibold">Audio:</span> {voiceDebugSnapshot.audioMime || 'n/a'}{voiceDebugSnapshot.audioSize ? ` • ${Math.round(Number(voiceDebugSnapshot.audioSize || 0) / 1024)} KB` : ''}</p>
+                                        <p><span className="font-semibold">Confidence:</span> {Number.isFinite(voiceDebugSnapshot.confidence) ? Number(voiceDebugSnapshot.confidence).toFixed(2) : 'n/a'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-border bg-background p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Recent Voice Events</p>
+                                <p className="text-xs text-muted-foreground">{voiceDebugEvents.length} events</p>
+                            </div>
+
+                            {voiceDebugEvents.length > 0 ? (
+                                <div className="mt-3 max-h-[34vh] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                                    {voiceDebugEvents.map((event) => (
+                                        <div
+                                            key={event.id}
+                                            className={cn(
+                                                'rounded-xl border px-3 py-3',
+                                                event.level === 'error'
+                                                    ? 'border-destructive/30 bg-destructive/5'
+                                                    : event.level === 'warning'
+                                                        ? 'border-amber-500/30 bg-amber-500/5'
+                                                        : 'border-border bg-muted/20'
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold text-foreground">{event.title}</p>
+                                                    {event.detail ? (
+                                                        <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{event.detail}</p>
+                                                    ) : null}
+                                                </div>
+                                                <p className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                                    {event.createdAt ? new Date(event.createdAt).toLocaleTimeString('en-IN') : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="mt-3 text-sm text-muted-foreground">
+                                    Abhi tak koi debug event record nahi hua. Mic start karke ek baar speak karke dekho.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Create Table Modal */}
             <Dialog open={isCreateTableModalOpen} onOpenChange={setIsCreateTableModalOpen}>
                 <DialogContent className="bg-card border-border max-w-sm">
@@ -4428,6 +5209,18 @@ function ManualOrderPage() {
                                 View Bill History
                             </Button>
                         </Link>
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 w-full rounded-2xl px-3 text-sm font-semibold"
+                            onClick={() => {
+                                setIsMobileToolsOpen(false);
+                                setIsVoiceDebugDialogOpen(true);
+                            }}
+                        >
+                            Voice Debug
+                        </Button>
                     </div>
                 </div>
             )}
@@ -4552,6 +5345,7 @@ function ManualOrderPage() {
                                     aiResolving={isVoiceAiResolving}
                                     lastTranscript={voiceLastTranscript}
                                     lastAction={voiceLastAction}
+                                    diagnostics={voiceDebugSnapshot}
                                     error={voiceRecognitionError}
                                     permissionState={voicePermissionState}
                                     rawErrorCode={voiceRecognitionErrorCode}
@@ -4563,6 +5357,7 @@ function ManualOrderPage() {
                                     onToggleListening={toggleVoiceListening}
                                     onStopListening={stopVoiceListening}
                                     onRunMicrophoneProbe={runVoiceMicrophoneProbe}
+                                    onOpenDebug={() => setIsVoiceDebugDialogOpen(true)}
                                     onUsePendingCandidate={handleVoicePendingCandidate}
                                     onDismissPendingItem={dismissVoicePendingItem}
                                 />

@@ -57,6 +57,46 @@ const MODE_KEYWORDS = {
     'dine-in': ['dine in', 'dinein', 'table', 'on table'],
 };
 
+const CLEAR_ALL_PATTERNS = [
+    /\bclear all\b/g,
+    /\bclear cart\b/g,
+    /\bempty cart\b/g,
+    /\ball clear\b/g,
+    /\bsab clear\b/g,
+    /\bsab hata do\b/g,
+    /\bsab hatao\b/g,
+    /\bsab hata\b/g,
+];
+
+const SUBTRACT_PATTERNS = [
+    /\bminus\b/g,
+    /\bmines\b/g,
+    /\bminas\b/g,
+    /\bminez\b/g,
+    /\bless\b/g,
+    /\bsubtract\b/g,
+    /\bsubstract\b/g,
+    /\breduce\b/g,
+    /\bghata do\b/g,
+    /\bghatao\b/g,
+    /\bghata\b/g,
+    /\bkam karo\b/g,
+    /\bkam kar\b/g,
+    /\bkam\b/g,
+];
+
+const CLEAR_ITEM_PATTERNS = [
+    /\bclear\b/g,
+    /\bremove\b/g,
+    /\bdelete\b/g,
+    /\bhata do\b/g,
+    /\bhatao\b/g,
+    /\bhata\b/g,
+    /\bnikal do\b/g,
+    /\bnikalo\b/g,
+    /\bnikal\b/g,
+];
+
 const PORTION_SYNONYMS = {
     half: ['half', 'aadha', 'adha', '1/2'],
     full: ['full', 'ful,', 'Phool', 'poora', 'pura', 'whole'],
@@ -133,6 +173,16 @@ const LOW_SIGNAL_TOKENS = new Set([
     'aur',
 ]);
 
+const SEGMENT_DELIMITER_TOKENS = new Set([
+    'aur',
+    'and',
+    'plus',
+    'then',
+    'phir',
+    'fir',
+    'next',
+]);
+
 const OPTIONAL_ALIAS_MODIFIER_TOKENS = new Set([
     'plain',
     'butter',
@@ -154,6 +204,7 @@ function normalizeBasicText(value = '') {
     return String(value || '')
         .toLowerCase()
         .replace(/&/g, ' and ')
+        .replace(/\bmines\b|\bminas\b|\bminez\b/g, ' minus ')
         .replace(/\bchap\b/g, ' chaap ')
         .replace(/\bchaap+\b/g, ' chaap ')
         .replace(/\bchapati\b|\bchapathi\b|\bchappati\b/g, ' chapati ')
@@ -525,6 +576,17 @@ function scoreLooseTokenOverlap(leftTokens = [], rightTokens = []) {
     return matchedScore / leftTokens.length;
 }
 
+function scoreBestTokenPair(leftTokens = [], rightTokens = []) {
+    if (!leftTokens.length || !rightTokens.length) return 0;
+    let bestScore = 0;
+    leftTokens.forEach((leftToken) => {
+        rightTokens.forEach((rightToken) => {
+            bestScore = Math.max(bestScore, scoreLooseTokenPair(leftToken, rightToken));
+        });
+    });
+    return bestScore;
+}
+
 function scoreTextSimilarity(phrase = '', candidate = '') {
     const normalizedPhrase = normalizeVoiceText(phrase);
     const normalizedCandidate = normalizeVoiceText(candidate);
@@ -553,10 +615,12 @@ function scoreTextSimilarity(phrase = '', candidate = '') {
     score = Math.max(score, tokenScore * 0.88);
     const looseTokenScore = scoreLooseTokenOverlap(phraseTokens, candidateTokens);
     score = Math.max(score, looseTokenScore * 0.92);
+    const bestLiteralTokenScore = scoreBestTokenPair(phraseTokens, candidateTokens);
     const phoneticTokenScore = scoreTokenOverlap(phrasePhoneticTokens, candidatePhoneticTokens);
     score = Math.max(score, phoneticTokenScore * 0.9);
     const phoneticLooseScore = scoreLooseTokenOverlap(phrasePhoneticTokens, candidatePhoneticTokens);
     score = Math.max(score, phoneticLooseScore * 0.94);
+    const bestPhoneticTokenScore = scoreBestTokenPair(phrasePhoneticTokens, candidatePhoneticTokens);
 
     const maxLength = Math.max(phraseCompact.length, candidateCompact.length, 1);
     const editDistance = computeEditDistance(normalizedPhrase, normalizedCandidate);
@@ -578,6 +642,18 @@ function scoreTextSimilarity(phrase = '', candidate = '') {
             score = Math.max(score, editScore * 0.76);
         } else {
             score = Math.max(score, editScore * 0.1);
+        }
+    }
+
+    if (phraseTokens.length === 1 && candidateTokens.length >= 1) {
+        const hasLiteralSignal = (
+            tokenScore > 0 ||
+            bestLiteralTokenScore >= 0.68 ||
+            candidateCompact.includes(phraseCompact) ||
+            phraseCompact.includes(candidateCompact)
+        );
+        if (!hasLiteralSignal && bestPhoneticTokenScore >= 0.95) {
+            score = Math.min(score, 0.44);
         }
     }
 
@@ -650,7 +726,109 @@ function buildCandidatePreview(entry = {}, portionOption = null, score = 0) {
     };
 }
 
-function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = '') {
+function getFamilyCandidates(candidates = [], phraseTokens = []) {
+    const terminalToken = phraseTokens[phraseTokens.length - 1] || '';
+    if (!terminalToken) return [];
+
+    return candidates.filter((candidate) => (
+        Array.isArray(candidate?.entry?.tokens) &&
+        candidate.entry.tokens.includes(terminalToken)
+    ));
+}
+
+function getExactEntryMatches(menuIndex = [], normalizedPhrase = '', requestedPortion = '') {
+    if (!normalizedPhrase) return [];
+
+    return menuIndex
+        .filter((entry) => (
+            entry?.normalizedName === normalizedPhrase ||
+            (Array.isArray(entry?.aliases) && entry.aliases.includes(normalizedPhrase))
+        ))
+        .map((entry) => ({
+            entry,
+            entryScore: entry.normalizedName === normalizedPhrase ? 1 : 0.99,
+            confidence: entry.normalizedName === normalizedPhrase ? 1 : 0.99,
+            exactKeywordCoverage: 1,
+            looseKeywordCoverage: 1,
+            phoneticKeywordCoverage: 1,
+            portionMatch: resolvePortionMatch(entry, requestedPortion),
+        }))
+        .sort((left, right) => right.confidence - left.confidence);
+}
+
+function getMenuFamilyCandidates(menuIndex = [], phraseTokens = [], requestedPortion = '') {
+    const terminalToken = phraseTokens[phraseTokens.length - 1] || '';
+    if (!terminalToken) return [];
+
+    return menuIndex
+        .filter((entry) => (
+            Array.isArray(entry?.tokens) &&
+            entry.tokens.includes(terminalToken)
+        ))
+        .map((entry) => {
+            const portionMatch = resolvePortionMatch(entry, requestedPortion);
+            const score = Math.max(
+                scoreTextSimilarity(phraseTokens.join(' '), entry.name),
+                ...entry.aliases.map((alias) => scoreTextSimilarity(phraseTokens.join(' '), alias))
+            );
+            return {
+                entry,
+                confidence: score,
+                portionMatch,
+            };
+        })
+        .sort((left, right) => right.confidence - left.confidence);
+}
+
+function buildEntryPortionCandidates(entry = {}, score = 0) {
+    const options = Array.isArray(entry?.saleOptions) ? entry.saleOptions : [];
+    if (!options.length) {
+        return [buildCandidatePreview(entry, null, score)];
+    }
+    return options.map((option) => buildCandidatePreview(entry, option, score));
+}
+
+function extractCartAction(transcript = '') {
+    const normalized = normalizeVoiceText(transcript);
+    if (!normalized) {
+        return {
+            action: 'add',
+            cleanedText: '',
+        };
+    }
+
+    let action = 'add';
+    let cleanedText = normalized;
+
+    const matchesPattern = (patterns = []) => patterns.some((pattern) => (
+        new RegExp(pattern.source, pattern.flags).test(normalized)
+    ));
+    const stripPatterns = (patterns = []) => {
+        patterns.forEach((pattern) => {
+            cleanedText = cleanedText.replace(new RegExp(pattern.source, pattern.flags), ' ');
+        });
+    };
+
+    if (matchesPattern(CLEAR_ALL_PATTERNS)) {
+        action = 'clear-all';
+        stripPatterns(CLEAR_ALL_PATTERNS);
+    } else if (matchesPattern(SUBTRACT_PATTERNS)) {
+        action = 'subtract';
+        stripPatterns(SUBTRACT_PATTERNS);
+    } else if (matchesPattern(CLEAR_ITEM_PATTERNS)) {
+        action = 'clear-item';
+        stripPatterns(CLEAR_ITEM_PATTERNS);
+    }
+
+    cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+    return {
+        action,
+        cleanedText,
+    };
+}
+
+function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = '', options = {}) {
+    const commandAction = String(options?.commandAction || 'add').trim() || 'add';
     const normalizedPhrase = normalizeVoiceText(phrase);
     if (!normalizedPhrase) {
         return {
@@ -662,6 +840,46 @@ function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = ''
 
     const phraseTokens = tokenize(normalizedPhrase).filter((token) => !shouldSkipToken(token));
     const phrasePhoneticTokens = phraseTokens.map((token) => normalizePhoneticToken(token)).filter(Boolean);
+    const exactMatches = getExactEntryMatches(menuIndex, normalizedPhrase, requestedPortion);
+
+    if (exactMatches.length === 1) {
+        const exactTop = exactMatches[0];
+        const needsPortionConfirmation = (
+            commandAction === 'add' &&
+            !requestedPortion &&
+            Array.isArray(exactTop?.entry?.saleOptions) &&
+            exactTop.entry.saleOptions.length > 1
+        );
+
+        if (needsPortionConfirmation) {
+            return {
+                status: 'pending',
+                confidence: exactTop.confidence,
+                reason: 'portion-required',
+                candidates: buildEntryPortionCandidates(exactTop.entry, exactTop.confidence),
+            };
+        }
+
+        const selectedOption = exactTop.portionMatch.option || pickDefaultSaleOption(exactTop.entry);
+        return {
+            status: 'resolved',
+            confidence: exactTop.confidence,
+            selectedEntry: exactTop.entry,
+            selectedOption,
+            candidates: buildEntryPortionCandidates(exactTop.entry, exactTop.confidence),
+        };
+    }
+
+    if (exactMatches.length > 1) {
+        return {
+            status: 'pending',
+            confidence: exactMatches[0]?.confidence || 0.99,
+            reason: 'ambiguous-match',
+            candidates: exactMatches
+                .slice(0, 8)
+                .flatMap((candidate) => buildEntryPortionCandidates(candidate.entry, candidate.confidence)),
+        };
+    }
 
     const scored = menuIndex
         .map((entry) => {
@@ -691,6 +909,16 @@ function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = ''
                 confidence = Math.min(1, confidence + 0.06);
             } else if (exactKeywordCoverage >= 0.5) {
                 confidence = Math.min(1, confidence + 0.04);
+            }
+
+            if (phraseTokens.length >= 2) {
+                const missingLiteralTokens = phraseTokens.filter((token) => !(entry.keywordTokens || []).includes(token));
+                if (missingLiteralTokens.length === 0) {
+                    confidence = Math.min(1, confidence + 0.12);
+                } else if (missingLiteralTokens.length > 0) {
+                    const missingRatio = missingLiteralTokens.length / phraseTokens.length;
+                    confidence = Math.max(0, confidence - (0.14 + (missingRatio * 0.18)));
+                }
             }
 
             if (requestedPortion) {
@@ -731,6 +959,35 @@ function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = ''
     const candidatePreviews = candidates.map((candidate) =>
         buildCandidatePreview(candidate.entry, candidate.portionMatch.option || pickDefaultSaleOption(candidate.entry), candidate.confidence)
     );
+    const familyCandidates = getFamilyCandidates(candidates, phraseTokens);
+    const menuFamilyCandidates = getMenuFamilyCandidates(menuIndex, phraseTokens, requestedPortion);
+    const familyCandidateSource = menuFamilyCandidates.length > familyCandidates.length
+        ? menuFamilyCandidates
+        : familyCandidates;
+    const familyCandidatePreviews = familyCandidateSource.map((candidate) => (
+        buildCandidatePreview(candidate.entry, candidate.portionMatch.option || pickDefaultSaleOption(candidate.entry), candidate.confidence)
+    ));
+    const needsPortionConfirmation = (
+        commandAction === 'add' &&
+        !requestedPortion &&
+        Array.isArray(top?.entry?.saleOptions) &&
+        top.entry.saleOptions.length > 1 &&
+        (top.confidence >= 0.76 || top.entryScore >= 0.7)
+    );
+    const topEntryIsClearEnough = Boolean(
+        top && (
+            top.confidence >= 0.82 ||
+            (top.confidence >= 0.76 && margin >= 0.12) ||
+            top.exactKeywordCoverage >= 1
+        )
+    );
+    const sharedFamilyAmbiguous = (
+        familyCandidateSource.length > 1 &&
+        (
+            phraseTokens.length === 1 ||
+            top.exactKeywordCoverage < 1
+        )
+    );
 
     const singleCandidateRecovery = (
         candidates.length === 1 &&
@@ -751,10 +1008,29 @@ function matchVoiceItemPhrase(phrase = '', menuIndex = [], requestedPortion = ''
         (!phraseIsGeneric && top.confidence >= 0.78 && margin >= 0.18)
     ) && Boolean(top.portionMatch.option || pickDefaultSaleOption(top.entry));
 
+    if (needsPortionConfirmation && topEntryIsClearEnough) {
+        return {
+            status: 'pending',
+            confidence: top.confidence,
+            reason: 'portion-required',
+            candidates: buildEntryPortionCandidates(top.entry, top.confidence),
+        };
+    }
+
+    if (sharedFamilyAmbiguous) {
+        return {
+            status: 'pending',
+            confidence: top.confidence,
+            reason: 'family-ambiguous',
+            candidates: familyCandidatePreviews.length > 0 ? familyCandidatePreviews.slice(0, 8) : candidatePreviews,
+        };
+    }
+
     if (!autoResolve) {
         return {
             status: candidates.length > 0 ? 'pending' : 'unresolved',
             confidence: top.confidence,
+            reason: candidates.length > 0 ? 'ambiguous-match' : 'no-match',
             candidates: candidatePreviews,
         };
     }
@@ -801,6 +1077,13 @@ function extractItemSegments(transcript = '') {
     };
 
     tokens.forEach((token) => {
+        if (SEGMENT_DELIMITER_TOKENS.has(token)) {
+            if (current.nameTokens.length > 0 || current.quantity !== null || current.portionTokens.length > 0) {
+                flushCurrent();
+            }
+            return;
+        }
+
         if (shouldSkipToken(token)) return;
 
         const quantity = parseNumberToken(token);
@@ -881,20 +1164,24 @@ export function parseManualOrderVoiceCommand({
     currentMode = 'delivery',
 } = {}) {
     const normalizedTranscript = normalizeVoiceText(transcript);
-    const explicitMode = detectExplicitMode(normalizedTranscript);
-    const tableExtraction = extractTableReference(normalizedTranscript);
+    const actionExtraction = extractCartAction(normalizedTranscript);
+    const explicitMode = detectExplicitMode(actionExtraction.cleanedText || normalizedTranscript);
+    const tableExtraction = extractTableReference(actionExtraction.cleanedText || normalizedTranscript);
     const requestedTableReference = tableExtraction.value || '';
     const desiredMode = requestedTableReference ? 'dine-in' : (explicitMode || currentMode || 'delivery');
     const matchedTable = requestedTableReference ? findVoiceTableMatch(manualTables, requestedTableReference) : null;
 
     const itemSegments = extractItemSegments(tableExtraction.cleanedText);
     const items = itemSegments.map((segment, index) => {
-        const match = matchVoiceItemPhrase(segment.phrase, menuIndex, segment.requestedPortion);
+        const match = matchVoiceItemPhrase(segment.phrase, menuIndex, segment.requestedPortion, {
+            commandAction: actionExtraction.action,
+        });
         return {
             lineId: `voice-line-${index + 1}`,
             spokenText: segment.phrase,
             quantity: segment.quantity,
             requestedPortion: segment.requestedPortion,
+            commandAction: actionExtraction.action,
             ...match,
         };
     });
@@ -902,6 +1189,7 @@ export function parseManualOrderVoiceCommand({
     return {
         rawTranscript: transcript,
         normalizedTranscript,
+        cartAction: actionExtraction.action,
         explicitMode,
         desiredMode,
         requestedTableReference,
@@ -924,6 +1212,8 @@ export function serializeVoiceResolverPayload(parsedCommand = {}) {
                 spokenText: item.spokenText,
                 quantity: item.quantity,
                 requestedPortion: item.requestedPortion || null,
+                commandAction: item.commandAction || 'add',
+                reason: item.reason || null,
                 candidates: item.candidates,
             })),
     };

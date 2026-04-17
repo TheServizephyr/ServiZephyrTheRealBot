@@ -6,7 +6,7 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MANUAL_ORDER_MODEL || 'openai/gpt-4o-mini';
+const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MANUAL_ORDER_MODEL || 'openrouter/auto';
 
 function coerceText(value = '') {
     return String(value || '').trim();
@@ -45,6 +45,8 @@ function sanitizeUnresolvedItem(item = {}) {
         spokenText,
         quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
         requestedPortion: coerceText(item.requestedPortion),
+        commandAction: coerceText(item.commandAction) || 'add',
+        reason: coerceText(item.reason) || 'ambiguous-match',
         candidates,
     };
 }
@@ -77,6 +79,21 @@ function extractJsonObject(text = '') {
         }
     }
 }
+
+const VOICE_PARSE_SYSTEM_PROMPT = [
+    'You resolve spoken restaurant billing commands for a busy POS counter.',
+    'Your job is only to disambiguate already shortlisted menu candidates.',
+    'Rules:',
+    '1. Only choose from the provided candidates. Never invent items or portions.',
+    '2. If spoken words are generic like "roti", only choose a roti-like candidate. Never jump to a different family like raita, rice, paneer, or chaap unless the words clearly support it.',
+    '3. If confidence is not strong, leave the line unresolved.',
+    '4. If requestedPortion is present, prefer a matching portionName. If spokenText did not clearly specify half/full and the line reason says portion-required, leave it unresolved.',
+    '5. Respect commandAction context such as add, subtract, or clear-item, but still only identify the correct menu item.',
+    '6. If transcript clearly indicates delivery, pickup, or a table reference, return desiredMode or targetTableId when confident.',
+    '7. Return strict compact JSON only, with no markdown and no explanation.',
+    'JSON format:',
+    '{"desiredMode":"delivery|pickup|dine-in|null","targetTableId":"string|null","items":[{"lineId":"string","entryId":"string","portionName":"string|null","confidence":0.0}],"unresolvedLineIds":["lineId"]}',
+].join('\n');
 
 export async function POST(req) {
     try {
@@ -126,17 +143,7 @@ export async function POST(req) {
                 messages: [
                     {
                         role: 'system',
-                        content: [
-                            'You are resolving spoken restaurant billing commands for a POS counter.',
-                            'Important rules:',
-                            '1. Only choose from the provided candidates. Never invent items.',
-                            '2. Keep speed and accuracy in mind. If a line is ambiguous, leave it unresolved.',
-                            '3. If transcript clearly says delivery, pickup, or table, return that as desiredMode or targetTableId.',
-                            '4. If line has requestedPortion, prefer candidates or portionOptions that match it.',
-                            '5. Return compact JSON only.',
-                            'JSON format:',
-                            '{"desiredMode": "delivery|pickup|dine-in|null", "targetTableId": "string|null", "items": [{"lineId": "string", "entryId": "string", "portionName": "string|null", "confidence": 0.0}], "unresolvedLineIds": ["lineId"]}',
-                        ].join('\n'),
+                        content: VOICE_PARSE_SYSTEM_PROMPT,
                     },
                     {
                         role: 'user',
