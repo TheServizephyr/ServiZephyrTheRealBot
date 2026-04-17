@@ -15,6 +15,19 @@ function coerceText(value = '') {
     return String(value || '').trim();
 }
 
+function normalizeDeepgramModel(value = '') {
+    const normalized = coerceText(value)
+        .toLowerCase()
+        .replace(/[_\s]+/g, '-');
+
+    if (!normalized) return 'nova-3';
+    if (normalized === 'nova3') return 'nova-3';
+    if (normalized === 'nova2') return 'nova-2';
+    if (normalized === 'nova-3-general') return 'nova-3';
+    if (normalized === 'nova-2-general') return 'nova-2';
+    return normalized;
+}
+
 function normalizeTranscriptForFallback(value = '') {
     return coerceText(value).replace(/\s+/g, ' ');
 }
@@ -61,7 +74,7 @@ async function transcribeWithDeepgram(audioBuffer, contentType) {
     }
 
     const url = new URL(DEEPGRAM_API_URL);
-    url.searchParams.set('model', DEFAULT_DEEPGRAM_MODEL);
+    url.searchParams.set('model', normalizeDeepgramModel(DEFAULT_DEEPGRAM_MODEL));
     url.searchParams.set('smart_format', 'true');
     url.searchParams.set('punctuate', 'false');
     url.searchParams.set('numerals', 'true');

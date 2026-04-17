@@ -361,6 +361,11 @@ function ManualOrderPage() {
     const [isStandalonePwa, setIsStandalonePwa] = useState(false);
     const [, setTableTimeTick] = useState(0);
     const mobileSwipeStartRef = useRef(null);
+    const mobileMicPressActiveRef = useRef(false);
+    const mobileMicStartInFlightRef = useRef(false);
+    const mobileMicStopAfterStartRef = useRef(false);
+    const mobileMicStartTokenRef = useRef(0);
+    const voiceListeningStateRef = useRef(false);
     const voiceLastCartMutationRef = useRef({ timestamp: 0, source: '', mode: '', tableId: '' });
     const accessQuery = impersonatedOwnerId
         ? `impersonate_owner_id=${encodeURIComponent(impersonatedOwnerId)}`
@@ -2791,6 +2796,13 @@ function ManualOrderPage() {
     const voiceMicrophoneProbe = browserVoiceMicrophoneProbe?.status && browserVoiceMicrophoneProbe.status !== 'unknown'
         ? browserVoiceMicrophoneProbe
         : voiceCaptureMicrophoneProbe;
+    const shouldPreferRecordedAudioVoice = isVoiceCaptureSupported && (isMobileViewport || isStandalonePwa);
+
+    useEffect(() => {
+        if (!shouldPreferRecordedAudioVoice) return;
+        voiceUseBrowserPrimaryRef.current = false;
+        processHybridVoiceQueues();
+    }, [processHybridVoiceQueues, shouldPreferRecordedAudioVoice]);
 
     const startVoiceListening = useCallback(async () => {
         resetVoiceHybridQueues();
@@ -2798,10 +2810,19 @@ function ManualOrderPage() {
         const captureStarted = isVoiceCaptureSupported
             ? await startVoiceCaptureListening()
             : false;
-        const browserStarted = isBrowserVoiceRecognitionSupported
-            ? startBrowserVoiceListening()
-            : false;
-        voiceUseBrowserPrimaryRef.current = Boolean(browserStarted);
+        let browserStarted = false;
+
+        if (shouldPreferRecordedAudioVoice) {
+            if (!captureStarted && isBrowserVoiceRecognitionSupported) {
+                browserStarted = startBrowserVoiceListening();
+            }
+            voiceUseBrowserPrimaryRef.current = !captureStarted && Boolean(browserStarted);
+        } else {
+            browserStarted = isBrowserVoiceRecognitionSupported
+                ? startBrowserVoiceListening()
+                : false;
+            voiceUseBrowserPrimaryRef.current = Boolean(browserStarted);
+        }
 
         return Boolean(captureStarted || browserStarted);
     }, [
@@ -2810,6 +2831,7 @@ function ManualOrderPage() {
         resetVoiceHybridQueues,
         startBrowserVoiceListening,
         startVoiceCaptureListening,
+        shouldPreferRecordedAudioVoice,
     ]);
 
     const stopVoiceListening = useCallback(() => {
@@ -3825,8 +3847,15 @@ function ManualOrderPage() {
         : (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing)
             ? 'Processing'
             : 'Ready';
-    const isMobilePwaHoldToTalk = isMobileViewport && isStandalonePwa;
+    const isMobileHoldToTalk = isMobileViewport;
     const isMobileMicBusy = (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing) && !isVoiceListening;
+
+    useEffect(() => {
+        voiceListeningStateRef.current = isVoiceListening;
+        if (!isVoiceListening) {
+            mobileMicStartInFlightRef.current = false;
+        }
+    }, [isVoiceListening]);
 
     const handleMobileSwipeStart = useCallback((event) => {
         if (!isMobileViewport) return;
@@ -3870,25 +3899,56 @@ function ManualOrderPage() {
     }, []);
 
     const handleMobileMicPressStart = useCallback(async (event) => {
-        if (!isMobilePwaHoldToTalk || isMobileMicBusy || isVoiceListening) return;
+        if (!isMobileHoldToTalk || isMobileMicBusy || voiceListeningStateRef.current || mobileMicStartInFlightRef.current) return;
         event.preventDefault();
-        event.currentTarget?.setPointerCapture?.(event.pointerId);
-        await startVoiceListening();
-    }, [isMobileMicBusy, isMobilePwaHoldToTalk, isVoiceListening, startVoiceListening]);
+        mobileMicPressActiveRef.current = true;
+        mobileMicStopAfterStartRef.current = false;
+        mobileMicStartInFlightRef.current = true;
+        const startToken = Date.now();
+        mobileMicStartTokenRef.current = startToken;
 
-    const handleMobileMicPressEnd = useCallback((event) => {
-        if (!isMobilePwaHoldToTalk) return;
-        event.preventDefault();
-        event.currentTarget?.releasePointerCapture?.(event.pointerId);
-        if (isVoiceListening) {
+        try {
+            event.currentTarget?.setPointerCapture?.(event.pointerId);
+        } catch {
+            // ignore pointer capture failures on some mobile browsers
+        }
+
+        const started = await startVoiceListening();
+
+        if (mobileMicStartTokenRef.current !== startToken) return;
+
+        mobileMicStartInFlightRef.current = false;
+
+        if ((!mobileMicPressActiveRef.current || mobileMicStopAfterStartRef.current) && (started || voiceListeningStateRef.current)) {
+            mobileMicStopAfterStartRef.current = false;
             stopVoiceListening();
         }
-    }, [isMobilePwaHoldToTalk, isVoiceListening, stopVoiceListening]);
+    }, [isMobileHoldToTalk, isMobileMicBusy, startVoiceListening, stopVoiceListening]);
+
+    const handleMobileMicPressEnd = useCallback((event) => {
+        if (!isMobileHoldToTalk) return;
+        event.preventDefault();
+        mobileMicPressActiveRef.current = false;
+        try {
+            event.currentTarget?.releasePointerCapture?.(event.pointerId);
+        } catch {
+            // ignore pointer capture release failures
+        }
+
+        if (voiceListeningStateRef.current) {
+            stopVoiceListening();
+            return;
+        }
+
+        if (mobileMicStartInFlightRef.current) {
+            mobileMicStopAfterStartRef.current = true;
+        }
+    }, [isMobileHoldToTalk, stopVoiceListening]);
 
     const handleMobileMicFabClick = useCallback(() => {
-        if (isMobilePwaHoldToTalk || isMobileMicBusy) return;
+        if (isMobileHoldToTalk || isMobileMicBusy) return;
         void toggleVoiceListening();
-    }, [isMobileMicBusy, isMobilePwaHoldToTalk, toggleVoiceListening]);
+    }, [isMobileHoldToTalk, isMobileMicBusy, toggleVoiceListening]);
 
     return (
         <div className="text-foreground bg-background h-full overflow-hidden flex flex-col">
@@ -4390,8 +4450,8 @@ function ManualOrderPage() {
                         isMobileMicBusy && 'opacity-70'
                     )}
                     style={{ touchAction: 'none' }}
-                    aria-label={isMobilePwaHoldToTalk ? 'Hold to talk' : 'Toggle voice billing'}
-                    title={isMobilePwaHoldToTalk ? 'Hold to talk' : 'Tap to start voice billing'}
+                    aria-label={isMobileHoldToTalk ? 'Hold to talk' : 'Toggle voice billing'}
+                    title={isMobileHoldToTalk ? 'Hold to talk' : 'Tap to start voice billing'}
                 >
                     {isVoiceListening ? <MicOff size={24} /> : <Mic size={24} />}
                 </button>
