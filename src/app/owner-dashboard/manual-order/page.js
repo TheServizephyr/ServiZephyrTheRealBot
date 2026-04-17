@@ -398,6 +398,8 @@ function ManualOrderPage() {
     const browserVoiceRecognitionSupportedRef = useRef(false);
     const voiceCaptureSupportedRef = useRef(false);
     const voiceUseBrowserPrimaryRef = useRef(true);
+    const voiceAudioFallbackTimerRef = useRef(null);
+    const voiceRecentAudioFallbackAtRef = useRef(0);
     const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
 
     const billContainerRef = useRef(null);
@@ -3070,7 +3072,22 @@ function ManualOrderPage() {
         voiceBrowserResultQueueRef.current = [];
         voiceCapturedSegmentQueueRef.current = [];
         voicePendingAudioSkipCountRef.current = 0;
+        voiceRecentAudioFallbackAtRef.current = 0;
+        if (voiceAudioFallbackTimerRef.current) {
+            clearTimeout(voiceAudioFallbackTimerRef.current);
+            voiceAudioFallbackTimerRef.current = null;
+        }
     }, []);
+
+    const scheduleHybridVoiceQueueDrain = useCallback((delayMs = 1450) => {
+        if (voiceAudioFallbackTimerRef.current) {
+            clearTimeout(voiceAudioFallbackTimerRef.current);
+        }
+        voiceAudioFallbackTimerRef.current = window.setTimeout(() => {
+            voiceAudioFallbackTimerRef.current = null;
+            processHybridVoiceQueues();
+        }, delayMs);
+    }, [processHybridVoiceQueues]);
 
     const transcribeVoiceSegment = useCallback(async (audioBlob, metadata = {}) => {
         if (!(audioBlob instanceof Blob)) return;
@@ -3269,9 +3286,35 @@ function ManualOrderPage() {
                     }
 
                     const nextBrowserResult = voiceBrowserResultQueueRef.current[0];
-                    if (!nextBrowserResult) break;
-
                     const nextAudioSegment = voiceCapturedSegmentQueueRef.current[0];
+                    const audioWaitExpired = nextAudioSegment
+                        ? (Date.now() - Number(nextAudioSegment.createdAt || 0)) >= 1450
+                        : false;
+
+                    if (!nextBrowserResult) {
+                        if (!nextAudioSegment) break;
+                        if (!audioWaitExpired) break;
+
+                        voiceCapturedSegmentQueueRef.current.shift();
+                        setIsVoiceFallbackTranscribing(true);
+                        appendVoiceDebugEvent('Browser transcript timeout', 'Browser speech ne transcript nahi diya, recorded audio fallback use ho rahi hai.', 'warning');
+                        try {
+                            const paidTranscript = await transcribeVoiceSegment(nextAudioSegment.audioBlob, nextAudioSegment.metadata);
+                            if (paidTranscript?.transcript) {
+                                voiceRecentAudioFallbackAtRef.current = Date.now();
+                                handleVoiceCommandResult(paidTranscript.transcript);
+                            }
+                        } catch (error) {
+                            const message = error?.message || 'Voice transcription failed.';
+                            addVoiceLogEntry(message, '');
+                            toast({ title: 'Voice Billing', description: message, variant: 'warning' });
+                        } finally {
+                            setIsVoiceFallbackTranscribing(false);
+                        }
+                        continue;
+                    }
+
+                    if (!nextBrowserResult) break;
                     const assessment = assessBrowserVoiceTranscript(nextBrowserResult.transcript, nextBrowserResult.meta);
                     const fallbackWaitExpired = (Date.now() - Number(nextBrowserResult.createdAt || 0)) >= 1200;
                     const canUsePaidFallback = voiceCaptureSupportedRef.current && Boolean(nextAudioSegment);
@@ -3321,6 +3364,7 @@ function ManualOrderPage() {
         })();
     }, [
         addVoiceLogEntry,
+        appendVoiceDebugEvent,
         assessBrowserVoiceTranscript,
         handleVoiceCommandResult,
         toast,
@@ -3346,13 +3390,25 @@ function ManualOrderPage() {
             id: `voice-audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             audioBlob,
             metadata,
+            createdAt: Date.now(),
         });
         processHybridVoiceQueues();
-    }, [appendVoiceDebugEvent, processHybridVoiceQueues, updateVoiceDebugSnapshot]);
+        if (voiceUseBrowserPrimaryRef.current) {
+            scheduleHybridVoiceQueueDrain();
+        }
+    }, [appendVoiceDebugEvent, processHybridVoiceQueues, scheduleHybridVoiceQueueDrain, updateVoiceDebugSnapshot]);
 
     const handleBrowserVoiceResult = useCallback((spokenTranscript, meta = {}) => {
         const transcript = String(spokenTranscript || '').trim();
         if (!transcript) return;
+        if (
+            voiceRecentAudioFallbackAtRef.current &&
+            (Date.now() - voiceRecentAudioFallbackAtRef.current) < 2200 &&
+            voiceCapturedSegmentQueueRef.current.length === 0
+        ) {
+            appendVoiceDebugEvent('Late browser transcript ignored', transcript, 'info');
+            return;
+        }
 
         updateVoiceDebugSnapshot({
             phase: 'browser-transcript',
