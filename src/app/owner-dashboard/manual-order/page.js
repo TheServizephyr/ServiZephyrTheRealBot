@@ -742,6 +742,56 @@ function ManualOrderPage() {
             // Best-effort cleanup only.
         }
     }, [buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, getDesktopActionIdToken]);
+    const shouldApplyCompanionVoiceDraft = useCallback((draft = {}) => {
+        if (!draft?.version || !isCallSyncVoiceDraftFresh(draft?.updatedAt)) return false;
+
+        const version = Math.max(0, Number(draft?.version || 0) || 0);
+        const seenVersion = Math.max(
+            lastAppliedCompanionDraftVersionRef.current,
+            readSeenCompanionDraftVersion()
+        );
+        if (version > seenVersion) return true;
+
+        const draftHasContent = (
+            (Array.isArray(draft?.items) && draft.items.length > 0) ||
+            (Array.isArray(draft?.pendingItems) && draft.pendingItems.length > 0) ||
+            Boolean(String(draft?.lastTranscript || draft?.lastAction || draft?.note || '').trim())
+        );
+        const currentCartIsEmpty = cartRef.current.length === 0;
+
+        return Boolean(
+            version > 0 &&
+            version <= seenVersion &&
+            lastAppliedCompanionDraftVersionRef.current === 0 &&
+            currentCartIsEmpty &&
+            draftHasContent
+        );
+    }, [readSeenCompanionDraftVersion]);
+    const fetchCompanionVoiceDraftSnapshot = useCallback(async () => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return null;
+
+        try {
+            const idToken = await getDesktopActionIdToken(auth.currentUser, { timeoutMs: 3000 });
+            if (!idToken) return null;
+
+            const res = await fetch(buildScopedUrl('/api/owner/manual-order/companion-draft'), {
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                },
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                console.error('[ManualOrder] Companion draft fetch failed:', payload?.message || res.statusText);
+                return null;
+            }
+            return payload?.draft || null;
+        } catch (error) {
+            console.error('[ManualOrder] Companion draft bootstrap failed:', error);
+            return null;
+        }
+    }, [buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, getDesktopActionIdToken]);
 
     const readCustomerSuggestionCache = useCallback(() => {
         if (!customerSuggestionCacheKey) return null;
@@ -3232,14 +3282,7 @@ function ManualOrderPage() {
             draftRef,
             (snapshot) => {
                 const draft = snapshot.exists() ? snapshot.val() : null;
-                if (!draft?.version || !isCallSyncVoiceDraftFresh(draft?.updatedAt)) return;
-
-                const version = Math.max(0, Number(draft?.version || 0) || 0);
-                const seenVersion = Math.max(
-                    lastAppliedCompanionDraftVersionRef.current,
-                    readSeenCompanionDraftVersion()
-                );
-                if (version <= seenVersion) return;
+                if (!shouldApplyCompanionVoiceDraft(draft)) return;
 
                 void applyCompanionVoiceDraftSnapshot(draft);
             },
@@ -3255,7 +3298,30 @@ function ManualOrderPage() {
         applyCompanionVoiceDraftSnapshot,
         callSyncTarget?.businessId,
         callSyncTarget?.collectionName,
-        readSeenCompanionDraftVersion,
+        shouldApplyCompanionVoiceDraft,
+    ]);
+
+    useEffect(() => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return undefined;
+
+        let cancelled = false;
+        void (async () => {
+            const draft = await fetchCompanionVoiceDraftSnapshot();
+            if (cancelled || !shouldApplyCompanionVoiceDraft(draft)) return;
+            await applyCompanionVoiceDraftSnapshot(draft);
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        applyCompanionVoiceDraftSnapshot,
+        callSyncTarget?.businessId,
+        callSyncTarget?.collectionName,
+        fetchCompanionVoiceDraftSnapshot,
+        shouldApplyCompanionVoiceDraft,
     ]);
 
     const resetVoiceHybridQueues = useCallback(() => {
