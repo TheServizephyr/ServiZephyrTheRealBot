@@ -76,6 +76,34 @@ const INITIAL_VOICE_DEBUG_SNAPSHOT = {
     error: '',
     updatedAt: 0,
 };
+const buildVoiceSttKeyterms = (voiceIndex = []) => {
+    const seen = new Set();
+    const ranked = (Array.isArray(voiceIndex) ? voiceIndex : [])
+        .map((entry) => String(entry?.name || '').trim())
+        .filter(Boolean)
+        .sort((left, right) => {
+            const tokenDiff = right.split(/\s+/).length - left.split(/\s+/).length;
+            if (tokenDiff !== 0) return tokenDiff;
+            return right.length - left.length;
+        });
+
+    const keyterms = [];
+    let tokenBudget = 0;
+
+    ranked.forEach((term) => {
+        const normalized = term.toLowerCase();
+        if (seen.has(normalized)) return;
+        const tokens = term.split(/\s+/).filter(Boolean);
+        if (!tokens.length) return;
+        if (keyterms.length >= 90) return;
+        if (tokenBudget + tokens.length > 420) return;
+        seen.add(normalized);
+        keyterms.push(term);
+        tokenBudget += tokens.length;
+    });
+
+    return keyterms;
+};
 const CUSTOMER_SUGGESTION_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const normalizeSuggestionPhone = (value = '') => String(value || '').replace(/\D/g, '').slice(-10);
 const normalizeAddressText = (value = '') => String(value || '').replace(/\s+/g, ' ').trim();
@@ -1678,6 +1706,10 @@ function ManualOrderPage() {
         () => buildVoiceMenuIndex(menu, openItems, businessType),
         [menu, openItems, businessType]
     );
+    const voiceSttKeyterms = useMemo(
+        () => buildVoiceSttKeyterms(voiceMenuIndex),
+        [voiceMenuIndex]
+    );
 
     // Calculate dynamic default width based on the longest category name
     const defaultSidebarWidth = useMemo(() => {
@@ -3054,6 +3086,9 @@ function ManualOrderPage() {
             const formData = new FormData();
             formData.append('audio', audioBlob, `voice-segment-${Date.now()}.webm`);
             formData.append('mimeType', mimeType);
+            if (voiceSttKeyterms.length > 0) {
+                formData.append('keyterms', JSON.stringify(voiceSttKeyterms));
+            }
 
             updateVoiceDebugSnapshot({
                 phase: 'transcribing',
@@ -3116,6 +3151,9 @@ function ManualOrderPage() {
                 provider: String(payload?.provider || '').trim(),
                 fallbackUsed: !!payload?.fallbackUsed,
                 confidence: Number(payload?.confidence || 0),
+                detectedLanguage: String(payload?.detectedLanguage || '').trim(),
+                languageConfidence: Number(payload?.languageConfidence || 0),
+                transcriptionMode: String(payload?.transcriptionMode || '').trim(),
             };
             updateVoiceDebugSnapshot({
                 phase: 'transcribed',
@@ -3124,19 +3162,21 @@ function ManualOrderPage() {
                 transcript: result.transcript,
                 confidence: result.confidence,
                 fallbackUsed: result.fallbackUsed,
-                note: result.transcript ? 'Transcript received from audio capture.' : 'Transcript response was empty.',
+                note: result.transcript
+                    ? `Transcript received from audio capture.${result.detectedLanguage ? ` Language ${result.detectedLanguage}` : ''}${result.transcriptionMode ? ` • ${result.transcriptionMode}` : ''}`
+                    : 'Transcript response was empty.',
                 error: '',
             });
             appendVoiceDebugEvent(
                 'Transcript received',
-                `${result.provider || 'unknown'} • conf ${result.confidence.toFixed(2)}${result.transcript ? ` • ${result.transcript}` : ''}`,
+                `${result.provider || 'unknown'} • conf ${result.confidence.toFixed(2)}${result.detectedLanguage ? ` • lang ${result.detectedLanguage}` : ''}${result.fallbackUsed ? ' • retry used' : ''}${result.transcript ? ` • ${result.transcript}` : ''}`,
                 'info'
             );
             return result;
         };
 
         return requestTranscript();
-    }, [appendVoiceDebugEvent, buildScopedUrl, getDesktopActionIdToken, updateVoiceDebugSnapshot]);
+    }, [appendVoiceDebugEvent, buildScopedUrl, getDesktopActionIdToken, updateVoiceDebugSnapshot, voiceSttKeyterms]);
 
     const assessBrowserVoiceTranscript = useCallback((spokenTranscript, browserMeta = {}) => {
         const normalizedTranscript = normalizeVoiceText(spokenTranscript);
@@ -3388,7 +3428,10 @@ function ManualOrderPage() {
     const voiceMicrophoneProbe = browserVoiceMicrophoneProbe?.status && browserVoiceMicrophoneProbe.status !== 'unknown'
         ? browserVoiceMicrophoneProbe
         : voiceCaptureMicrophoneProbe;
-    const shouldPreferRecordedAudioVoice = isVoiceCaptureSupported && (isMobileViewport || isStandalonePwa);
+    const shouldPreferRecordedAudioVoice = (
+        isVoiceCaptureSupported &&
+        !isBrowserVoiceRecognitionSupported
+    );
 
     useEffect(() => {
         if (!voiceRecognitionError) return;
@@ -3401,9 +3444,13 @@ function ManualOrderPage() {
     }, [appendVoiceDebugEvent, updateVoiceDebugSnapshot, voiceRecognitionError]);
 
     useEffect(() => {
-        if (!shouldPreferRecordedAudioVoice) return;
-        voiceUseBrowserPrimaryRef.current = false;
-        processHybridVoiceQueues();
+        if (shouldPreferRecordedAudioVoice) {
+            voiceUseBrowserPrimaryRef.current = false;
+            processHybridVoiceQueues();
+            return;
+        }
+
+        voiceUseBrowserPrimaryRef.current = true;
     }, [processHybridVoiceQueues, shouldPreferRecordedAudioVoice]);
 
     const startVoiceListening = useCallback(async () => {
@@ -3411,10 +3458,18 @@ function ManualOrderPage() {
         updateVoiceDebugSnapshot({
             phase: 'arming',
             source: shouldPreferRecordedAudioVoice ? 'recorded-audio' : 'hybrid',
-            note: 'Voice capture requested. Waiting for mic input.',
+            note: shouldPreferRecordedAudioVoice
+                ? 'Voice capture requested. Recorded-audio fallback mode active.'
+                : 'Voice capture requested. Browser/default speech primary, recorded audio backup active.',
             error: '',
         });
-        appendVoiceDebugEvent('Mic armed', shouldPreferRecordedAudioVoice ? 'Mobile recorded-audio mode active.' : 'Hybrid browser/capture mode active.', 'info');
+        appendVoiceDebugEvent(
+            'Mic armed',
+            shouldPreferRecordedAudioVoice
+                ? 'Recorded-audio mode active because browser speech recognition is unavailable.'
+                : 'Browser/default speech primary with recorded-audio backup active.',
+            'info'
+        );
 
         const captureStarted = isVoiceCaptureSupported
             ? await startVoiceCaptureListening()
