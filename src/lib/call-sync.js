@@ -1,6 +1,8 @@
 const CALL_SYNC_ROOT = 'call_sync';
 const CALL_SYNC_USER_ROOT = 'call_sync_user';
+const CALL_SYNC_VOICE_DRAFT_ROOT = 'call_sync_voice_draft';
 const CALL_SYNC_EVENT_TTL_MS = 45 * 1000;
+const CALL_SYNC_VOICE_DRAFT_TTL_MS = 6 * 60 * 60 * 1000;
 const CALL_SYNC_DISMISSED_SESSION_KEY = 'servizephyr_call_sync_dismissed_keys';
 const RTDB_INVALID_KEY_CHARS = /[.#$/\[\]\u0000-\u001F\u007F]/g;
 
@@ -32,6 +34,9 @@ export const buildActiveCallSyncPath = ({ collectionName, businessId }) =>
 
 export const buildActiveCallSyncUserPath = (uid) =>
     `${CALL_SYNC_USER_ROOT}/${toSafeRtdbPathKey(uid)}/active`;
+
+export const buildCallSyncVoiceDraftPath = ({ collectionName, businessId }) =>
+    `${CALL_SYNC_VOICE_DRAFT_ROOT}/${toSafeRtdbPathKey(collectionName)}/${toSafeRtdbPathKey(businessId)}/manual_billing`;
 
 export const buildCallSyncEventKey = (phone, timestampMs) => {
     const normalizedPhone = normalizeIndianPhoneLoose(phone);
@@ -66,6 +71,12 @@ const writeDismissedCallSyncKeys = (keys = []) => {
 export const isDismissedCallSyncEvent = (callKey) =>
     !!callKey && readDismissedCallSyncKeys().includes(callKey);
 
+export const isCallSyncVoiceDraftFresh = (updatedAt, ttlMs = CALL_SYNC_VOICE_DRAFT_TTL_MS) => {
+    const ts = Number(updatedAt || 0);
+    if (!Number.isFinite(ts) || ts <= 0) return false;
+    return (Date.now() - ts) <= ttlMs;
+};
+
 export const dismissCallSyncEventForSession = (callKey) => {
     if (!callKey) return;
     const keys = readDismissedCallSyncKeys();
@@ -73,4 +84,10 @@ export const dismissCallSyncEventForSession = (callKey) => {
     writeDismissedCallSyncKeys(keys);
 };
 
-export { CALL_SYNC_ROOT, CALL_SYNC_USER_ROOT, CALL_SYNC_EVENT_TTL_MS };
+export {
+    CALL_SYNC_ROOT,
+    CALL_SYNC_USER_ROOT,
+    CALL_SYNC_VOICE_DRAFT_ROOT,
+    CALL_SYNC_EVENT_TTL_MS,
+    CALL_SYNC_VOICE_DRAFT_TTL_MS,
+};

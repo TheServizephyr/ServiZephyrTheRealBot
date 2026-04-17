@@ -4,6 +4,7 @@ import { FieldValue } from '@/lib/firebase-admin';
 import { getPermissionsForRole, PERMISSIONS } from '@/lib/permissions';
 
 export const CALL_SYNC_TOKENS_COLLECTION = 'call_sync_tokens';
+export const CALL_SYNC_TOKEN_BUSINESS_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
 const CALL_SYNC_LISTENER_PERMISSIONS = [
     PERMISSIONS.CREATE_ORDER,
     PERMISSIONS.MANUAL_BILLING?.WRITE || PERMISSIONS.MANUAL_BILLING,
@@ -112,5 +113,61 @@ export async function upsertCallSyncTokenBindingForBusinessRef(firestore, {
         businessId: resolvedBusinessId,
         ownerId: ownerId || '',
         recipients,
+    };
+}
+
+export async function resolveBusinessByCallSyncTokenLegacy(firestore, token) {
+    for (const collectionName of CALL_SYNC_TOKEN_BUSINESS_COLLECTIONS) {
+        const snap = await firestore
+            .collection(collectionName)
+            .where('callSyncToken', '==', token)
+            .limit(1)
+            .get();
+
+        if (!snap.empty) {
+            return {
+                collectionName,
+                businessId: snap.docs[0].id,
+                businessRef: snap.docs[0].ref,
+            };
+        }
+    }
+
+    return null;
+}
+
+export async function resolveCallSyncTokenBinding(firestore, token) {
+    const normalizedToken = String(token || '').trim();
+    if (!normalizedToken) {
+        throw new Error('Call sync token is required.');
+    }
+
+    const tokenRef = getCallSyncTokenDocRef(firestore, normalizedToken);
+    let tokenSnap = tokenRef ? await tokenRef.get() : null;
+    let target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
+
+    if ((!target?.businessId || !target?.collectionName) && tokenRef) {
+        const legacyTarget = await resolveBusinessByCallSyncTokenLegacy(firestore, normalizedToken);
+        if (legacyTarget?.businessRef) {
+            await upsertCallSyncTokenBindingForBusinessRef(firestore, {
+                token: normalizedToken,
+                businessRef: legacyTarget.businessRef,
+                collectionName: legacyTarget.collectionName,
+                businessId: legacyTarget.businessId,
+            });
+            tokenSnap = await tokenRef.get();
+            target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
+        }
+    }
+
+    if (!target?.businessId || !target?.collectionName) {
+        return null;
+    }
+
+    return {
+        tokenHash: tokenRef?.id || '',
+        tokenRef,
+        tokenSnap,
+        target,
     };
 }

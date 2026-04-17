@@ -23,9 +23,11 @@ import VoiceBillingPanel from '@/components/manual-order/VoiceBillingPanel';
 import {
     buildActiveCallSyncUserPath,
     buildCallSyncEventKey,
+    buildCallSyncVoiceDraftPath,
     dismissCallSyncEventForSession,
     isCallSyncEventFresh,
     isCallSyncLiveSuggestionState,
+    isCallSyncVoiceDraftFresh,
     isDismissedCallSyncEvent,
     normalizeIndianPhoneLoose,
 } from '@/lib/call-sync';
@@ -400,6 +402,7 @@ function ManualOrderPage() {
     const voiceUseBrowserPrimaryRef = useRef(true);
     const voiceAudioFallbackTimerRef = useRef(null);
     const voiceRecentAudioFallbackAtRef = useRef(0);
+    const lastAppliedCompanionDraftVersionRef = useRef(0);
     const [manualSidebarWidth, setManualSidebarWidth] = useState(null); // null means use dynamic default
 
     const billContainerRef = useRef(null);
@@ -532,6 +535,12 @@ function ManualOrderPage() {
         }
         return url.toString();
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const companionDraftSeenKey = useMemo(() => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return '';
+        return `manual_order_companion_draft_seen_v1_${collectionName}_${businessId}`;
+    }, [callSyncTarget?.businessId, callSyncTarget?.collectionName]);
 
     const readCachedPayload = useCallback(() => {
         try {
@@ -699,6 +708,40 @@ function ManualOrderPage() {
             timeoutMs: desktopRuntime ? timeoutMs : 0,
         });
     }, [desktopRuntime]);
+    const readSeenCompanionDraftVersion = useCallback(() => {
+        if (!companionDraftSeenKey || typeof window === 'undefined') return 0;
+        try {
+            return Number(sessionStorage.getItem(companionDraftSeenKey) || 0) || 0;
+        } catch {
+            return 0;
+        }
+    }, [companionDraftSeenKey]);
+    const writeSeenCompanionDraftVersion = useCallback((version) => {
+        if (!companionDraftSeenKey || typeof window === 'undefined') return;
+        try {
+            sessionStorage.setItem(companionDraftSeenKey, String(Math.max(0, Number(version || 0) || 0)));
+        } catch {
+            // Ignore storage write errors
+        }
+    }, [companionDraftSeenKey]);
+    const clearCompanionVoiceDraft = useCallback(async () => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return;
+
+        try {
+            const idToken = await getDesktopActionIdToken(auth.currentUser, { timeoutMs: 3000 });
+            if (!idToken) return;
+            await fetch(buildScopedUrl('/api/owner/manual-order/companion-draft'), {
+                method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${idToken}`,
+                },
+            });
+        } catch {
+            // Best-effort cleanup only.
+        }
+    }, [buildScopedUrl, callSyncTarget?.businessId, callSyncTarget?.collectionName, getDesktopActionIdToken]);
 
     const readCustomerSuggestionCache = useCallback(() => {
         if (!customerSuggestionCacheKey) return null;
@@ -2041,7 +2084,10 @@ function ManualOrderPage() {
         setCallSyncStatus('listening');
         setVoicePendingItems([]);
         voiceLastCartMutationRef.current = { timestamp: 0, source: '', mode: '', tableId: '' };
-    }, []);
+        lastAppliedCompanionDraftVersionRef.current = 0;
+        writeSeenCompanionDraftVersion(0);
+        void clearCompanionVoiceDraft();
+    }, [clearCompanionVoiceDraft, writeSeenCompanionDraftVersion]);
 
     const handleClear = useCallback(() => {
         resetCurrentBill();
@@ -2283,6 +2329,114 @@ function ManualOrderPage() {
             Array.from({ length: Math.max(0, Number(item?.quantity || 0)) }, () => item.cartItemId)
         ))
     ), []);
+    const applyCompanionVoiceDraftSnapshot = useCallback(async (draft = {}) => {
+        const version = Math.max(0, Number(draft?.version || 0) || 0);
+        if (version <= 0) return false;
+
+        let resolvedActiveTable = null;
+        const targetMode = String(draft?.orderType || 'delivery').trim() || 'delivery';
+        const targetTableId = String(draft?.activeTable?.id || '').trim();
+        if (targetMode === 'dine-in' && targetTableId) {
+            resolvedActiveTable = manualTables.find((table) => table.id === targetTableId) || null;
+            if (!resolvedActiveTable) {
+                const fetchedTables = await fetchManualTables();
+                resolvedActiveTable = (Array.isArray(fetchedTables) ? fetchedTables : []).find((table) => table.id === targetTableId) || null;
+            }
+            if (!resolvedActiveTable) {
+                resolvedActiveTable = {
+                    id: targetTableId,
+                    name: String(draft?.activeTable?.name || targetTableId).trim() || targetTableId,
+                    status: String(draft?.activeTable?.status || 'available').trim() || 'available',
+                    currentOrder: null,
+                };
+            }
+        }
+
+        const nextCart = Array.isArray(draft?.items)
+            ? draft.items.map((item) => ({
+                ...item,
+                quantity: Math.max(1, parseInt(item?.quantity, 10) || 1),
+                price: Number(item?.price || item?.portion?.price || 0) || 0,
+                totalPrice: Number(item?.totalPrice || 0) || 0,
+                cartItemId: String(item?.cartItemId || `${item?.id || 'item'}-${item?.portion?.name || 'regular'}`).trim(),
+            }))
+            : [];
+
+        cartRef.current = nextCart;
+        setCart(nextCart);
+        setQtyInputMap({});
+        setItemHistory(rebuildItemHistoryFromCart(nextCart));
+        setBillDraftId(createBillDraftId());
+        setLastSavedOrderData(null);
+        setCurrentBillCustomerOrderId(generateCustomerOrderId());
+        setCustomerDetails({
+            name: String(draft?.customerDetails?.name || '').trim(),
+            phone: String(draft?.customerDetails?.phone || '').trim(),
+            address: String(draft?.customerDetails?.address || '').trim(),
+            notes: String(draft?.customerDetails?.notes || '').trim(),
+        });
+        setDeliveryChargeInput('0');
+        setAdditionalChargeNameInput('');
+        setAdditionalChargeInput('0');
+        setDiscountInput('0');
+        setPaymentMode('cash');
+        setSelectedCustomerSuggestion(null);
+        setIsPhoneSuggestionOpen(false);
+        setIsAddressSuggestionOpen(false);
+        setActivePhoneSuggestionIndex(-1);
+        setActiveAddressSuggestionIndex(-1);
+        setAttachedCallContext(null);
+        setPendingCallSuggestion(null);
+        setPhoneError(false);
+        setSelectedOccupiedTable(null);
+        setOrderType(targetMode);
+        setActiveTable(targetMode === 'dine-in' ? resolvedActiveTable : null);
+        setVoicePendingItems(Array.isArray(draft?.pendingItems) ? draft.pendingItems : []);
+        setVoiceLastTranscript(String(draft?.lastTranscript || '').trim());
+        setVoiceLastAction(String(draft?.lastAction || draft?.note || '').trim());
+        updateVoiceDebugSnapshot({
+            phase: draft?.pendingItems?.length ? 'needs-confirmation' : (nextCart.length > 0 ? 'items-added' : 'completed'),
+            source: 'billing-companion',
+            provider: 'android-companion',
+            transcript: String(draft?.lastTranscript || '').trim(),
+            resolvedCount: nextCart.length,
+            pendingCount: Array.isArray(draft?.pendingItems) ? draft.pendingItems.length : 0,
+            unresolvedCount: Math.max(0, Number(draft?.unresolvedCount || 0) || 0),
+            matchedTableName: targetMode === 'dine-in' ? (resolvedActiveTable?.name || String(draft?.activeTable?.name || '').trim()) : '',
+            desiredMode: targetMode,
+            note: String(draft?.note || '').trim() || 'Voice draft synced from billing companion.',
+            error: '',
+        });
+
+        voiceLastCartMutationRef.current = {
+            timestamp: Date.now(),
+            source: 'companion-sync',
+            mode: targetMode,
+            tableId: targetMode === 'dine-in' ? (resolvedActiveTable?.id || targetTableId) : '',
+        };
+        lastAppliedCompanionDraftVersionRef.current = version;
+        writeSeenCompanionDraftVersion(version);
+        addVoiceLogEntry(
+            String(draft?.note || '').trim() || 'Voice draft synced from billing companion.',
+            String(draft?.lastTranscript || 'Billing companion').trim()
+        );
+        toast({
+            title: 'Billing Companion',
+            description: draft?.pendingItems?.length
+                ? 'Companion draft synced. Some items still need confirmation.'
+                : 'Voice bill synced from companion app.',
+            variant: draft?.pendingItems?.length ? 'warning' : 'success',
+        });
+        return true;
+    }, [
+        addVoiceLogEntry,
+        fetchManualTables,
+        manualTables,
+        rebuildItemHistoryFromCart,
+        toast,
+        updateVoiceDebugSnapshot,
+        writeSeenCompanionDraftVersion,
+    ]);
 
     const appendResolvedVoiceItemsToCart = useCallback((resolvedSelections = []) => {
         if (!Array.isArray(resolvedSelections) || resolvedSelections.length === 0) {
@@ -3067,6 +3221,42 @@ function ManualOrderPage() {
     const dismissVoicePendingItem = useCallback((pendingItemId) => {
         setVoicePendingItems((prev) => prev.filter((item) => item.id !== pendingItemId));
     }, []);
+
+    useEffect(() => {
+        const businessId = String(callSyncTarget?.businessId || '').trim();
+        const collectionName = String(callSyncTarget?.collectionName || '').trim();
+        if (!businessId || !collectionName) return undefined;
+
+        const draftRef = ref(rtdb, buildCallSyncVoiceDraftPath({ businessId, collectionName }));
+        const unsubscribe = onValue(
+            draftRef,
+            (snapshot) => {
+                const draft = snapshot.exists() ? snapshot.val() : null;
+                if (!draft?.version || !isCallSyncVoiceDraftFresh(draft?.updatedAt)) return;
+
+                const version = Math.max(0, Number(draft?.version || 0) || 0);
+                const seenVersion = Math.max(
+                    lastAppliedCompanionDraftVersionRef.current,
+                    readSeenCompanionDraftVersion()
+                );
+                if (version <= seenVersion) return;
+
+                void applyCompanionVoiceDraftSnapshot(draft);
+            },
+            (error) => {
+                console.error('[ManualOrder] Companion voice draft listener failed:', error);
+            }
+        );
+
+        return () => {
+            unsubscribe();
+        };
+    }, [
+        applyCompanionVoiceDraftSnapshot,
+        callSyncTarget?.businessId,
+        callSyncTarget?.collectionName,
+        readSeenCompanionDraftVersion,
+    ]);
 
     const resetVoiceHybridQueues = useCallback(() => {
         voiceBrowserResultQueueRef.current = [];

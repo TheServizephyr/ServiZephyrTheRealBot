@@ -3,18 +3,24 @@ package com.servizephyr.callsync
 import android.Manifest
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
+import android.media.MediaRecorder
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
+import android.util.Log
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
 import android.text.format.DateFormat as AndroidDateFormat
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -22,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +36,14 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
+import java.util.Locale
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val VOICE_TAG = "CallSyncVoice"
+    }
+
     private lateinit var drawerLayout: DrawerLayout
     private lateinit var menuButton: ImageButton
     private lateinit var themeSwitch: MaterialSwitch
@@ -57,10 +70,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var networkCheckButton: Button
     private lateinit var retryPendingButton: Button
     private lateinit var dummyCallButton: Button
+    private lateinit var voiceRefreshButton: Button
     private lateinit var pendingStatusText: TextView
     private lateinit var lastSuccessText: TextView
     private lateinit var networkStatusText: TextView
     private lateinit var debugText: TextView
+    private lateinit var voiceStatusText: TextView
+    private lateinit var voiceContextText: TextView
+    private lateinit var voiceSummaryText: TextView
+    private lateinit var voiceItemsText: TextView
+    private lateinit var voicePendingText: TextView
+    private lateinit var voiceRecordFab: FloatingActionButton
 
     private lateinit var connectivityManager: ConnectivityManager
     private var networkCallbackRegistered = false
@@ -69,6 +89,14 @@ class MainActivity : AppCompatActivity() {
     private var isTokenEditing = false
     private var isTokenVisible = false
     private var isScheduleEditing = false
+    private var currentVoiceDraft: CompanionVoiceDraft? = null
+    private var mediaRecorder: MediaRecorder? = null
+    private var pendingRecordingFile: File? = null
+    private var pendingRecordingStartedAtMs: Long = 0L
+    private var isVoiceRecording = false
+    private var isVoiceSyncRunning = false
+    private var lastVoiceUiMessage = ""
+    private var lastVoiceUiTranscript = ""
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -156,6 +184,27 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        voiceRefreshButton.setOnClickListener {
+            refreshVoiceDraftInBackground(force = true)
+        }
+
+        voiceRecordFab.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startVoiceCapture()
+                    true
+                }
+
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    stopVoiceCaptureAndSync()
+                    true
+                }
+
+                else -> false
+            }
+        }
+
         tokenEditButton.setOnClickListener {
             if (!isTokenEditing) {
                 isTokenEditing = true
@@ -205,11 +254,25 @@ class MainActivity : AppCompatActivity() {
         registerNetworkCallbackIfNeeded()
         refreshUi()
         warmHostsInBackground(force = false)
+        refreshVoiceDraftInBackground(force = false)
     }
 
     override fun onPause() {
         super.onPause()
         unregisterNetworkCallbackIfNeeded()
+        if (isVoiceRecording) {
+            Log.w(VOICE_TAG, "onPause cancelling active voice recording")
+            releaseVoiceRecorder(deleteFile = true)
+            isVoiceRecording = false
+            lastVoiceUiMessage = "Voice recording was cancelled."
+            refreshUi()
+        }
+    }
+
+    override fun onDestroy() {
+        Log.d(VOICE_TAG, "onDestroy releasing recorder resources")
+        releaseVoiceRecorder(deleteFile = true)
+        super.onDestroy()
     }
 
     private fun bindViews() {
@@ -239,10 +302,17 @@ class MainActivity : AppCompatActivity() {
         networkCheckButton = findViewById(R.id.networkCheckButton)
         retryPendingButton = findViewById(R.id.retryPendingButton)
         dummyCallButton = findViewById(R.id.dummyCallButton)
+        voiceRefreshButton = findViewById(R.id.voiceRefreshButton)
         pendingStatusText = findViewById(R.id.pendingStatusText)
         lastSuccessText = findViewById(R.id.lastSuccessText)
         networkStatusText = findViewById(R.id.networkStatusText)
         debugText = findViewById(R.id.debugText)
+        voiceStatusText = findViewById(R.id.voiceStatusText)
+        voiceContextText = findViewById(R.id.voiceContextText)
+        voiceSummaryText = findViewById(R.id.voiceSummaryText)
+        voiceItemsText = findViewById(R.id.voiceItemsText)
+        voicePendingText = findViewById(R.id.voicePendingText)
+        voiceRecordFab = findViewById(R.id.voiceRecordFab)
     }
 
     private fun applyThemeFromPrefs() {
@@ -261,6 +331,10 @@ class MainActivity : AppCompatActivity() {
         val hasCallLog = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.READ_CALL_LOG
+        ) == PackageManager.PERMISSION_GRANTED
+        val hasMicPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
         val hasPermissions = hasPhoneState && hasCallLog
         val withinHours = CallSyncStore.isWithinOperatingHours(config, currentMinutes())
@@ -301,17 +375,56 @@ class MainActivity : AppCompatActivity() {
         )
         debugText.text = buildDebugText(debugSnapshot)
         warningBannerCard.setOnClickListener {
-            if (!hasPermissions) {
+            if (!hasPermissions || !hasMicPermission) {
                 permissionLauncher.launch(
                     arrayOf(
                         Manifest.permission.READ_PHONE_STATE,
-                        Manifest.permission.READ_CALL_LOG
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.RECORD_AUDIO
                     )
                 )
             }
         }
 
-        applyWarningBanner(debugSnapshot.lastEvent, debugSnapshot.lastResult, config.isSyncEnabled, hasPermissions, withinHours)
+        voiceRefreshButton.isEnabled = config.token.isNotBlank() && !isVoiceSyncRunning
+        voiceRecordFab.isEnabled = config.isSyncEnabled && hasMicPermission && config.token.isNotBlank() && !isVoiceSyncRunning
+        voiceRecordFab.backgroundTintList = ColorStateList.valueOf(
+            Color.parseColor(
+                when {
+                    isVoiceRecording -> "#FF9F1C"
+                    isVoiceSyncRunning -> "#D8D0E8"
+                    else -> "#FFCC1B"
+                }
+            )
+        )
+        voiceRecordFab.setImageResource(
+            when {
+                isVoiceRecording -> android.R.drawable.ic_media_pause
+                isVoiceSyncRunning -> android.R.drawable.stat_notify_sync
+                else -> android.R.drawable.ic_btn_speak_now
+            }
+        )
+        voiceRecordFab.scaleX = if (isVoiceRecording) 1.14f else 1.0f
+        voiceRecordFab.scaleY = if (isVoiceRecording) 1.14f else 1.0f
+        voiceStatusText.text = when {
+            !config.isSyncEnabled -> getString(R.string.voice_status_paused)
+            !hasMicPermission -> getString(R.string.voice_status_missing_mic)
+            isVoiceRecording -> getString(R.string.voice_status_recording)
+            isVoiceSyncRunning -> getString(R.string.voice_status_syncing)
+            else -> getString(R.string.voice_status_ready)
+        }
+        voiceContextText.text = buildVoiceContextText(currentVoiceDraft)
+        voiceSummaryText.text = buildVoiceSummaryText(currentVoiceDraft)
+        voiceItemsText.text = buildVoiceItemsText(currentVoiceDraft)
+        voicePendingText.text = buildVoicePendingText(currentVoiceDraft)
+
+        applyWarningBanner(
+            debugSnapshot.lastEvent,
+            debugSnapshot.lastResult,
+            config.isSyncEnabled,
+            hasPermissions && hasMicPermission,
+            withinHours
+        )
     }
 
     private fun updateEditorStates() {
@@ -465,6 +578,58 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshVoiceDraftInBackground(force: Boolean) {
+        val config = persistCurrentConfig()
+        if (!force && (isVoiceSyncRunning || isVoiceRecording)) {
+            Log.d(
+                VOICE_TAG,
+                "refreshVoiceDraft skipped force=$force recording=$isVoiceRecording syncing=$isVoiceSyncRunning"
+            )
+            return
+        }
+        if (config.token.isBlank()) {
+            Log.w(VOICE_TAG, "refreshVoiceDraft skipped: token missing")
+            currentVoiceDraft = null
+            lastVoiceUiMessage = getString(R.string.not_configured)
+            lastVoiceUiTranscript = ""
+            refreshUi()
+            return
+        }
+
+        isVoiceSyncRunning = true
+        Log.d(
+            VOICE_TAG,
+            "refreshVoiceDraft start force=$force deviceId=${config.deviceId} candidates=${CallSyncStore.buildCandidateBaseUrls(config).size}"
+        )
+        refreshUi()
+        CoroutineScope(Dispatchers.IO).launch {
+            val result = CallSyncVoiceService.fetchDraft(config)
+            CallSyncStore.saveDebugSnapshot(
+                this@MainActivity,
+                "voice-refresh",
+                "",
+                result.message
+            )
+            runOnUiThread {
+                if (result.success && result.draft != null) {
+                    currentVoiceDraft = result.draft
+                    lastVoiceUiMessage = result.draft.note.ifBlank { result.message }
+                    lastVoiceUiTranscript = result.draft.lastTranscript.ifBlank { result.transcript }
+                } else if (force) {
+                    lastVoiceUiMessage = result.message
+                    lastVoiceUiTranscript = result.transcript
+                    showShortToast(result.message)
+                }
+                isVoiceSyncRunning = false
+                Log.d(
+                    VOICE_TAG,
+                    "refreshVoiceDraft finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0}"
+                )
+                refreshUi()
+            }
+        }
+    }
+
     private fun warmHostsInBackground(force: Boolean) {
         val config = CallSyncStore.load(this)
         if (config.serverBaseUrl.isBlank() || config.token.isBlank()) return
@@ -540,5 +705,309 @@ class MainActivity : AppCompatActivity() {
     private fun buildDummyPhoneNumber(): String {
         val suffix = (System.currentTimeMillis() % 1_000_000_000L).toString().padStart(9, '0')
         return "9$suffix".take(10)
+    }
+
+    private fun startVoiceCapture() {
+        val config = persistCurrentConfig()
+        if (!config.isSyncEnabled) {
+            Log.w(VOICE_TAG, "startVoiceCapture skipped: sync disabled")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", getString(R.string.voice_status_paused))
+            lastVoiceUiMessage = getString(R.string.voice_status_paused)
+            lastVoiceUiTranscript = ""
+            showShortToast(lastVoiceUiMessage)
+            refreshUi()
+            return
+        }
+        if (config.token.isBlank()) {
+            Log.w(VOICE_TAG, "startVoiceCapture skipped: token missing")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", getString(R.string.not_configured))
+            lastVoiceUiMessage = getString(R.string.not_configured)
+            lastVoiceUiTranscript = ""
+            showShortToast(lastVoiceUiMessage)
+            refreshUi()
+            return
+        }
+        val hasMicPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasMicPermission) {
+            Log.w(VOICE_TAG, "startVoiceCapture skipped: mic permission missing")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", getString(R.string.voice_permission_prompt))
+            lastVoiceUiMessage = getString(R.string.voice_permission_prompt)
+            lastVoiceUiTranscript = ""
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_PHONE_STATE,
+                    Manifest.permission.READ_CALL_LOG,
+                    Manifest.permission.RECORD_AUDIO
+                )
+            )
+            showShortToast(lastVoiceUiMessage)
+            refreshUi()
+            return
+        }
+        if (isVoiceRecording || isVoiceSyncRunning) {
+            Log.w(VOICE_TAG, "startVoiceCapture skipped: recording=$isVoiceRecording syncing=$isVoiceSyncRunning")
+            return
+        }
+
+        val audioFile = File(cacheDir, "voice-billing-${System.currentTimeMillis()}.m4a")
+        val startError = startVoiceRecorderWithFallback(audioFile)
+        if (startError == null) {
+            pendingRecordingFile = audioFile
+            pendingRecordingStartedAtMs = System.currentTimeMillis()
+            isVoiceRecording = true
+            lastVoiceUiMessage = getString(R.string.voice_status_recording)
+            lastVoiceUiTranscript = ""
+            Log.d(VOICE_TAG, "voice capture started file=${audioFile.absolutePath}")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", "Voice capture started")
+        } else {
+            if (audioFile.exists()) {
+                audioFile.delete()
+            }
+            pendingRecordingFile = null
+            pendingRecordingStartedAtMs = 0L
+            mediaRecorder = null
+            isVoiceRecording = false
+            lastVoiceUiMessage = "Voice capture failed: $startError"
+            lastVoiceUiTranscript = ""
+            Log.e(VOICE_TAG, "voice capture failed startError=$startError")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", lastVoiceUiMessage)
+            showShortToast(lastVoiceUiMessage)
+        }
+        refreshUi()
+    }
+
+    private fun stopVoiceCaptureAndSync() {
+        if (!isVoiceRecording) {
+            Log.w(VOICE_TAG, "stopVoiceCaptureAndSync ignored: recording not active")
+            return
+        }
+
+        val audioFile = pendingRecordingFile
+        val recorder = mediaRecorder
+        val startedAtMs = pendingRecordingStartedAtMs
+        var captureStoppedCleanly = true
+        try {
+            recorder?.stop()
+        } catch (_: RuntimeException) {
+            captureStoppedCleanly = false
+        } finally {
+            runCatching { recorder?.reset() }
+            runCatching { recorder?.release() }
+            mediaRecorder = null
+            pendingRecordingFile = null
+            pendingRecordingStartedAtMs = 0L
+        }
+
+        isVoiceRecording = false
+        val captureDurationMs = if (startedAtMs > 0L) {
+            System.currentTimeMillis() - startedAtMs
+        } else {
+            0L
+        }
+        Log.d(
+            VOICE_TAG,
+            "voice capture stopped clean=$captureStoppedCleanly durationMs=$captureDurationMs fileExists=${audioFile?.exists()} fileBytes=${audioFile?.length() ?: -1L}"
+        )
+        if (!captureStoppedCleanly || audioFile == null || !audioFile.exists() || audioFile.length() <= 0L || captureDurationMs < 350L) {
+            if (audioFile != null && audioFile.exists()) {
+                audioFile.delete()
+            }
+            lastVoiceUiMessage = if (!captureStoppedCleanly) {
+                "Voice capture could not finish on this phone."
+            } else {
+                getString(R.string.voice_capture_too_short)
+            }
+            lastVoiceUiTranscript = ""
+            Log.e(VOICE_TAG, "voice capture rejected message=$lastVoiceUiMessage")
+            CallSyncStore.saveDebugSnapshot(this, "voice-sync", "", lastVoiceUiMessage)
+            showShortToast(lastVoiceUiMessage)
+            refreshUi()
+            return
+        }
+
+        val config = persistCurrentConfig()
+        isVoiceSyncRunning = true
+        lastVoiceUiMessage = getString(R.string.voice_status_syncing)
+        lastVoiceUiTranscript = ""
+        Log.d(
+            VOICE_TAG,
+            "voice upload starting bytes=${audioFile.length()} durationMs=$captureDurationMs deviceId=${config.deviceId}"
+        )
+        refreshUi()
+        CoroutineScope(Dispatchers.IO).launch {
+            val commandId = "android-${config.deviceId}-${System.currentTimeMillis()}"
+            val result = CallSyncVoiceService.pushVoiceCommand(
+                config = config,
+                audioFile = audioFile,
+                mimeType = "audio/mp4",
+                commandId = commandId
+            )
+            audioFile.delete()
+            CallSyncStore.saveDebugSnapshot(
+                this@MainActivity,
+                "voice-sync",
+                result.transcript,
+                result.message
+            )
+            runOnUiThread {
+                if (result.success && result.draft != null) {
+                    currentVoiceDraft = result.draft
+                }
+                lastVoiceUiMessage = result.draft?.note?.ifBlank { result.message } ?: result.message
+                lastVoiceUiTranscript = result.draft?.lastTranscript?.ifBlank { result.transcript } ?: result.transcript
+                isVoiceSyncRunning = false
+                Log.d(
+                    VOICE_TAG,
+                    "voice upload finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0}"
+                )
+                showShortToast(lastVoiceUiMessage)
+                refreshUi()
+            }
+        }
+    }
+
+    private fun releaseVoiceRecorder(deleteFile: Boolean) {
+        val recorder = mediaRecorder
+        mediaRecorder = null
+        runCatching { recorder?.reset() }
+        runCatching { recorder?.release() }
+        val audioFile = pendingRecordingFile
+        pendingRecordingFile = null
+        pendingRecordingStartedAtMs = 0L
+        Log.d(
+            VOICE_TAG,
+            "releaseVoiceRecorder deleteFile=$deleteFile hadRecorder=${recorder != null} file=${audioFile?.name ?: ""} fileExists=${audioFile?.exists() ?: false}"
+        )
+        if (deleteFile && audioFile != null && audioFile.exists()) {
+            audioFile.delete()
+        }
+    }
+
+    private fun startVoiceRecorderWithFallback(audioFile: File): String? {
+        val audioSources = listOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION to "voice recognition",
+            MediaRecorder.AudioSource.MIC to "microphone"
+        )
+        val failures = mutableListOf<String>()
+
+        for ((audioSource, sourceLabel) in audioSources) {
+            val recorder = buildMediaRecorder()
+            try {
+                Log.d(VOICE_TAG, "trying recorder source=$sourceLabel")
+                recorder.setAudioSource(audioSource)
+                recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                recorder.setAudioChannels(1)
+                recorder.setAudioEncodingBitRate(64_000)
+                recorder.setAudioSamplingRate(16_000)
+                recorder.setOutputFile(audioFile.absolutePath)
+                recorder.prepare()
+                recorder.start()
+                mediaRecorder = recorder
+                Log.d(VOICE_TAG, "recorder started source=$sourceLabel")
+                return null
+            } catch (error: Exception) {
+                runCatching { recorder.reset() }
+                runCatching { recorder.release() }
+                Log.e(VOICE_TAG, "recorder source failed source=$sourceLabel message=${error.message}", error)
+                failures += "$sourceLabel: ${error.message ?: "unknown"}"
+            }
+        }
+
+        return failures.joinToString(" | ").ifBlank { "unknown recorder error" }
+    }
+
+    private fun buildMediaRecorder(): MediaRecorder {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(this)
+        } else {
+            MediaRecorder()
+        }
+    }
+
+    private fun buildVoiceContextText(draft: CompanionVoiceDraft?): String {
+        if (draft == null) return getString(R.string.voice_context_placeholder)
+
+        val tableSuffix = if (draft.activeTableName.isNotBlank()) {
+            "\nTable: ${draft.activeTableName}"
+        } else {
+            ""
+        }
+        val updatedLabel = if (draft.updatedAt > 0L) {
+            DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(draft.updatedAt))
+        } else {
+            getString(R.string.none_label)
+        }
+        return getString(
+            R.string.voice_context_template,
+            draft.restaurantName.ifBlank { getString(R.string.voice_empty_draft) },
+            draft.orderType.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+            tableSuffix,
+            updatedLabel
+        )
+    }
+
+    private fun buildVoiceItemsText(draft: CompanionVoiceDraft?): String {
+        val items = draft?.items.orEmpty()
+        if (items.isEmpty()) return getString(R.string.voice_items_placeholder)
+
+        return items.joinToString("\n") { item ->
+            buildString {
+                append("${item.quantity} x ${item.name}")
+                if (item.portionLabel.isNotBlank()) {
+                    append(" (${item.portionLabel})")
+                }
+                if (item.totalPrice > 0.0) {
+                    append(" - ")
+                    append(String.format(Locale.US, "%.2f", item.totalPrice))
+                }
+            }
+        }
+    }
+
+    private fun buildVoicePendingText(draft: CompanionVoiceDraft?): String {
+        val pending = draft?.pendingItems.orEmpty()
+        if (pending.isEmpty()) return getString(R.string.voice_pending_placeholder)
+
+        return pending.joinToString("\n") { item ->
+            val reasonLabel = when (item.reason.lowercase()) {
+                "portion-selection" -> getString(R.string.voice_pending_reason_portion)
+                "family-confirmation" -> getString(R.string.voice_pending_reason_family)
+                else -> item.reason.replace('-', ' ').replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+                }
+            }
+            "${item.quantity} x ${item.spokenText} - $reasonLabel"
+        }
+    }
+
+    private fun buildVoiceSummaryText(draft: CompanionVoiceDraft?): String {
+        val summaryMessage = draft?.note
+            ?.ifBlank { draft.lastAction }
+            ?.ifBlank { lastVoiceUiMessage }
+            ?.ifBlank { getString(R.string.voice_summary_placeholder) }
+            ?: getString(R.string.voice_summary_placeholder)
+
+        val transcript = draft?.lastTranscript
+            ?.ifBlank { lastVoiceUiTranscript }
+            ?.ifBlank { "" }
+            ?: ""
+
+        return buildString {
+            append(summaryMessage)
+            if (transcript.isNotBlank()) {
+                append("\n\n")
+                append("Heard: ")
+                append(transcript)
+            }
+        }
+    }
+
+    private fun showShortToast(message: String) {
+        if (message.isBlank()) return
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }

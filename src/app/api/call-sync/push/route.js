@@ -2,30 +2,8 @@ import { NextResponse } from 'next/server';
 
 import { getDatabase, getFirestore } from '@/lib/firebase-admin';
 import { buildActiveCallSyncPath, buildActiveCallSyncUserPath, normalizeIndianPhoneLoose } from '@/lib/call-sync';
-import { getCallSyncTokenDocRef, upsertCallSyncTokenBindingForBusinessRef } from '@/lib/server/callSyncTokens';
-
-const BUSINESS_COLLECTIONS = ['restaurants', 'shops', 'street_vendors'];
+import { resolveCallSyncTokenBinding } from '@/lib/server/callSyncTokens';
 const ACTIVE_STATES = new Set(['ringing', 'incoming', 'offhook', 'idle', 'ended']);
-
-async function resolveBusinessByCallSyncTokenLegacy(firestore, token) {
-    for (const collectionName of BUSINESS_COLLECTIONS) {
-        const snap = await firestore
-            .collection(collectionName)
-            .where('callSyncToken', '==', token)
-            .limit(1)
-            .get();
-
-        if (!snap.empty) {
-            return {
-                collectionName,
-                businessId: snap.docs[0].id,
-                businessRef: snap.docs[0].ref,
-            };
-        }
-    }
-
-    return null;
-}
 
 export async function POST(req) {
     try {
@@ -48,23 +26,8 @@ export async function POST(req) {
         }
 
         const firestore = await getFirestore();
-        const tokenRef = getCallSyncTokenDocRef(firestore, token);
-        let tokenSnap = tokenRef ? await tokenRef.get() : null;
-        let target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
-
-        if ((!target?.businessId || !target?.collectionName) && tokenRef) {
-            const legacyTarget = await resolveBusinessByCallSyncTokenLegacy(firestore, token);
-            if (legacyTarget?.businessRef) {
-                await upsertCallSyncTokenBindingForBusinessRef(firestore, {
-                    token,
-                    businessRef: legacyTarget.businessRef,
-                    collectionName: legacyTarget.collectionName,
-                    businessId: legacyTarget.businessId,
-                });
-                tokenSnap = await tokenRef.get();
-                target = tokenSnap?.exists ? (tokenSnap.data() || {}) : null;
-            }
-        }
+        const resolvedBinding = await resolveCallSyncTokenBinding(firestore, token);
+        const target = resolvedBinding?.target || null;
 
         if (!target?.businessId || !target?.collectionName) {
             return NextResponse.json({ message: 'Invalid call sync token.' }, { status: 404 });
