@@ -30,6 +30,7 @@ export async function POST(req) {
                 ok: result.ok,
                 restaurantName: result.restaurantName || '',
                 businessType: result.businessType || 'restaurant',
+                sttKeyterms: Array.isArray(result.sttKeyterms) ? result.sttKeyterms : [],
                 draft: result.draft || null,
                 message: result.message || '',
             },

@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
     private var isVoiceSyncRunning = false
     private var lastVoiceUiMessage = ""
     private var lastVoiceUiTranscript = ""
+    private var currentVoiceSttKeyterms: List<String> = emptyList()
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -590,6 +591,7 @@ class MainActivity : AppCompatActivity() {
         if (config.token.isBlank()) {
             Log.w(VOICE_TAG, "refreshVoiceDraft skipped: token missing")
             currentVoiceDraft = null
+            currentVoiceSttKeyterms = emptyList()
             lastVoiceUiMessage = getString(R.string.not_configured)
             lastVoiceUiTranscript = ""
             refreshUi()
@@ -615,6 +617,9 @@ class MainActivity : AppCompatActivity() {
                     currentVoiceDraft = result.draft
                     lastVoiceUiMessage = result.draft.note.ifBlank { result.message }
                     lastVoiceUiTranscript = result.draft.lastTranscript.ifBlank { result.transcript }
+                    if (result.sttKeyterms.isNotEmpty()) {
+                        currentVoiceSttKeyterms = result.sttKeyterms
+                    }
                 } else if (force) {
                     lastVoiceUiMessage = result.message
                     lastVoiceUiTranscript = result.transcript
@@ -623,7 +628,7 @@ class MainActivity : AppCompatActivity() {
                 isVoiceSyncRunning = false
                 Log.d(
                     VOICE_TAG,
-                    "refreshVoiceDraft finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0}"
+                    "refreshVoiceDraft finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0} keyterms=${currentVoiceSttKeyterms.size}"
                 )
                 refreshUi()
             }
@@ -843,7 +848,8 @@ class MainActivity : AppCompatActivity() {
                 config = config,
                 audioFile = audioFile,
                 mimeType = "audio/mp4",
-                commandId = commandId
+                commandId = commandId,
+                sttKeyterms = currentVoiceSttKeyterms
             )
             audioFile.delete()
             CallSyncStore.saveDebugSnapshot(
@@ -856,12 +862,15 @@ class MainActivity : AppCompatActivity() {
                 if (result.success && result.draft != null) {
                     currentVoiceDraft = result.draft
                 }
+                if (result.sttKeyterms.isNotEmpty()) {
+                    currentVoiceSttKeyterms = result.sttKeyterms
+                }
                 lastVoiceUiMessage = result.draft?.note?.ifBlank { result.message } ?: result.message
                 lastVoiceUiTranscript = result.draft?.lastTranscript?.ifBlank { result.transcript } ?: result.transcript
                 isVoiceSyncRunning = false
                 Log.d(
                     VOICE_TAG,
-                    "voice upload finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0}"
+                    "voice upload finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0} keyterms=${currentVoiceSttKeyterms.size}"
                 )
                 showShortToast(lastVoiceUiMessage)
                 refreshUi()

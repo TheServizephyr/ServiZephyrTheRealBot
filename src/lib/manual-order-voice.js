@@ -200,10 +200,233 @@ const GENERIC_ALIAS_STOP_TOKENS = new Set([
     ...LOW_SIGNAL_TOKENS,
 ]);
 
+const DEVANAGARI_WORD_PATTERN = /[\u0900-\u097F]+/g;
+const DEVANAGARI_DIGITS = {
+    '०': '0',
+    '१': '1',
+    '२': '2',
+    '३': '3',
+    '४': '4',
+    '५': '5',
+    '६': '6',
+    '७': '7',
+    '८': '8',
+    '९': '9',
+};
+const DEVANAGARI_WORD_REPLACEMENTS = new Map([
+    ['एक', 'ek'],
+    ['दो', 'do'],
+    ['तीन', 'teen'],
+    ['चार', 'chaar'],
+    ['पांच', 'paanch'],
+    ['पाँच', 'paanch'],
+    ['छह', 'chhe'],
+    ['सात', 'saat'],
+    ['आठ', 'aath'],
+    ['नौ', 'nau'],
+    ['दस', 'das'],
+    ['ग्यारह', 'gyarah'],
+    ['बारह', 'barah'],
+    ['आधा', 'aadha'],
+    ['हाफ', 'half'],
+    ['फुल', 'full'],
+    ['पूरा', 'poora'],
+    ['पूराा', 'poora'],
+    ['तन्दूरी', 'tandoori'],
+    ['तंदूरी', 'tandoori'],
+    ['रोटी', 'roti'],
+    ['नान', 'naan'],
+    ['बटर', 'butter'],
+    ['मलाई', 'malai'],
+    ['चाप', 'chaap'],
+    ['पराठा', 'paratha'],
+    ['कढ़ाई', 'kadhai'],
+    ['कड़ाई', 'kadhai'],
+    ['कडाई', 'kadhai'],
+    ['पनीर', 'paneer'],
+    ['दाल', 'daal'],
+    ['कुलचा', 'kulcha'],
+    ['भटूरा', 'bhatura'],
+    ['भटूरे', 'bhature'],
+    ['मसाला', 'masala'],
+    ['कम', 'kam'],
+    ['हटाओ', 'hatao'],
+    ['हटा', 'hata'],
+    ['डिलीवरी', 'delivery'],
+    ['पार्सल', 'parcel'],
+    ['टेबल', 'table'],
+]);
+const DEVANAGARI_INDEPENDENT_VOWELS = {
+    'अ': 'a',
+    'आ': 'aa',
+    'इ': 'i',
+    'ई': 'i',
+    'उ': 'u',
+    'ऊ': 'u',
+    'ए': 'e',
+    'ऐ': 'ai',
+    'ओ': 'o',
+    'औ': 'au',
+    'ऋ': 'ri',
+    'ऑ': 'o',
+};
+const DEVANAGARI_MATRAS = {
+    'ा': 'aa',
+    'ि': 'i',
+    'ी': 'i',
+    'ु': 'u',
+    'ू': 'u',
+    'े': 'e',
+    'ै': 'ai',
+    'ो': 'o',
+    'ौ': 'au',
+    'ृ': 'ri',
+    'ॅ': 'e',
+    'ॉ': 'o',
+};
+const DEVANAGARI_CONSONANTS = {
+    'क': 'k',
+    'ख': 'kh',
+    'ग': 'g',
+    'घ': 'gh',
+    'ङ': 'ng',
+    'च': 'ch',
+    'छ': 'chh',
+    'ज': 'j',
+    'झ': 'jh',
+    'ञ': 'ny',
+    'ट': 't',
+    'ठ': 'th',
+    'ड': 'd',
+    'ढ': 'dh',
+    'ण': 'n',
+    'त': 't',
+    'थ': 'th',
+    'द': 'd',
+    'ध': 'dh',
+    'न': 'n',
+    'प': 'p',
+    'फ': 'f',
+    'ब': 'b',
+    'भ': 'bh',
+    'म': 'm',
+    'य': 'y',
+    'र': 'r',
+    'ल': 'l',
+    'व': 'v',
+    'श': 'sh',
+    'ष': 'sh',
+    'स': 's',
+    'ह': 'h',
+    'क़': 'k',
+    'ख़': 'kh',
+    'ग़': 'g',
+    'ज़': 'z',
+    'ड़': 'd',
+    'ढ़': 'dh',
+    'फ़': 'f',
+    'य़': 'y',
+};
+
+function transliterateDevanagariWord(word = '') {
+    const directMatch = DEVANAGARI_WORD_REPLACEMENTS.get(String(word || '').trim());
+    if (directMatch) return directMatch;
+
+    let output = '';
+    for (let index = 0; index < word.length; index += 1) {
+        const current = word[index];
+        const pair = `${current}${word[index + 1] || ''}`;
+        const triple = `${pair}${word[index + 2] || ''}`;
+
+        if (triple === 'क्ष') {
+            output += 'ksh';
+            index += 2;
+            continue;
+        }
+        if (triple === 'ज्ञ') {
+            output += 'gya';
+            index += 2;
+            continue;
+        }
+        if (triple === 'श्र') {
+            output += 'shr';
+            index += 2;
+            continue;
+        }
+        if (triple === 'त्र') {
+            output += 'tr';
+            index += 2;
+            continue;
+        }
+
+        if (DEVANAGARI_DIGITS[current]) {
+            output += DEVANAGARI_DIGITS[current];
+            continue;
+        }
+        if (DEVANAGARI_INDEPENDENT_VOWELS[current]) {
+            output += DEVANAGARI_INDEPENDENT_VOWELS[current];
+            continue;
+        }
+        if (current === 'ं' || current === 'ँ') {
+            output += 'n';
+            continue;
+        }
+        if (current === 'ः') {
+            output += 'h';
+            continue;
+        }
+        if (current === '़' || current === '्') {
+            continue;
+        }
+
+        let consonant = DEVANAGARI_CONSONANTS[current];
+        if (!consonant && DEVANAGARI_CONSONANTS[pair]) {
+            consonant = DEVANAGARI_CONSONANTS[pair];
+            index += 1;
+        }
+        if (consonant) {
+            const next = word[index + 1] || '';
+            if (DEVANAGARI_MATRAS[next]) {
+                output += consonant + DEVANAGARI_MATRAS[next];
+                index += 1;
+                continue;
+            }
+            if (next === '्') {
+                output += consonant;
+                index += 1;
+                continue;
+            }
+            output += `${consonant}a`;
+            continue;
+        }
+
+        output += current;
+    }
+
+    return output
+        .replace(/aai/g, 'ai')
+        .replace(/aae/g, 'ae')
+        .replace(/ii+/g, 'i')
+        .replace(/uu+/g, 'u')
+        .replace(/([bcdfghjklmnpqrstvwxyz])a$/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function transliterateDevanagariText(value = '') {
+    return String(value || '').replace(DEVANAGARI_WORD_PATTERN, (word) => (
+        transliterateDevanagariWord(word)
+    ));
+}
+
 function normalizeBasicText(value = '') {
-    return String(value || '')
+    return transliterateDevanagariText(value)
         .toLowerCase()
         .replace(/&/g, ' and ')
+        .replace(/\bhaa?f\b/g, ' half ')
+        .replace(/\bpoora+\b/g, ' full ')
+        .replace(/\baadha+\b|\badha+\b/g, ' aadha ')
+        .replace(/\bmalai\s+(?:sahab|saab|shaab|shab)\b/g, ' malai chaap ')
         .replace(/\bmines\b|\bminas\b|\bminez\b/g, ' minus ')
         .replace(/\bchap\b/g, ' chaap ')
         .replace(/\bchaap+\b/g, ' chaap ')
@@ -212,6 +435,7 @@ function normalizeBasicText(value = '') {
         .replace(/\bnaanh\b|\bnan\b/g, ' naan ')
         .replace(/\bbutar\b|\bbatar\b|\bbuter\b|\bbuttar\b/g, ' butter ')
         .replace(/\btanduri\b/g, ' tandoori ')
+        .replace(/\btandoor+i+\b/g, ' tandoori ')
         .replace(/\btandori\b|\btandoory\b|\btan doori\b/g, ' tandoori ')
         .replace(/\bkadai\b|\bkadai\b|\bkadahi\b/g, ' kadhai ')
         .replace(/\bparatha\b/g, ' paratha ')

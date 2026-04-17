@@ -579,6 +579,35 @@ function applyAiResolvedItems({
     };
 }
 
+export function buildCompanionVoiceSttKeyterms(voiceMenuIndex = []) {
+    const seen = new Set();
+    const ranked = (Array.isArray(voiceMenuIndex) ? voiceMenuIndex : [])
+        .map((entry) => String(entry?.name || '').trim())
+        .filter(Boolean)
+        .sort((left, right) => {
+            const tokenDiff = right.split(/\s+/).length - left.split(/\s+/).length;
+            if (tokenDiff !== 0) return tokenDiff;
+            return right.length - left.length;
+        });
+
+    const keyterms = [];
+    let tokenBudget = 0;
+
+    ranked.forEach((term) => {
+        const normalized = term.toLowerCase();
+        if (seen.has(normalized)) return;
+        const tokens = term.split(/\s+/).filter(Boolean);
+        if (!tokens.length) return;
+        if (keyterms.length >= 90) return;
+        if (tokenBudget + tokens.length > 420) return;
+        seen.add(normalized);
+        keyterms.push(term);
+        tokenBudget += tokens.length;
+    });
+
+    return keyterms;
+}
+
 export async function bootstrapCallSyncVoiceDraft({ firestore, rtdb, token }) {
     const context = await resolveCallSyncVoiceBillingContext(firestore, token);
     if (!context) {
@@ -600,6 +629,7 @@ export async function bootstrapCallSyncVoiceDraft({ firestore, rtdb, token }) {
         status: 200,
         restaurantName: context.restaurantName,
         businessType: context.businessType,
+        sttKeyterms: buildCompanionVoiceSttKeyterms(context.voiceMenuIndex),
         draft: serializeDraftForResponse(draft),
     };
 }
@@ -644,6 +674,7 @@ export async function processCallSyncVoiceTranscript({
             message: 'Voice command already applied.',
             restaurantName: context.restaurantName,
             businessType: context.businessType,
+            sttKeyterms: buildCompanionVoiceSttKeyterms(context.voiceMenuIndex),
             draft: serializeDraftForResponse(currentDraft),
         };
     }
@@ -966,6 +997,7 @@ export async function processCallSyncVoiceTranscript({
         message: summary,
         restaurantName: context.restaurantName,
         businessType: context.businessType,
+        sttKeyterms: buildCompanionVoiceSttKeyterms(context.voiceMenuIndex),
         draft: serializeDraftForResponse(storedDraft),
     };
 }

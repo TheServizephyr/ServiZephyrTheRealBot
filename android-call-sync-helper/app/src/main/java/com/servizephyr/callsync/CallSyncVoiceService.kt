@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.dnsoverhttps.DnsOverHttps
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
@@ -50,6 +51,7 @@ data class VoiceDraftResult(
     val message: String,
     val draft: CompanionVoiceDraft? = null,
     val transcript: String = "",
+    val sttKeyterms: List<String> = emptyList(),
     val attemptedBaseUrl: String? = null
 )
 
@@ -107,14 +109,15 @@ object CallSyncVoiceService {
         config: CallSyncConfig,
         audioFile: File,
         mimeType: String,
-        commandId: String
+        commandId: String,
+        sttKeyterms: List<String> = emptyList()
     ): VoiceDraftResult {
         Log.d(
             TAG,
-            "pushVoiceCommand start file=${audioFile.name} bytes=${audioFile.length()} mime=${mimeType.ifBlank { "audio/mp4" }} commandId=$commandId"
+            "pushVoiceCommand start file=${audioFile.name} bytes=${audioFile.length()} mime=${mimeType.ifBlank { "audio/mp4" }} commandId=$commandId keyterms=${sttKeyterms.size}"
         )
         val mediaType = (mimeType.ifBlank { "audio/mp4" }).toMediaTypeOrNull()
-        val multipartBody = MultipartBody.Builder()
+        val multipartBuilder = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("token", config.token)
             .addFormDataPart("commandId", commandId)
@@ -124,7 +127,10 @@ object CallSyncVoiceService {
                 audioFile.asRequestBody(mediaType)
             )
             .addFormDataPart("mimeType", mimeType.ifBlank { "audio/mp4" })
-            .build()
+        if (sttKeyterms.isNotEmpty()) {
+            multipartBuilder.addFormDataPart("keyterms", JSONArray(sttKeyterms).toString())
+        }
+        val multipartBody = multipartBuilder.build()
 
         return executeAcrossCandidateBaseUrls(config) { baseUrl ->
             val endpoint = "${baseUrl.trimEnd('/')}/api/call-sync/voice/command"
@@ -225,6 +231,15 @@ object CallSyncVoiceService {
 
         val message = payload.optString("message").ifBlank { "Voice draft synced" }
         val transcript = payload.optString("transcript")
+        val sttKeyterms = buildList {
+            val array = payload.optJSONArray("sttKeyterms")
+            if (array != null) {
+                for (index in 0 until array.length()) {
+                    val term = array.optString(index).trim()
+                    if (term.isNotBlank()) add(term)
+                }
+            }
+        }
         val draft = payload.optJSONObject("draft")?.let { draftJson ->
             CompanionVoiceDraft(
                 restaurantName = draftJson.optString("restaurantName", payload.optString("restaurantName", "")),
@@ -274,11 +289,12 @@ object CallSyncVoiceService {
             success = payload.optBoolean("ok", true),
             message = message,
             draft = draft,
-            transcript = transcript
+            transcript = transcript,
+            sttKeyterms = sttKeyterms
         )
         Log.d(
             TAG,
-            "Parsed response ok=${result.success} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0}"
+            "Parsed response ok=${result.success} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0} keyterms=${result.sttKeyterms.size}"
         )
         return result
     }

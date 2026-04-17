@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getDatabase, getFirestore } from '@/lib/firebase-admin';
-import { processCallSyncVoiceTranscript } from '@/lib/server/callSyncVoiceBilling';
+import {
+    buildCompanionVoiceSttKeyterms,
+    processCallSyncVoiceTranscript,
+    resolveCallSyncVoiceBillingContext,
+} from '@/lib/server/callSyncVoiceBilling';
 import {
     parseManualOrderVoiceKeyterms,
     transcribeManualOrderVoiceAudio,
@@ -17,6 +21,7 @@ function coerceText(value = '') {
 export async function POST(req) {
     try {
         const contentType = String(req.headers.get('content-type') || '').toLowerCase();
+        let firestore = null;
         let token = '';
         let commandId = '';
         let transcript = '';
@@ -62,6 +67,14 @@ export async function POST(req) {
                 );
             }
 
+            if (sttKeyterms.length === 0 && token) {
+                firestore = await getFirestore();
+                const voiceContext = await resolveCallSyncVoiceBillingContext(firestore, token);
+                if (voiceContext?.voiceMenuIndex?.length) {
+                    sttKeyterms = buildCompanionVoiceSttKeyterms(voiceContext.voiceMenuIndex);
+                }
+            }
+
             transcription = await transcribeManualOrderVoiceAudio({
                 audioBuffer,
                 contentType: audioMimeType || 'audio/mp4',
@@ -85,13 +98,13 @@ export async function POST(req) {
             transcript = coerceText(transcription.transcript);
         }
 
-        const [firestore, rtdb] = await Promise.all([
-            getFirestore(),
+        const [resolvedFirestore, rtdb] = await Promise.all([
+            firestore ? Promise.resolve(firestore) : getFirestore(),
             getDatabase(),
         ]);
 
         const result = await processCallSyncVoiceTranscript({
-            firestore,
+            firestore: resolvedFirestore,
             rtdb,
             token,
             transcript,
@@ -117,6 +130,7 @@ export async function POST(req) {
                     : null,
                 restaurantName: result.restaurantName || '',
                 businessType: result.businessType || 'restaurant',
+                sttKeyterms: Array.isArray(result.sttKeyterms) ? result.sttKeyterms : [],
                 draft: result.draft || null,
             },
             { status: result.status || 200 }
