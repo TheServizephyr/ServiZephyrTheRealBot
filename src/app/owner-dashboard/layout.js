@@ -94,6 +94,18 @@ const isOfflineEligibleMessage = (value) => {
   );
 };
 
+const getVisibleViewportSize = () => {
+  if (typeof window === 'undefined') {
+    return { width: 0, height: 0 };
+  }
+
+  const visualViewport = window.visualViewport;
+  return {
+    width: Math.round(visualViewport?.width || window.innerWidth || 0),
+    height: Math.round(visualViewport?.height || window.innerHeight || 0),
+  };
+};
+
 function FeatureLockScreen({ remark, featureId }) {
   const supportPhone = "919027872803";
   const supportEmail = "contact@servizephyr.com";
@@ -144,6 +156,7 @@ function OwnerDashboardContent({ children }) {
   const [screenOrientationLabel, setScreenOrientationLabel] = useState(() => (
     typeof window === 'undefined' ? 'Unknown' : getScreenOrientationLabel()
   ));
+  const [simulatedViewport, setSimulatedViewport] = useState(() => getVisibleViewportSize());
   const [restaurantStatus, setRestaurantStatus] = useState({
     status: null,
     restrictedFeatures: [],
@@ -491,6 +504,25 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
+    const updateVisibleViewport = () => {
+      setSimulatedViewport(getVisibleViewportSize());
+    };
+
+    updateVisibleViewport();
+    window.addEventListener('resize', updateVisibleViewport);
+    window.addEventListener('orientationchange', updateVisibleViewport);
+    window.visualViewport?.addEventListener?.('resize', updateVisibleViewport);
+
+    return () => {
+      window.removeEventListener('resize', updateVisibleViewport);
+      window.removeEventListener('orientationchange', updateVisibleViewport);
+      window.visualViewport?.removeEventListener?.('resize', updateVisibleViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
     const updateOrientationLabel = () => {
       setScreenOrientationLabel(getScreenOrientationLabel());
     };
@@ -531,11 +563,14 @@ function OwnerDashboardContent({ children }) {
       layoutMode === SCREEN_ORIENTATION_PORTRAIT &&
       screenOrientationLabel === 'Landscape';
 
+    const rotatedViewportWidth = simulatedViewport.width || window.innerWidth || 0;
+    const rotatedViewportHeight = simulatedViewport.height || window.innerHeight || 0;
+
     if (shouldSimulateLandscape) {
       bodyStyle.position = 'fixed';
       bodyStyle.inset = '0';
-      bodyStyle.width = `${window.innerHeight}px`;
-      bodyStyle.height = `${window.innerWidth}px`;
+      bodyStyle.width = `${rotatedViewportHeight}px`;
+      bodyStyle.height = `${rotatedViewportWidth}px`;
       bodyStyle.overflow = 'hidden';
       bodyStyle.transformOrigin = 'top left';
       bodyStyle.transform = 'rotate(90deg) translateY(-100%)';
@@ -544,8 +579,8 @@ function OwnerDashboardContent({ children }) {
     } else if (shouldSimulatePortrait) {
       bodyStyle.position = 'fixed';
       bodyStyle.inset = '0';
-      bodyStyle.width = `${window.innerHeight}px`;
-      bodyStyle.height = `${window.innerWidth}px`;
+      bodyStyle.width = `${rotatedViewportHeight}px`;
+      bodyStyle.height = `${rotatedViewportWidth}px`;
       bodyStyle.overflow = 'hidden';
       bodyStyle.transformOrigin = 'top left';
       bodyStyle.transform = 'rotate(-90deg) translateX(-100%)';
@@ -564,7 +599,7 @@ function OwnerDashboardContent({ children }) {
       bodyStyle.backgroundColor = previousBody.backgroundColor;
       htmlStyle.overflow = previousHtmlOverflow;
     };
-  }, [layoutMode, screenOrientationLabel]);
+  }, [layoutMode, screenOrientationLabel, simulatedViewport.height, simulatedViewport.width]);
 
   // Auto-collapse sidebar based on pathname navigation
   useEffect(() => {
@@ -1086,6 +1121,14 @@ function OwnerDashboardContent({ children }) {
     layoutMode === SCREEN_ORIENTATION_PORTRAIT &&
     screenOrientationLabel === 'Landscape';
   const isHardRotatedLayout = isSimulatedLandscape || isSimulatedPortrait;
+  const hardRotatedViewportStyle = isHardRotatedLayout
+    ? {
+      width: `${simulatedViewport.height || window.innerHeight || 0}px`,
+      height: `${simulatedViewport.width || window.innerWidth || 0}px`,
+      minWidth: `${simulatedViewport.height || window.innerHeight || 0}px`,
+      minHeight: `${simulatedViewport.width || window.innerWidth || 0}px`,
+    }
+    : undefined;
   const showGlobalIncomingCallBanner =
     !!incomingCallBanner?.phone &&
     !pathname?.startsWith('/owner-dashboard/manual-order');
@@ -1139,9 +1182,10 @@ function OwnerDashboardContent({ children }) {
       )}
       <div
         className={cn(
-          "flex bg-background text-foreground",
+          "flex min-h-0 min-w-0 bg-background text-foreground",
           isHardRotatedLayout ? "h-full w-full overflow-hidden" : "h-screen"
         )}
+        style={hardRotatedViewportStyle}
       >
         <motion.aside
           key={isMobile ? "mobile" : "desktop"}
@@ -1176,7 +1220,7 @@ function OwnerDashboardContent({ children }) {
         )}
 
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
           {!pathname?.startsWith('/owner-dashboard/manual-order') && (
             <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
               <Navbar
@@ -1191,7 +1235,10 @@ function OwnerDashboardContent({ children }) {
               />
             </header>
           )}
-          <main className={`flex-1 overflow-y-auto ${pathname?.startsWith('/owner-dashboard/manual-order') ? 'p-0' : 'p-4 md:p-6'}`}>
+          <main className={cn(
+            "flex-1 min-h-0 overflow-y-auto",
+            pathname?.startsWith('/owner-dashboard/manual-order') ? 'p-0' : 'p-4 md:p-6'
+          )}>
             {blockedContent || children}
           </main>
         </div>
