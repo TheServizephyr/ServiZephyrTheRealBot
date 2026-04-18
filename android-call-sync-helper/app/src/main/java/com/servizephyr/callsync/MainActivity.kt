@@ -3,14 +3,20 @@ package com.servizephyr.callsync
 import android.Manifest
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.media.MediaRecorder
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.text.method.HideReturnsTransformationMethod
 import android.text.method.PasswordTransformationMethod
@@ -42,6 +48,9 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val VOICE_TAG = "CallSyncVoice"
+        private const val VOICE_CAPTURE_NONE = "none"
+        private const val VOICE_CAPTURE_NATIVE = "native"
+        private const val VOICE_CAPTURE_AUDIO = "audio"
     }
 
     private lateinit var drawerLayout: DrawerLayout
@@ -98,6 +107,16 @@ class MainActivity : AppCompatActivity() {
     private var lastVoiceUiMessage = ""
     private var lastVoiceUiTranscript = ""
     private var currentVoiceSttKeyterms: List<String> = emptyList()
+    private var activeVoiceCaptureMode: String = VOICE_CAPTURE_NONE
+    private val voiceUiHandler = Handler(Looper.getMainLooper())
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var nativeSpeechTranscript = ""
+    private var nativeSpeechPartialTranscript = ""
+    private var nativeSpeechError = ""
+    private var awaitingNativeSpeechResult = false
+    private val finalizeNativeSpeechTimeout = Runnable {
+        finalizeNativeSpeechCapture(reason = "timeout")
+    }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -264,6 +283,8 @@ class MainActivity : AppCompatActivity() {
         if (isVoiceRecording) {
             Log.w(VOICE_TAG, "onPause cancelling active voice recording")
             releaseVoiceRecorder(deleteFile = true)
+            releaseSpeechRecognizer(clearSession = true)
+            activeVoiceCaptureMode = VOICE_CAPTURE_NONE
             isVoiceRecording = false
             lastVoiceUiMessage = "Voice recording was cancelled."
             refreshUi()
@@ -272,6 +293,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Log.d(VOICE_TAG, "onDestroy releasing recorder resources")
+        voiceUiHandler.removeCallbacks(finalizeNativeSpeechTimeout)
+        releaseSpeechRecognizer(clearSession = true)
         releaseVoiceRecorder(deleteFile = true)
         super.onDestroy()
     }
@@ -411,6 +434,7 @@ class MainActivity : AppCompatActivity() {
             !config.isSyncEnabled -> getString(R.string.voice_status_paused)
             !hasMicPermission -> getString(R.string.voice_status_missing_mic)
             isVoiceRecording -> getString(R.string.voice_status_recording)
+            isVoiceSyncRunning && awaitingNativeSpeechResult -> getString(R.string.voice_status_transcribing_phone)
             isVoiceSyncRunning -> getString(R.string.voice_status_syncing)
             else -> getString(R.string.voice_status_ready)
         }
@@ -757,20 +781,37 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        resetSpeechSession()
+        if (startNativeSpeechCapture()) {
+            activeVoiceCaptureMode = VOICE_CAPTURE_NATIVE
+            pendingRecordingFile = null
+            pendingRecordingStartedAtMs = 0L
+            mediaRecorder = null
+            isVoiceRecording = true
+            lastVoiceUiMessage = getString(R.string.voice_status_recording)
+            lastVoiceUiTranscript = ""
+            Log.d(VOICE_TAG, "voice capture started mode=native-speech")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", "Phone speech capture started")
+            refreshUi()
+            return
+        }
+
         val audioFile = File(cacheDir, "voice-billing-${System.currentTimeMillis()}.m4a")
         val startError = startVoiceRecorderWithFallback(audioFile)
         if (startError == null) {
+            activeVoiceCaptureMode = VOICE_CAPTURE_AUDIO
             pendingRecordingFile = audioFile
             pendingRecordingStartedAtMs = System.currentTimeMillis()
             isVoiceRecording = true
             lastVoiceUiMessage = getString(R.string.voice_status_recording)
             lastVoiceUiTranscript = ""
-            Log.d(VOICE_TAG, "voice capture started file=${audioFile.absolutePath}")
-            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", "Voice capture started")
+            Log.d(VOICE_TAG, "voice capture started mode=audio file=${audioFile.absolutePath}")
+            CallSyncStore.saveDebugSnapshot(this, "voice-start", "", "Audio voice capture started")
         } else {
             if (audioFile.exists()) {
                 audioFile.delete()
             }
+            activeVoiceCaptureMode = VOICE_CAPTURE_NONE
             pendingRecordingFile = null
             pendingRecordingStartedAtMs = 0L
             mediaRecorder = null
@@ -790,6 +831,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        when (activeVoiceCaptureMode) {
+            VOICE_CAPTURE_NATIVE -> stopNativeSpeechCaptureAndSync()
+            VOICE_CAPTURE_AUDIO -> stopAudioCaptureAndSync()
+            else -> {
+                Log.w(VOICE_TAG, "stopVoiceCaptureAndSync ignored: unknown capture mode")
+                isVoiceRecording = false
+                activeVoiceCaptureMode = VOICE_CAPTURE_NONE
+                refreshUi()
+            }
+        }
+    }
+
+    private fun stopNativeSpeechCaptureAndSync() {
+        isVoiceRecording = false
+        isVoiceSyncRunning = true
+        awaitingNativeSpeechResult = true
+        activeVoiceCaptureMode = VOICE_CAPTURE_NONE
+        lastVoiceUiMessage = getString(R.string.voice_status_transcribing_phone)
+        lastVoiceUiTranscript = nativeSpeechPartialTranscript.ifBlank { nativeSpeechTranscript }
+        Log.d(
+            VOICE_TAG,
+            "native speech stop requested partialLen=${nativeSpeechPartialTranscript.length} finalLen=${nativeSpeechTranscript.length}"
+        )
+        refreshUi()
+
+        if (nativeSpeechTranscript.isNotBlank()) {
+            finalizeNativeSpeechCapture(reason = "cached-result")
+            return
+        }
+
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            finalizeNativeSpeechCapture(reason = "missing-recognizer")
+            return
+        }
+
+        voiceUiHandler.removeCallbacks(finalizeNativeSpeechTimeout)
+        val stopFailure = runCatching { recognizer.stopListening() }.exceptionOrNull()
+        if (stopFailure != null) {
+            nativeSpeechError = stopFailure.message ?: "Phone speech listener could not stop cleanly."
+            Log.e(VOICE_TAG, "native speech stop failed message=${nativeSpeechError}", stopFailure)
+            finalizeNativeSpeechCapture(reason = "stop-failed")
+            return
+        }
+        voiceUiHandler.postDelayed(finalizeNativeSpeechTimeout, 1500L)
+    }
+
+    private fun stopAudioCaptureAndSync() {
         val audioFile = pendingRecordingFile
         val recorder = mediaRecorder
         val startedAtMs = pendingRecordingStartedAtMs
@@ -807,6 +896,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         isVoiceRecording = false
+        activeVoiceCaptureMode = VOICE_CAPTURE_NONE
         val captureDurationMs = if (startedAtMs > 0L) {
             System.currentTimeMillis() - startedAtMs
         } else {
@@ -833,6 +923,166 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        syncRecordedAudioCapture(audioFile, captureDurationMs)
+    }
+
+    private fun startNativeSpeechCapture(): Boolean {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Log.w(VOICE_TAG, "native speech recognition unavailable on device")
+            return false
+        }
+
+        releaseSpeechRecognizer(clearSession = false)
+        resetSpeechSession()
+
+        return try {
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    Log.d(VOICE_TAG, "native speech ready for speech")
+                }
+
+                override fun onBeginningOfSpeech() {
+                    Log.d(VOICE_TAG, "native speech beginning of speech")
+                }
+
+                override fun onRmsChanged(rmsdB: Float) = Unit
+
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+
+                override fun onEndOfSpeech() {
+                    Log.d(VOICE_TAG, "native speech end of speech")
+                }
+
+                override fun onError(error: Int) {
+                    nativeSpeechError = mapSpeechRecognizerError(error)
+                    Log.w(
+                        VOICE_TAG,
+                        "native speech error code=$error message=$nativeSpeechError awaiting=$awaitingNativeSpeechResult"
+                    )
+                    if (awaitingNativeSpeechResult) {
+                        finalizeNativeSpeechCapture(reason = "error-$error")
+                    }
+                }
+
+                override fun onResults(results: Bundle?) {
+                    nativeSpeechTranscript = extractBestSpeechTranscript(results)
+                    Log.d(
+                        VOICE_TAG,
+                        "native speech results transcriptLen=${nativeSpeechTranscript.length} awaiting=$awaitingNativeSpeechResult"
+                    )
+                    if (awaitingNativeSpeechResult) {
+                        finalizeNativeSpeechCapture(reason = "results")
+                    }
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partialTranscript = extractBestSpeechTranscript(partialResults)
+                    if (partialTranscript.isBlank()) return
+                    nativeSpeechPartialTranscript = partialTranscript
+                    lastVoiceUiTranscript = partialTranscript
+                    Log.d(VOICE_TAG, "native speech partial transcript=$partialTranscript")
+                    if (isVoiceRecording && activeVoiceCaptureMode == VOICE_CAPTURE_NATIVE) {
+                        refreshUi()
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+            speechRecognizer = recognizer
+            recognizer.startListening(
+                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+                }
+            )
+            true
+        } catch (error: Exception) {
+            Log.e(VOICE_TAG, "native speech start failed message=${error.message}", error)
+            releaseSpeechRecognizer(clearSession = true)
+            false
+        }
+    }
+
+    private fun finalizeNativeSpeechCapture(reason: String) {
+        voiceUiHandler.removeCallbacks(finalizeNativeSpeechTimeout)
+        if (!awaitingNativeSpeechResult && nativeSpeechTranscript.isBlank() && nativeSpeechPartialTranscript.isBlank()) {
+            return
+        }
+
+        awaitingNativeSpeechResult = false
+        val resolvedTranscript = nativeSpeechTranscript
+            .ifBlank { nativeSpeechPartialTranscript }
+            .trim()
+        val resolvedError = nativeSpeechError
+        Log.d(
+            VOICE_TAG,
+            "finalizeNativeSpeechCapture reason=$reason transcriptLen=${resolvedTranscript.length} error=$resolvedError"
+        )
+        releaseSpeechRecognizer(clearSession = false)
+
+        if (resolvedTranscript.isBlank()) {
+            isVoiceSyncRunning = false
+            lastVoiceUiMessage = resolvedError.ifBlank { getString(R.string.voice_native_no_match) }
+            lastVoiceUiTranscript = ""
+            CallSyncStore.saveDebugSnapshot(this, "voice-sync", "", lastVoiceUiMessage)
+            showShortToast(lastVoiceUiMessage)
+            resetSpeechSession()
+            refreshUi()
+            return
+        }
+
+        resetSpeechSession()
+        syncVoiceTranscript(resolvedTranscript)
+    }
+
+    private fun syncVoiceTranscript(transcript: String) {
+        val normalizedTranscript = transcript.trim()
+        if (normalizedTranscript.isBlank()) {
+            isVoiceSyncRunning = false
+            lastVoiceUiMessage = getString(R.string.voice_native_no_match)
+            lastVoiceUiTranscript = ""
+            refreshUi()
+            return
+        }
+
+        val config = persistCurrentConfig()
+        isVoiceSyncRunning = true
+        lastVoiceUiMessage = getString(R.string.voice_status_syncing)
+        lastVoiceUiTranscript = normalizedTranscript
+        Log.d(
+            VOICE_TAG,
+            "voice transcript sync starting chars=${normalizedTranscript.length} deviceId=${config.deviceId}"
+        )
+        refreshUi()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val commandId = "android-${config.deviceId}-${System.currentTimeMillis()}"
+            val result = CallSyncVoiceService.pushVoiceTranscript(
+                config = config,
+                transcript = normalizedTranscript,
+                commandId = commandId,
+                sttKeyterms = currentVoiceSttKeyterms
+            )
+            CallSyncStore.saveDebugSnapshot(
+                this@MainActivity,
+                "voice-sync",
+                result.transcript.ifBlank { normalizedTranscript },
+                result.message
+            )
+            runOnUiThread {
+                applyVoiceSyncResult(
+                    result = result,
+                    fallbackTranscript = normalizedTranscript,
+                    sourceLabel = "native"
+                )
+            }
+        }
+    }
+
+    private fun syncRecordedAudioCapture(audioFile: File, captureDurationMs: Long) {
         val config = persistCurrentConfig()
         isVoiceSyncRunning = true
         lastVoiceUiMessage = getString(R.string.voice_status_syncing)
@@ -842,6 +1092,7 @@ class MainActivity : AppCompatActivity() {
             "voice upload starting bytes=${audioFile.length()} durationMs=$captureDurationMs deviceId=${config.deviceId}"
         )
         refreshUi()
+
         CoroutineScope(Dispatchers.IO).launch {
             val commandId = "android-${config.deviceId}-${System.currentTimeMillis()}"
             val result = CallSyncVoiceService.pushVoiceCommand(
@@ -859,22 +1110,75 @@ class MainActivity : AppCompatActivity() {
                 result.message
             )
             runOnUiThread {
-                if (result.success && result.draft != null) {
-                    currentVoiceDraft = result.draft
-                }
-                if (result.sttKeyterms.isNotEmpty()) {
-                    currentVoiceSttKeyterms = result.sttKeyterms
-                }
-                lastVoiceUiMessage = result.draft?.note?.ifBlank { result.message } ?: result.message
-                lastVoiceUiTranscript = result.draft?.lastTranscript?.ifBlank { result.transcript } ?: result.transcript
-                isVoiceSyncRunning = false
-                Log.d(
-                    VOICE_TAG,
-                    "voice upload finished success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${result.transcript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0} keyterms=${currentVoiceSttKeyterms.size}"
+                applyVoiceSyncResult(
+                    result = result,
+                    fallbackTranscript = "",
+                    sourceLabel = "audio"
                 )
-                showShortToast(lastVoiceUiMessage)
-                refreshUi()
             }
+        }
+    }
+
+    private fun applyVoiceSyncResult(result: VoiceDraftResult, fallbackTranscript: String, sourceLabel: String) {
+        if (result.success && result.draft != null) {
+            currentVoiceDraft = result.draft
+        }
+        if (result.sttKeyterms.isNotEmpty()) {
+            currentVoiceSttKeyterms = result.sttKeyterms
+        }
+        lastVoiceUiMessage = result.draft?.note?.ifBlank { result.message } ?: result.message
+        lastVoiceUiTranscript = result.draft?.lastTranscript
+            ?.ifBlank { result.transcript.ifBlank { fallbackTranscript } }
+            ?: result.transcript.ifBlank { fallbackTranscript }
+        isVoiceSyncRunning = false
+        Log.d(
+            VOICE_TAG,
+            "voice sync finished source=$sourceLabel success=${result.success} baseUrl=${result.attemptedBaseUrl ?: ""} message=${result.message} transcriptLen=${lastVoiceUiTranscript.length} items=${result.draft?.items?.size ?: 0} pending=${result.draft?.pendingItems?.size ?: 0} keyterms=${currentVoiceSttKeyterms.size}"
+        )
+        showShortToast(lastVoiceUiMessage)
+        refreshUi()
+    }
+
+    private fun resetSpeechSession() {
+        voiceUiHandler.removeCallbacks(finalizeNativeSpeechTimeout)
+        nativeSpeechTranscript = ""
+        nativeSpeechPartialTranscript = ""
+        nativeSpeechError = ""
+        awaitingNativeSpeechResult = false
+    }
+
+    private fun releaseSpeechRecognizer(clearSession: Boolean) {
+        voiceUiHandler.removeCallbacks(finalizeNativeSpeechTimeout)
+        val recognizer = speechRecognizer
+        speechRecognizer = null
+        runCatching { recognizer?.cancel() }
+        runCatching { recognizer?.destroy() }
+        if (clearSession) {
+            resetSpeechSession()
+        }
+    }
+
+    private fun extractBestSpeechTranscript(results: Bundle?): String {
+        val matches = results
+            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            .orEmpty()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        return matches.firstOrNull().orEmpty()
+    }
+
+    private fun mapSpeechRecognizerError(error: Int): String {
+        return when (error) {
+            SpeechRecognizer.ERROR_AUDIO -> "Phone speech audio capture failed."
+            SpeechRecognizer.ERROR_CLIENT -> "Phone speech service stopped unexpectedly."
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> getString(R.string.voice_permission_prompt)
+            SpeechRecognizer.ERROR_NETWORK,
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Phone speech service needs a better network connection."
+            SpeechRecognizer.ERROR_NO_MATCH,
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> getString(R.string.voice_native_no_match)
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Phone speech service is busy right now."
+            SpeechRecognizer.ERROR_SERVER -> "Phone speech service had a server error."
+            else -> "Phone speech recognition failed."
         }
     }
 

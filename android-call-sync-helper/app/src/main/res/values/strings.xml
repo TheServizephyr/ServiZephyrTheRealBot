@@ -91,6 +91,7 @@
     <string name="voice_refresh_button">Refresh Voice Draft</string>
     <string name="voice_status_ready">Voice billing ready. Hold the mic to speak.</string>
     <string name="voice_status_recording">Listening... keep holding and speak now.</string>
+    <string name="voice_status_transcribing_phone">Understanding speech on this phone...</string>
     <string name="voice_status_syncing">Syncing the spoken order...</string>
     <string name="voice_status_paused">Voice billing is paused until sync is enabled.</string>
     <string name="voice_status_missing_mic">Microphone permission is required for voice billing.</string>
@@ -107,6 +108,7 @@
     <string name="voice_permission_prompt">Grant microphone permission so the companion app can record voice billing.</string>
     <string name="voice_capture_failed">Voice capture could not start on this phone.</string>
     <string name="voice_capture_too_short">Voice capture was too short. Hold a bit longer and try again.</string>
+    <string name="voice_native_no_match">Phone speech could not catch that clearly. Try again.</string>
     <string name="voice_record_button">Hold to talk</string>
     <string name="voice_context_template">%1$s\nMode: %2$s%3$s\nUpdated: %4$s</string>
     <string name="voice_pending_reason_portion">Needs portion selection</string>

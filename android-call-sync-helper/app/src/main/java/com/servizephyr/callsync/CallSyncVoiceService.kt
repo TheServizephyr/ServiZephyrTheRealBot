@@ -105,6 +105,39 @@ object CallSyncVoiceService {
         }
     }
 
+    fun pushVoiceTranscript(
+        config: CallSyncConfig,
+        transcript: String,
+        commandId: String,
+        sttKeyterms: List<String> = emptyList()
+    ): VoiceDraftResult {
+        val normalizedTranscript = transcript.trim()
+        if (normalizedTranscript.isBlank()) {
+            Log.w(TAG, "pushVoiceTranscript skipped: transcript empty commandId=$commandId")
+            return VoiceDraftResult(success = false, message = "Transcript is empty")
+        }
+
+        Log.d(
+            TAG,
+            "pushVoiceTranscript start chars=${normalizedTranscript.length} commandId=$commandId keyterms=${sttKeyterms.size}"
+        )
+        val payload = JSONObject()
+            .put("token", config.token)
+            .put("commandId", commandId)
+            .put("transcript", normalizedTranscript)
+        if (sttKeyterms.isNotEmpty()) {
+            payload.put("keyterms", JSONArray(sttKeyterms))
+        }
+
+        return executeAcrossCandidateBaseUrls(config) { baseUrl ->
+            val endpoint = "${baseUrl.trimEnd('/')}/api/call-sync/voice/command"
+            Request.Builder()
+                .url(endpoint)
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+        }
+    }
+
     fun pushVoiceCommand(
         config: CallSyncConfig,
         audioFile: File,
