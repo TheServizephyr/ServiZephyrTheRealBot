@@ -5,6 +5,7 @@ import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import AppCheckRequestBridge from '@/components/AppCheckRequestBridge';
 import DesktopAuthRecovery from '@/components/DesktopAuthRecovery';
+import ScreenOrientationHandler from '@/components/ScreenOrientationHandler';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -267,6 +268,7 @@ export default function RootLayout({ children }) {
           <FirebaseClientProvider>
             <PWARecoveryHandler />
             <GlobalHapticHandler />
+            <ScreenOrientationHandler />
             <AppCheckRequestBridge />
             <DesktopAuthRecovery />
             <LayoutWrapper>

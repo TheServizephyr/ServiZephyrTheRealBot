@@ -444,7 +444,7 @@ function ManualOrderPage() {
     useEffect(() => {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
 
-        const mediaQuery = window.matchMedia('(max-width: 1023px)');
+        const mediaQuery = window.matchMedia('(max-width: 759px), ((max-width: 1023px) and (orientation: portrait))');
         const applyViewportState = () => {
             setIsMobileViewport(mediaQuery.matches);
             if (!mediaQuery.matches) {
@@ -5621,14 +5621,20 @@ function ManualOrderPage() {
             )}
 
             <div
-                className="flex-1 min-h-0 overflow-hidden flex flex-col gap-3 lg:flex-row lg:gap-0"
+                className={cn(
+                    "flex-1 min-h-0 overflow-hidden flex",
+                    isMobileViewport ? "flex-col gap-3" : "flex-row gap-0"
+                )}
                 onTouchStart={handleMobileSwipeStart}
                 onTouchEnd={handleMobileSwipeEnd}
             >
                 {/* Left Side: Menu Selection (Flexible) */}
                 <div className="order-1 flex-1 min-w-0 min-h-0 bg-card flex flex-col overflow-hidden">
-                    <div className="shrink-0 border-b border-border px-3 pb-2 pt-2 lg:pb-3">
-                        <div className="sticky top-0 z-20 -mx-3 mb-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur lg:hidden">
+                    <div className={cn("shrink-0 border-b border-border px-3 pt-2", isMobileViewport ? "pb-2" : "pb-3")}>
+                        <div className={cn(
+                            "sticky top-0 z-20 -mx-3 mb-2 border-b border-border bg-card/95 px-3 py-2 backdrop-blur",
+                            isMobileViewport ? "block" : "hidden"
+                        )}>
                             <div className="flex items-center gap-2">
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-[15px] font-black tracking-tight">
@@ -5667,15 +5673,18 @@ function ManualOrderPage() {
                         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <h1 className="hidden text-lg font-bold tracking-tight lg:block">
+                                    <h1 className={cn("text-lg font-bold tracking-tight", isMobileViewport ? "hidden" : "block")}>
                                         {isStoreBusinessType(businessType) ? 'Store POS Billing' : 'Manual Billing'}
                                     </h1>
-                                    <div className="hidden lg:block">
+                                    <div className={cn(isMobileViewport ? "hidden" : "block")}>
                                         <OfflineDesktopStatus />
                                     </div>
                                 </div>
 
-                                <div className="mt-3 hidden flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:flex">
+                                <div className={cn(
+                                    "mt-3 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center",
+                                    isMobileViewport ? "hidden" : "flex"
+                                )}>
                                     <div className="flex w-full items-center overflow-x-auto rounded-lg bg-muted p-1 sm:w-auto">
                                         {(isStoreBusinessType(businessType) ? ['delivery', 'pickup'] : ['delivery', 'dine-in', 'pickup']).map(mode => (
                                             <button
@@ -5707,7 +5716,8 @@ function ManualOrderPage() {
                             </div>
 
                             <div className={cn(
-                                "hidden w-full flex-col gap-2 lg:flex",
+                                "w-full flex-col gap-2",
+                                isMobileViewport ? "hidden" : "flex",
                                 SHOW_MANUAL_ORDER_VOICE_UI ? "xl:max-w-[560px]" : "lg:max-w-[440px]"
                             )}>
                                 {SHOW_MANUAL_ORDER_VOICE_UI ? (
@@ -6244,7 +6254,8 @@ function ManualOrderPage() {
                     ref={billContainerRef}
                     style={{
                         width: isMobileViewport ? undefined : `${billSidebarWidth}px`,
-                        minWidth: isMobileViewport ? undefined : '280px',
+                        minWidth: isMobileViewport ? undefined : '260px',
+                        maxWidth: isMobileViewport ? undefined : 'min(420px, 46vw)',
                     }}
                     onTouchStart={handleMobileSwipeStart}
                     onTouchEnd={handleMobileSwipeEnd}
@@ -6263,7 +6274,7 @@ function ManualOrderPage() {
                     {!isMobileViewport && (
                         <div
                             onMouseDown={startResizingBill}
-                            className="group absolute left-0 top-1/2 z-30 hidden h-28 w-6 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center lg:flex"
+                            className="group absolute left-0 top-1/2 z-30 flex h-28 w-6 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center"
                             title="Drag to resize current order panel"
                             aria-label="Resize current order panel"
                         >

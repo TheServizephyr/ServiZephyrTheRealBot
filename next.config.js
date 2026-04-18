@@ -108,6 +108,18 @@ const nextConfig = {
 
     return [
       {
+        source: '/manifest.json',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, max-age=0' },
+        ],
+      },
+      {
+        source: '/service-worker.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, no-cache, must-revalidate, max-age=0' },
+        ],
+      },
+      {
         source: '/:path*',
         headers: baseHeaders,
       },
