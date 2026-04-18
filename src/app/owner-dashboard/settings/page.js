@@ -366,6 +366,7 @@ function SettingsPageContent() {
                     serviceFeeValue: data.serviceFeeValue ?? 0,
                     serviceFeeApplyOn: data.serviceFeeApplyOn || 'all',
                     serviceFeeApplyOnManualOrders: data.serviceFeeApplyOnManualOrders || false,
+                    autoPrintBillsEnabled: data.autoPrintBillsEnabled === true,
                     ownerPersonalWhatsappNumber: data.ownerPersonalWhatsappNumber || '',
                 };
                 setUser(userData);
@@ -548,6 +549,7 @@ function SettingsPageContent() {
                 pickupPodEnabled: editedUser.pickupPodEnabled,
                 dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
                 dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
+                autoPrintBillsEnabled: editedUser.autoPrintBillsEnabled === true,
                 upiId: editedUser.upiId || '',
                 upiPayeeName: editedUser.upiPayeeName || '',
             }
@@ -599,6 +601,7 @@ function SettingsPageContent() {
                 serviceFeeValue: updatedUser.serviceFeeValue ?? 0,
                 serviceFeeApplyOn: updatedUser.serviceFeeApplyOn || 'all',
                 serviceFeeApplyOnManualOrders: updatedUser.serviceFeeApplyOnManualOrders || false,
+                autoPrintBillsEnabled: updatedUser.autoPrintBillsEnabled === true,
                 ownerPersonalWhatsappNumber: updatedUser.ownerPersonalWhatsappNumber || '',
             };
             setUser(finalUser);
@@ -980,6 +983,25 @@ function SettingsPageContent() {
                                     </div>
                                 </div>
 
+                            </div>
+
+                            <div className="border rounded-lg bg-muted/30 p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <Label htmlFor="autoPrintBillsEnabled" className="font-semibold text-base cursor-pointer">
+                                            Auto Print Bills
+                                        </Label>
+                                        <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                                            When ON, manual billing orders print automatically after save actions, and live orders auto-print as soon as you confirm them. Keep this OFF for outlets without a printer.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="autoPrintBillsEnabled"
+                                        checked={editedUser.autoPrintBillsEnabled || false}
+                                        onCheckedChange={(checked) => setEditedUser({ ...editedUser, autoPrintBillsEnabled: checked })}
+                                        disabled={!isEditingPayment}
+                                    />
+                                </div>
                             </div>
 
                             <div>

@@ -417,6 +417,7 @@ export async function GET(req) {
             dineInPayAtCounterEnabled: fallback('dineInPayAtCounterEnabled', true),
             isOpen: effectiveIsOpen,
             autoScheduleEnabled: businessData?.autoScheduleEnabled || false,
+            autoPrintBillsEnabled: businessData?.autoPrintBillsEnabled === true,
             openingTime: businessData?.openingTime || '09:00',
             closingTime: businessData?.closingTime || '22:00',
             dineInModel: businessData?.dineInModel || 'post-paid',
@@ -562,6 +563,9 @@ export async function PATCH(req) {
 
         if (updates.autoScheduleEnabled !== undefined) {
             businessUpdateData.autoScheduleEnabled = Boolean(updates.autoScheduleEnabled);
+        }
+        if (updates.autoPrintBillsEnabled !== undefined) {
+            businessUpdateData.autoPrintBillsEnabled = Boolean(updates.autoPrintBillsEnabled);
         }
         if (updates.openingTime !== undefined) {
             if (!isValidTime(updates.openingTime)) {
@@ -762,6 +766,7 @@ export async function PATCH(req) {
             dineInPayAtCounterEnabled: fallback('dineInPayAtCounterEnabled', true),
             isOpen: finalIsOpen,
             autoScheduleEnabled: finalBusinessData?.autoScheduleEnabled || false,
+            autoPrintBillsEnabled: finalBusinessData?.autoPrintBillsEnabled === true,
             openingTime: finalBusinessData?.openingTime || '09:00',
             closingTime: finalBusinessData?.closingTime || '22:00',
             dineInModel: finalBusinessData?.dineInModel || 'post-paid',

@@ -1373,6 +1373,7 @@ export default function LiveOrdersPage() {
     const [printModalData, setPrintModalData] = useState({ isOpen: false, order: null });
     const [restaurantData, setRestaurantData] = useState(null);
     const [autoPrintOrder, setAutoPrintOrder] = useState(null);
+    const autoPrintBillsEnabled = restaurantData?.autoPrintBillsEnabled === true;
     const hasBootstrappedNotificationRef = useRef(false);
     const prevRelevantOrderIdsRef = useRef(new Set());
     const hasBootstrappedPendingNotificationRef = useRef(false);
@@ -1508,13 +1509,17 @@ export default function LiveOrdersPage() {
 
     useEffect(() => {
         if (!autoPrintOrder || !restaurantData || !handleAutoBrowserPrint) return;
+        if (!autoPrintBillsEnabled) {
+            setAutoPrintOrder(null);
+            return;
+        }
 
         const timer = setTimeout(() => {
             handleAutoBrowserPrint();
         }, 150);
 
         return () => clearTimeout(timer);
-    }, [autoPrintOrder, restaurantData, handleAutoBrowserPrint]);
+    }, [autoPrintBillsEnabled, autoPrintOrder, restaurantData, handleAutoBrowserPrint]);
 
     useEffect(() => {
         if (staticDataHydratedRef.current) return;
@@ -1720,6 +1725,7 @@ export default function LiveOrdersPage() {
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin,
+                    autoPrintBillsEnabled: settingsData.autoPrintBillsEnabled === true,
                     businessType: nextBusinessType,
                 };
                 setBusinessType(nextBusinessType);
@@ -2059,7 +2065,7 @@ export default function LiveOrdersPage() {
             if (impersonatedOwnerId || employeeOfOwnerId) {
                 await fetchInitialData(true);
             }
-            if (previousStatus === 'pending' && newStatus === 'confirmed') {
+            if (autoPrintBillsEnabled && previousStatus === 'pending' && newStatus === 'confirmed') {
                 const sourceOrder = previousOrders.find((order) => order.id === orderId);
                 if (sourceOrder) {
                     setAutoPrintOrder({ ...sourceOrder, status: newStatus });

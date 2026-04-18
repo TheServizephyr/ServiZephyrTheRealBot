@@ -312,6 +312,7 @@ function ManualOrderPage() {
     const [openItems, setOpenItems] = useState([]); // Open items from Firestore
     const [inventoryByItemId, setInventoryByItemId] = useState({});
     const [preferredPrintMode, setPreferredPrintMode] = useState('browser');
+    const autoPrintBillsEnabled = restaurant?.autoPrintBillsEnabled === true;
 
     // Parse orderType from URL query params
     useEffect(() => {
@@ -1060,6 +1061,10 @@ function ManualOrderPage() {
 
     useEffect(() => {
         if (!tableToPrint) return undefined;
+        if (!autoPrintBillsEnabled) {
+            setTableToPrint(null);
+            return undefined;
+        }
 
         let cancelled = false;
         const runPrint = async () => {
@@ -1087,7 +1092,7 @@ function ManualOrderPage() {
         return () => {
             cancelled = true;
         };
-    }, [desktopRuntime, tableToPrint, handleTablePrint]);
+    }, [autoPrintBillsEnabled, desktopRuntime, tableToPrint, handleTablePrint]);
 
     useEffect(() => {
         if (orderType !== 'dine-in') return undefined;
@@ -1300,6 +1305,7 @@ function ManualOrderPage() {
                                 serviceFeeValue: Number(settingsData.serviceFeeValue) || 0,
                                 serviceFeeApplyOn: settingsData.serviceFeeApplyOn || 'all',
                                 serviceFeeApplyOnManualOrders: !!settingsData.serviceFeeApplyOnManualOrders,
+                                autoPrintBillsEnabled: settingsData.autoPrintBillsEnabled === true,
                             };
                             setRestaurant(nextRestaurantPayload);
                             writeCachedPayload({
@@ -1414,6 +1420,7 @@ function ManualOrderPage() {
                         serviceFeeValue: Number(settingsData.serviceFeeValue) || 0,
                         serviceFeeApplyOn: settingsData.serviceFeeApplyOn || 'all',
                         serviceFeeApplyOnManualOrders: !!settingsData.serviceFeeApplyOnManualOrders,
+                        autoPrintBillsEnabled: settingsData.autoPrintBillsEnabled === true,
                     };
                     if (isMounted) setRestaurant(nextRestaurantPayload);
 
@@ -4368,6 +4375,70 @@ function ManualOrderPage() {
         return true;
     };
 
+    const persistCurrentManualOrder = async () => {
+        if (!cart.length) return { ok: false };
+        if (!validatePhoneNumber()) return { ok: false };
+
+        setIsSavingBillHistory(true);
+        let saveError = null;
+        try {
+            if (isDesktopOfflineMode(desktopRuntime)) {
+                await queueOfflineAction('manual_bill_history_create', {
+                    billDraftId,
+                    printedVia: orderType,
+                    customerDetails,
+                    items: cart,
+                    billDetails: {
+                        subtotal,
+                        cgst,
+                        sgst,
+                        deliveryCharge,
+                        serviceFee: additionalCharge,
+                        serviceFeeLabel: additionalChargeLabel,
+                        discount,
+                        paymentMode,
+                        grandTotal,
+                    },
+                });
+            } else {
+                await saveCustomBillHistory('browser', orderType);
+            }
+        } catch (error) {
+            if (canUseDesktopOfflineFallback(error)) {
+                await queueOfflineAction('manual_bill_history_create', {
+                    billDraftId,
+                    printedVia: orderType,
+                    customerDetails,
+                    items: cart,
+                    billDetails: {
+                        subtotal,
+                        cgst,
+                        sgst,
+                        deliveryCharge,
+                        serviceFee: additionalCharge,
+                        serviceFeeLabel: additionalChargeLabel,
+                        discount,
+                        paymentMode,
+                        grandTotal,
+                    },
+                });
+                saveError = null;
+            } else {
+                saveError = error;
+                console.error('[Manual Order] Failed to save order before printing:', error);
+            }
+        } finally {
+            setIsSavingBillHistory(false);
+        }
+
+        if (saveError) {
+            toast({ title: 'Save Failed', description: saveError.message, variant: 'destructive' });
+            return { ok: false, error: saveError };
+        }
+
+        return { ok: true };
+    };
+
     const handleOccupyTable = async () => {
         if (!activeTable) return;
         if (activeTable?.currentOrder?.isFinalized) {
@@ -4397,7 +4468,9 @@ function ManualOrderPage() {
                 writeCachedManualTables(nextTables);
                 await queueOfflineAction('manual_table_occupy', { tableId: activeTable.id, currentOrder });
                 toast({ title: 'Offline Saved', description: `Order saved locally to ${activeTable.name}.`, variant: 'warning' });
-                setTableToPrint({ ...activeTable, currentOrder });
+                if (autoPrintBillsEnabled) {
+                    setTableToPrint({ ...activeTable, currentOrder });
+                }
                 setActiveTable(null);
                 handleClear();
                 return;
@@ -4418,8 +4491,10 @@ function ManualOrderPage() {
             toast({ title: 'Saved', description: `Order saved to ${activeTable.name}` });
 
             // Auto-print bill after saving to table
-            const savedTableData = { ...activeTable, currentOrder };
-            setTableToPrint(savedTableData);
+            if (autoPrintBillsEnabled) {
+                const savedTableData = { ...activeTable, currentOrder };
+                setTableToPrint(savedTableData);
+            }
 
             setActiveTable(null);
             handleClear(); // Clear cart
@@ -4437,7 +4512,9 @@ function ManualOrderPage() {
                 writeCachedManualTables(nextTables);
                 await queueOfflineAction('manual_table_occupy', { tableId: activeTable.id, currentOrder });
                 toast({ title: 'Offline Saved', description: `Order saved locally to ${activeTable.name}.`, variant: 'warning' });
-                setTableToPrint({ ...activeTable, currentOrder });
+                if (autoPrintBillsEnabled) {
+                    setTableToPrint({ ...activeTable, currentOrder });
+                }
                 setActiveTable(null);
                 handleClear();
             } else {
@@ -4721,61 +4798,21 @@ function ManualOrderPage() {
     };
 
 
-    const handleBrowserPrintForBill = async () => {
-        if (!cart.length) return;
-        if (!validatePhoneNumber()) return;
+    const handleSaveOrderWithoutPrint = async () => {
+        const result = await persistCurrentManualOrder();
+        if (!result?.ok) return;
 
-        setIsSavingBillHistory(true);
-        let saveError = null;
-        try {
-            if (isDesktopOfflineMode(desktopRuntime)) {
-                await queueOfflineAction('manual_bill_history_create', {
-                    billDraftId,
-                    printedVia: orderType,
-                    customerDetails,
-                    items: cart,
-                    billDetails: {
-                        subtotal,
-                        cgst,
-                        sgst,
-                        deliveryCharge,
-                        serviceFee: additionalCharge,
-                        serviceFeeLabel: additionalChargeLabel,
-                        discount,
-                        paymentMode,
-                        grandTotal,
-                    },
-                });
-            } else {
-                await saveCustomBillHistory('browser', orderType);
-            }
-        } catch (error) {
-            if (canUseDesktopOfflineFallback(error)) {
-                await queueOfflineAction('manual_bill_history_create', {
-                    billDraftId,
-                    printedVia: orderType,
-                    customerDetails,
-                    items: cart,
-                    billDetails: {
-                        subtotal,
-                        cgst,
-                        sgst,
-                        deliveryCharge,
-                        serviceFee: additionalCharge,
-                        serviceFeeLabel: additionalChargeLabel,
-                        discount,
-                        paymentMode,
-                        grandTotal,
-                    },
-                });
-                saveError = null;
-            } else {
-                saveError = error;
-                console.error('[Custom Bill] Failed to save browser-print history:', error);
-            }
-        } finally {
-            setIsSavingBillHistory(false);
-        }
+        setIsBillModalOpen(false);
+        toast({
+            title: 'Saved',
+            description: 'Order saved successfully. Auto print is currently turned off in Settings.',
+        });
+        handleClear();
+    };
+
+    const handleBrowserPrintForBill = async () => {
+        const result = await persistCurrentManualOrder();
+        if (!result?.ok) return;
 
         if (billPrintRef.current) {
             if (desktopRuntime) {
@@ -4793,12 +4830,8 @@ function ManualOrderPage() {
             }
         }
 
-        if (saveError) {
-            toast({ title: 'Printed', description: `Printed, but history failed: ${saveError.message}`, variant: 'destructive' });
-        } else {
-            toast({ title: 'Success', description: 'Bill printed and saved.' });
-            handleClear(); // Automatically clear cart after success for Delivery/Pickup
-        }
+        toast({ title: 'Success', description: 'Bill printed and saved.' });
+        handleClear(); // Automatically clear cart after success for Delivery/Pickup
     };
 
     const handleDirectPrint = async () => {
@@ -6743,11 +6776,11 @@ function ManualOrderPage() {
                                 </Button>
                             ) : (
                                 <Button
-                                    onClick={handleBrowserPrintForBill}
+                                    onClick={autoPrintBillsEnabled ? handleBrowserPrintForBill : handleSaveOrderWithoutPrint}
                                     className="flex-1 h-10 px-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md shadow-emerald-900/30 transition-all"
                                     disabled={cart.length === 0 || isSavingBillHistory}
                                 >
-                                    <Printer className="mr-2 h-4 w-4" /> {isSavingBillHistory ? 'Saving...' : 'Save & Print'}
+                                    <Printer className="mr-2 h-4 w-4" /> {isSavingBillHistory ? 'Saving...' : autoPrintBillsEnabled ? 'Save & Print' : 'Save Order'}
                                 </Button>
                             )}
                         </div>
