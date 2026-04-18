@@ -135,6 +135,7 @@ const formatSuggestionAddressPreview = (addresses = []) => {
 };
 const sortManualTablesByName = (tables = []) => [...tables].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
 const IS_DEV_BUILD = process.env.NODE_ENV !== 'production';
+const SHOW_MANUAL_ORDER_VOICE_UI = false;
 const DESKTOP_MUTATION_TIMEOUT_MS = IS_DEV_BUILD ? 30000 : 12000;
 const DESKTOP_MUTATION_RETRY_TIMEOUT_MS = IS_DEV_BUILD ? 45000 : 20000;
 const DESKTOP_TOKEN_TIMEOUT_MS = IS_DEV_BUILD ? 5000 : 1200;
@@ -3904,7 +3905,6 @@ function ManualOrderPage() {
                 { combo: 'Alt+Z', description: 'Undo last added item' },
                 { combo: 'Alt+X', description: 'Clear current bill' },
                 { combo: 'Alt+P', description: 'Open print bill dialog' },
-                { combo: 'Alt+V', description: 'Start or stop voice billing' },
                 { combo: '?', description: 'Show shortcut help' },
             ],
         },
@@ -3923,8 +3923,7 @@ function ManualOrderPage() {
         { key: 'z', altKey: true, action: handleUndo },
         { key: 'x', altKey: true, action: handleClear },
         { key: 'p', altKey: true, action: openPrintShortcut },
-        { key: 'v', altKey: true, action: toggleVoiceListening },
-    ]), [focusManualSearch, handleClear, handleUndo, navigateWithShortcut, openPrintShortcut, switchOrderMode, toggleVoiceListening]);
+    ]), [focusManualSearch, handleClear, handleUndo, navigateWithShortcut, openPrintShortcut, switchOrderMode]);
 
     useOwnerDashboardShortcuts({
         shortcuts: ownerDashboardShortcuts,
@@ -4840,11 +4839,13 @@ function ManualOrderPage() {
         [cart]
     );
 
-    const mobileVoiceStatusLabel = isVoiceListening
+    const mobileVoiceStatusLabel = SHOW_MANUAL_ORDER_VOICE_UI
+        ? (isVoiceListening
         ? 'Listening'
         : (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing)
             ? 'Processing'
-            : 'Ready';
+            : 'Ready')
+        : 'Ready';
     const isMobileHoldToTalk = isMobileViewport;
     const isMobileMicBusy = (isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing) && !isVoiceListening;
 
@@ -5577,22 +5578,24 @@ function ManualOrderPage() {
                             </Button>
                         </Link>
 
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="h-11 w-full rounded-2xl px-3 text-sm font-semibold"
-                            onClick={() => {
-                                setIsMobileToolsOpen(false);
-                                setIsVoiceDebugDialogOpen(true);
-                            }}
-                        >
-                            Voice Debug
-                        </Button>
+                        {SHOW_MANUAL_ORDER_VOICE_UI ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-11 w-full rounded-2xl px-3 text-sm font-semibold"
+                                onClick={() => {
+                                    setIsMobileToolsOpen(false);
+                                    setIsVoiceDebugDialogOpen(true);
+                                }}
+                            >
+                                Voice Debug
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
             )}
 
-            {isMobileViewport && (
+            {SHOW_MANUAL_ORDER_VOICE_UI && isMobileViewport && (
                 <button
                     type="button"
                     data-mobile-swipe-ignore="true"
@@ -5654,7 +5657,7 @@ function ManualOrderPage() {
                                     <span>{mobileCartItemCount}</span>
                                 </button>
                             </div>
-                            {voiceRecognitionError ? (
+                            {SHOW_MANUAL_ORDER_VOICE_UI && voiceRecognitionError ? (
                                 <p className="mt-2 rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[10px] font-medium text-destructive">
                                     {voiceRecognitionError}
                                 </p>
@@ -5703,31 +5706,36 @@ function ManualOrderPage() {
                                 </div>
                             </div>
 
-                            <div className="hidden w-full flex-col gap-2 xl:max-w-[560px] lg:flex">
-                                <VoiceBillingPanel
-                                    className="w-full"
-                                    supported={isVoiceRecognitionSupported}
-                                    listening={isVoiceListening}
-                                    processing={isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing}
-                                    aiResolving={isVoiceAiResolving}
-                                    lastTranscript={voiceLastTranscript}
-                                    lastAction={voiceLastAction}
-                                    diagnostics={voiceDebugSnapshot}
-                                    error={voiceRecognitionError}
-                                    permissionState={voicePermissionState}
-                                    rawErrorCode={voiceRecognitionErrorCode}
-                                    microphoneProbe={voiceMicrophoneProbe}
-                                    currentModeLabel={orderType}
-                                    activeTableLabel={activeTable?.name || ''}
-                                    logEntries={voiceCommandLog}
-                                    pendingItems={voicePendingItems}
-                                    onToggleListening={toggleVoiceListening}
-                                    onStopListening={stopVoiceListening}
-                                    onRunMicrophoneProbe={runVoiceMicrophoneProbe}
-                                    onOpenDebug={() => setIsVoiceDebugDialogOpen(true)}
-                                    onUsePendingCandidate={handleVoicePendingCandidate}
-                                    onDismissPendingItem={dismissVoicePendingItem}
-                                />
+                            <div className={cn(
+                                "hidden w-full flex-col gap-2 lg:flex",
+                                SHOW_MANUAL_ORDER_VOICE_UI ? "xl:max-w-[560px]" : "lg:max-w-[440px]"
+                            )}>
+                                {SHOW_MANUAL_ORDER_VOICE_UI ? (
+                                    <VoiceBillingPanel
+                                        className="w-full"
+                                        supported={isVoiceRecognitionSupported}
+                                        listening={isVoiceListening}
+                                        processing={isVoiceCommandProcessing || isVoiceFallbackTranscribing || isVoiceCaptureTranscribing}
+                                        aiResolving={isVoiceAiResolving}
+                                        lastTranscript={voiceLastTranscript}
+                                        lastAction={voiceLastAction}
+                                        diagnostics={voiceDebugSnapshot}
+                                        error={voiceRecognitionError}
+                                        permissionState={voicePermissionState}
+                                        rawErrorCode={voiceRecognitionErrorCode}
+                                        microphoneProbe={voiceMicrophoneProbe}
+                                        currentModeLabel={orderType}
+                                        activeTableLabel={activeTable?.name || ''}
+                                        logEntries={voiceCommandLog}
+                                        pendingItems={voicePendingItems}
+                                        onToggleListening={toggleVoiceListening}
+                                        onStopListening={stopVoiceListening}
+                                        onRunMicrophoneProbe={runVoiceMicrophoneProbe}
+                                        onOpenDebug={() => setIsVoiceDebugDialogOpen(true)}
+                                        onUsePendingCandidate={handleVoicePendingCandidate}
+                                        onDismissPendingItem={dismissVoicePendingItem}
+                                    />
+                                ) : null}
 
                                 {(orderType !== 'dine-in' || activeTable) && (
                                     <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto]">
@@ -6231,23 +6239,17 @@ function ManualOrderPage() {
                     )}
                 </div>
 
-                {/* Bill Sidebar Resizer Handle */}
-                <div
-                    onMouseDown={startResizingBill}
-                    className="hidden lg:flex group w-2 hover:w-3 -ml-3 -mr-3 z-30 cursor-col-resize items-center justify-center transition-all bg-transparent"
-                    title="Drag to resize bill preview"
-                >
-                    <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
-                </div>
-
                 {/* Right Side: Live Bill Preview (Resizable) */}
                 <div
                     ref={billContainerRef}
-                    style={{ width: isMobileViewport ? undefined : `${billSidebarWidth}px` }}
+                    style={{
+                        width: isMobileViewport ? undefined : `${billSidebarWidth}px`,
+                        minWidth: isMobileViewport ? undefined : '280px',
+                    }}
                     onTouchStart={handleMobileSwipeStart}
                     onTouchEnd={handleMobileSwipeEnd}
                     className={cn(
-                        'flex flex-shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain',
+                        'relative flex flex-shrink-0 flex-col gap-3 overflow-y-auto overscroll-contain',
                         isMobileViewport
                             ? [
                                 'fixed inset-y-0 right-0 z-50 h-[100dvh] w-[min(92vw,420px)] max-w-full',
@@ -6258,6 +6260,23 @@ function ManualOrderPage() {
                             : 'order-2 h-full max-h-none min-h-0 overflow-y-auto px-0 pb-0 pr-1'
                     )}
                 >
+                    {!isMobileViewport && (
+                        <div
+                            onMouseDown={startResizingBill}
+                            className="group absolute left-0 top-1/2 z-30 hidden h-28 w-6 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center lg:flex"
+                            title="Drag to resize current order panel"
+                            aria-label="Resize current order panel"
+                        >
+                            <div className="flex h-full w-full items-center justify-center rounded-full bg-background/95 shadow-sm ring-1 ring-border transition-colors group-hover:ring-primary/30">
+                                <div className="flex h-20 w-4 items-center justify-center gap-1 rounded-full transition-colors group-hover:bg-primary/10">
+                                    <div className="h-10 w-[2px] rounded-full bg-border transition-colors group-hover:bg-primary" />
+                                    <GripVertical size={14} className="text-muted-foreground transition-colors group-hover:text-primary" />
+                                    <div className="h-10 w-[2px] rounded-full bg-border transition-colors group-hover:bg-primary" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {isMobileViewport && (
                         <div className="sticky top-0 z-10 -mx-3 border-b border-border bg-background/95 px-3 pb-3 pt-1 backdrop-blur">
                             <div className="flex items-center justify-between gap-3">
