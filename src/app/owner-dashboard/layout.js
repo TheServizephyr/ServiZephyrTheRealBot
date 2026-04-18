@@ -40,7 +40,10 @@ import AppNotificationCenter from "@/components/AppNotificationCenter";
 import { getBestEffortIdToken } from "@/lib/client-session";
 import { isDesktopApp } from "@/lib/desktop/runtime";
 import {
+  SCREEN_ORIENTATION_LANDSCAPE,
+  SCREEN_ORIENTATION_PORTRAIT,
   getOwnerDashboardLayoutMode,
+  getScreenOrientationLabel,
   onOwnerDashboardLayoutModeChange,
   resolveOwnerDashboardMobileState,
 } from '@/lib/screenOrientation';
@@ -134,6 +137,12 @@ function OwnerDashboardContent({ children }) {
   const desktopRuntime = useMemo(() => isDesktopApp(), []);
   const [isMobile, setIsMobile] = useState(true); // FIX: Default to true
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [layoutMode, setLayoutMode] = useState(() => (
+    typeof window === 'undefined' ? 'auto' : getOwnerDashboardLayoutMode()
+  ));
+  const [screenOrientationLabel, setScreenOrientationLabel] = useState(() => (
+    typeof window === 'undefined' ? 'Unknown' : getScreenOrientationLabel()
+  ));
   const [restaurantStatus, setRestaurantStatus] = useState({
     status: null,
     restrictedFeatures: [],
@@ -451,9 +460,11 @@ function OwnerDashboardContent({ children }) {
 
   useEffect(() => {
     const checkScreenSize = () => {
+      const nextLayoutMode = getOwnerDashboardLayoutMode();
+      setLayoutMode(nextLayoutMode);
       const mobile = resolveOwnerDashboardMobileState({
         width: window.innerWidth,
-        mode: getOwnerDashboardLayoutMode(),
+        mode: nextLayoutMode,
       });
       setIsMobile(mobile);
       if (mobile) {
@@ -475,6 +486,84 @@ function OwnerDashboardContent({ children }) {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const updateOrientationLabel = () => {
+      setScreenOrientationLabel(getScreenOrientationLabel());
+    };
+
+    updateOrientationLabel();
+    window.addEventListener('resize', updateOrientationLabel);
+    window.addEventListener('orientationchange', updateOrientationLabel);
+    window.screen?.orientation?.addEventListener?.('change', updateOrientationLabel);
+
+    return () => {
+      window.removeEventListener('resize', updateOrientationLabel);
+      window.removeEventListener('orientationchange', updateOrientationLabel);
+      window.screen?.orientation?.removeEventListener?.('change', updateOrientationLabel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const bodyStyle = document.body.style;
+    const htmlStyle = document.documentElement.style;
+    const previousBody = {
+      position: bodyStyle.position,
+      inset: bodyStyle.inset,
+      width: bodyStyle.width,
+      height: bodyStyle.height,
+      overflow: bodyStyle.overflow,
+      transform: bodyStyle.transform,
+      transformOrigin: bodyStyle.transformOrigin,
+      backgroundColor: bodyStyle.backgroundColor,
+    };
+    const previousHtmlOverflow = htmlStyle.overflow;
+
+    const shouldSimulateLandscape =
+      layoutMode === SCREEN_ORIENTATION_LANDSCAPE &&
+      screenOrientationLabel === 'Portrait';
+    const shouldSimulatePortrait =
+      layoutMode === SCREEN_ORIENTATION_PORTRAIT &&
+      screenOrientationLabel === 'Landscape';
+
+    if (shouldSimulateLandscape) {
+      bodyStyle.position = 'fixed';
+      bodyStyle.inset = '0';
+      bodyStyle.width = '100dvh';
+      bodyStyle.height = '100dvw';
+      bodyStyle.overflow = 'hidden';
+      bodyStyle.transformOrigin = 'top left';
+      bodyStyle.transform = 'rotate(90deg) translateY(-100%)';
+      bodyStyle.backgroundColor = 'hsl(var(--background))';
+      htmlStyle.overflow = 'hidden';
+    } else if (shouldSimulatePortrait) {
+      bodyStyle.position = 'fixed';
+      bodyStyle.inset = '0';
+      bodyStyle.width = '100dvh';
+      bodyStyle.height = '100dvw';
+      bodyStyle.overflow = 'hidden';
+      bodyStyle.transformOrigin = 'top left';
+      bodyStyle.transform = 'rotate(-90deg) translateX(-100%)';
+      bodyStyle.backgroundColor = 'hsl(var(--background))';
+      htmlStyle.overflow = 'hidden';
+    }
+
+    return () => {
+      bodyStyle.position = previousBody.position;
+      bodyStyle.inset = previousBody.inset;
+      bodyStyle.width = previousBody.width;
+      bodyStyle.height = previousBody.height;
+      bodyStyle.overflow = previousBody.overflow;
+      bodyStyle.transform = previousBody.transform;
+      bodyStyle.transformOrigin = previousBody.transformOrigin;
+      bodyStyle.backgroundColor = previousBody.backgroundColor;
+      htmlStyle.overflow = previousHtmlOverflow;
+    };
+  }, [layoutMode, screenOrientationLabel]);
 
   // Auto-collapse sidebar based on pathname navigation
   useEffect(() => {
