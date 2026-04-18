@@ -3,6 +3,20 @@
 export const SCREEN_ORIENTATION_AUTO = 'auto';
 export const SCREEN_ORIENTATION_PORTRAIT = 'portrait';
 export const SCREEN_ORIENTATION_LANDSCAPE = 'landscape';
+const OWNER_DASHBOARD_LAYOUT_STORAGE_KEY = 'servizephyr:owner-dashboard-layout-mode';
+const OWNER_DASHBOARD_LAYOUT_EVENT = 'servizephyr:owner-dashboard-layout-mode-change';
+
+const normalizeOrientationMode = (mode) => {
+  if (
+    mode === SCREEN_ORIENTATION_AUTO ||
+    mode === SCREEN_ORIENTATION_PORTRAIT ||
+    mode === SCREEN_ORIENTATION_LANDSCAPE
+  ) {
+    return mode;
+  }
+
+  return SCREEN_ORIENTATION_AUTO;
+};
 
 export const isStandaloneDisplayMode = () => {
   if (typeof window === 'undefined') return false;
@@ -26,6 +40,94 @@ export const getScreenOrientationLabel = () => {
   }
 
   return 'Unknown';
+};
+
+export const getOwnerDashboardLayoutMode = () => {
+  if (typeof window === 'undefined') return SCREEN_ORIENTATION_AUTO;
+
+  try {
+    return normalizeOrientationMode(
+      window.localStorage.getItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY) || SCREEN_ORIENTATION_AUTO
+    );
+  } catch {
+    return SCREEN_ORIENTATION_AUTO;
+  }
+};
+
+export const getOwnerDashboardLayoutModeLabel = (mode = SCREEN_ORIENTATION_AUTO) => {
+  const normalizedMode = normalizeOrientationMode(mode);
+  if (normalizedMode === SCREEN_ORIENTATION_PORTRAIT) return 'Portrait Layout';
+  if (normalizedMode === SCREEN_ORIENTATION_LANDSCAPE) return 'Landscape Layout';
+  return 'Auto Layout';
+};
+
+export const setOwnerDashboardLayoutMode = (mode = SCREEN_ORIENTATION_AUTO) => {
+  if (typeof window === 'undefined') return SCREEN_ORIENTATION_AUTO;
+
+  const normalizedMode = normalizeOrientationMode(mode);
+
+  try {
+    if (normalizedMode === SCREEN_ORIENTATION_AUTO) {
+      window.localStorage.removeItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY, normalizedMode);
+    }
+  } catch {
+    // Ignore localStorage failures and still broadcast best-effort below.
+  }
+
+  window.dispatchEvent(new CustomEvent(OWNER_DASHBOARD_LAYOUT_EVENT, {
+    detail: { mode: normalizedMode },
+  }));
+
+  return normalizedMode;
+};
+
+export const onOwnerDashboardLayoutModeChange = (callback) => {
+  if (typeof window === 'undefined' || typeof callback !== 'function') {
+    return () => {};
+  }
+
+  const handleCustomEvent = (event) => {
+    callback(normalizeOrientationMode(event?.detail?.mode || getOwnerDashboardLayoutMode()));
+  };
+
+  const handleStorageEvent = (event) => {
+    if (event.key === OWNER_DASHBOARD_LAYOUT_STORAGE_KEY) {
+      callback(getOwnerDashboardLayoutMode());
+    }
+  };
+
+  window.addEventListener(OWNER_DASHBOARD_LAYOUT_EVENT, handleCustomEvent);
+  window.addEventListener('storage', handleStorageEvent);
+
+  return () => {
+    window.removeEventListener(OWNER_DASHBOARD_LAYOUT_EVENT, handleCustomEvent);
+    window.removeEventListener('storage', handleStorageEvent);
+  };
+};
+
+export const resolveOwnerDashboardMobileState = ({ width = 0, mode = SCREEN_ORIENTATION_AUTO }) => {
+  const normalizedMode = normalizeOrientationMode(mode);
+  if (normalizedMode === SCREEN_ORIENTATION_PORTRAIT) return true;
+  if (normalizedMode === SCREEN_ORIENTATION_LANDSCAPE) return false;
+  return Number(width) < 768;
+};
+
+export const resolveManualOrderMobileViewport = ({
+  width = 0,
+  height = 0,
+  mode = SCREEN_ORIENTATION_AUTO,
+}) => {
+  const normalizedMode = normalizeOrientationMode(mode);
+  if (normalizedMode === SCREEN_ORIENTATION_PORTRAIT) return true;
+  if (normalizedMode === SCREEN_ORIENTATION_LANDSCAPE) return false;
+
+  const numericWidth = Number(width) || 0;
+  const numericHeight = Number(height) || 0;
+  const isPortraitLike = numericHeight >= numericWidth;
+
+  return numericWidth < 760 || (numericWidth <= 1023 && isPortraitLike);
 };
 
 export const allowAnyScreenOrientation = async () => {

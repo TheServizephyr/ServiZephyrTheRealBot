@@ -34,7 +34,11 @@ import {
   SCREEN_ORIENTATION_LANDSCAPE,
   SCREEN_ORIENTATION_PORTRAIT,
   getScreenOrientationLabel,
+  getOwnerDashboardLayoutMode,
+  getOwnerDashboardLayoutModeLabel,
+  onOwnerDashboardLayoutModeChange,
   requestScreenOrientation,
+  setOwnerDashboardLayoutMode,
 } from '@/lib/screenOrientation';
 
 
@@ -55,6 +59,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const [isSystemStatusOpen, setSystemStatusOpen] = useState(false);
   const [orientationActionLoading, setOrientationActionLoading] = useState(false);
   const [currentOrientationLabel, setCurrentOrientationLabel] = useState('Unknown');
+  const [currentLayoutMode, setCurrentLayoutMode] = useState(SCREEN_ORIENTATION_AUTO);
   const { user } = useUser();
   const { toast } = useToast();
   const settingsFetchInFlightRef = useRef(null);
@@ -183,6 +188,17 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const syncLayoutMode = (nextMode) => {
+      setCurrentLayoutMode(nextMode || getOwnerDashboardLayoutMode());
+    };
+
+    syncLayoutMode(getOwnerDashboardLayoutMode());
+    return onOwnerDashboardLayoutModeChange(syncLayoutMode);
+  }, []);
+
   const handleLogout = async () => {
     try {
       await logoutClientSession({ redirectTo: '/' });
@@ -195,13 +211,27 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const handleOrientationChange = useCallback(async (mode) => {
     setOrientationActionLoading(true);
     try {
+      const appliedLayoutMode = setOwnerDashboardLayoutMode(mode);
       const result = await requestScreenOrientation(mode);
       setCurrentOrientationLabel(getScreenOrientationLabel());
-      toast({
-        title: result.ok ? 'Orientation Updated' : 'Orientation Limited',
-        description: result.message,
-        variant: result.ok ? 'default' : 'destructive',
-      });
+      setCurrentLayoutMode(appliedLayoutMode);
+
+      const layoutMessage =
+        mode === SCREEN_ORIENTATION_AUTO
+          ? 'Dashboard layout will now follow screen size automatically.'
+          : `Dashboard switched to ${mode} layout.`;
+
+      if (result.ok) {
+        toast({
+          title: 'Orientation Updated',
+          description: `${layoutMessage} ${result.message}`,
+        });
+      } else {
+        toast({
+          title: 'Layout Updated',
+          description: `${layoutMessage} Physical device rotation is unavailable here, so only the app layout changed.`,
+        });
+      }
     } catch (error) {
       toast({
         title: 'Orientation Error',
@@ -389,6 +419,9 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                       <p className="text-sm font-semibold">Screen Orientation</p>
                       <p className="text-[11px] text-muted-foreground">
                         Current: {currentOrientationLabel}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Layout: {getOwnerDashboardLayoutModeLabel(currentLayoutMode)}
                       </p>
                     </div>
                     <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

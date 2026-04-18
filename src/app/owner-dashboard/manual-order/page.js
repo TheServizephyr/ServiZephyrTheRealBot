@@ -50,6 +50,11 @@ import {
     parseManualOrderVoiceCommand,
     serializeVoiceResolverPayload,
 } from '@/lib/manual-order-voice';
+import {
+    getOwnerDashboardLayoutMode,
+    onOwnerDashboardLayoutModeChange,
+    resolveManualOrderMobileViewport,
+} from '@/lib/screenOrientation';
 
 import { EscPosEncoder } from '@/services/printer/escpos';
 import { connectPrinter, printData } from '@/services/printer/webUsbPrinter';
@@ -442,25 +447,28 @@ function ManualOrderPage() {
         prevCartLengthRef.current = cart.length;
     }, [cart.length]);
     useEffect(() => {
-        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-
-        const mediaQuery = window.matchMedia('(max-width: 759px), ((max-width: 1023px) and (orientation: portrait))');
         const applyViewportState = () => {
-            setIsMobileViewport(mediaQuery.matches);
-            if (!mediaQuery.matches) {
+            const mobileViewport = resolveManualOrderMobileViewport({
+                width: window.innerWidth,
+                height: window.innerHeight,
+                mode: getOwnerDashboardLayoutMode(),
+            });
+            setIsMobileViewport(mobileViewport);
+            if (!mobileViewport) {
                 setIsMobileCartOpen(false);
                 setIsMobileToolsOpen(false);
             }
         };
 
         applyViewportState();
-        if (typeof mediaQuery.addEventListener === 'function') {
-            mediaQuery.addEventListener('change', applyViewportState);
-            return () => mediaQuery.removeEventListener('change', applyViewportState);
-        }
-
-        mediaQuery.addListener(applyViewportState);
-        return () => mediaQuery.removeListener(applyViewportState);
+        window.addEventListener('resize', applyViewportState);
+        window.addEventListener('orientationchange', applyViewportState);
+        const unsubscribe = onOwnerDashboardLayoutModeChange(applyViewportState);
+        return () => {
+            window.removeEventListener('resize', applyViewportState);
+            window.removeEventListener('orientationchange', applyViewportState);
+            unsubscribe();
+        };
     }, []);
 
     useEffect(() => {

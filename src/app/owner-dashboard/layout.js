@@ -39,6 +39,11 @@ import DesktopSyncProcessor from "@/components/DesktopSyncProcessor";
 import AppNotificationCenter from "@/components/AppNotificationCenter";
 import { getBestEffortIdToken } from "@/lib/client-session";
 import { isDesktopApp } from "@/lib/desktop/runtime";
+import {
+  getOwnerDashboardLayoutMode,
+  onOwnerDashboardLayoutModeChange,
+  resolveOwnerDashboardMobileState,
+} from '@/lib/screenOrientation';
 
 export const dynamic = 'force-dynamic';
 
@@ -446,7 +451,10 @@ function OwnerDashboardContent({ children }) {
 
   useEffect(() => {
     const checkScreenSize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = resolveOwnerDashboardMobileState({
+        width: window.innerWidth,
+        mode: getOwnerDashboardLayoutMode(),
+      });
       setIsMobile(mobile);
       if (mobile) {
         setSidebarOpen(false);
@@ -461,7 +469,11 @@ function OwnerDashboardContent({ children }) {
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
+    const unsubscribe = onOwnerDashboardLayoutModeChange(checkScreenSize);
+    return () => {
+      window.removeEventListener('resize', checkScreenSize);
+      unsubscribe();
+    };
   }, []);
 
   // Auto-collapse sidebar based on pathname navigation
