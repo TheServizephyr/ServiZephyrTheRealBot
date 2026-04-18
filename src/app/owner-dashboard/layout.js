@@ -17,6 +17,7 @@ import { useUser } from "@/firebase";
 import { auth, db, rtdb } from "@/lib/firebase";
 import { onValue, ref } from "firebase/database";
 import { doc, getDoc } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
 import EmployeeBanner from "@/components/EmployeeBanner";
@@ -533,8 +534,8 @@ function OwnerDashboardContent({ children }) {
     if (shouldSimulateLandscape) {
       bodyStyle.position = 'fixed';
       bodyStyle.inset = '0';
-      bodyStyle.width = '100dvh';
-      bodyStyle.height = '100dvw';
+      bodyStyle.width = `${window.innerHeight}px`;
+      bodyStyle.height = `${window.innerWidth}px`;
       bodyStyle.overflow = 'hidden';
       bodyStyle.transformOrigin = 'top left';
       bodyStyle.transform = 'rotate(90deg) translateY(-100%)';
@@ -543,8 +544,8 @@ function OwnerDashboardContent({ children }) {
     } else if (shouldSimulatePortrait) {
       bodyStyle.position = 'fixed';
       bodyStyle.inset = '0';
-      bodyStyle.width = '100dvh';
-      bodyStyle.height = '100dvw';
+      bodyStyle.width = `${window.innerHeight}px`;
+      bodyStyle.height = `${window.innerWidth}px`;
       bodyStyle.overflow = 'hidden';
       bodyStyle.transformOrigin = 'top left';
       bodyStyle.transform = 'rotate(-90deg) translateX(-100%)';
@@ -1078,6 +1079,13 @@ function OwnerDashboardContent({ children }) {
 
   const blockedContent = renderStatusScreen();
   const isCollapsed = !isSidebarOpen && !isMobile;
+  const isSimulatedLandscape =
+    layoutMode === SCREEN_ORIENTATION_LANDSCAPE &&
+    screenOrientationLabel === 'Portrait';
+  const isSimulatedPortrait =
+    layoutMode === SCREEN_ORIENTATION_PORTRAIT &&
+    screenOrientationLabel === 'Landscape';
+  const isHardRotatedLayout = isSimulatedLandscape || isSimulatedPortrait;
   const showGlobalIncomingCallBanner =
     !!incomingCallBanner?.phone &&
     !pathname?.startsWith('/owner-dashboard/manual-order');
@@ -1129,7 +1137,12 @@ function OwnerDashboardContent({ children }) {
           </div>
         </motion.div>
       )}
-      <div className="flex h-screen bg-background text-foreground">
+      <div
+        className={cn(
+          "flex bg-background text-foreground",
+          isHardRotatedLayout ? "h-full w-full overflow-hidden" : "h-screen"
+        )}
+      >
         <motion.aside
           key={isMobile ? "mobile" : "desktop"}
           className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
