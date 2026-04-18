@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Sun, Moon, Menu, UserCheck, ShieldCheck, Clock3 } from "lucide-react";
+import { User, Sun, Moon, Menu, UserCheck, ShieldCheck, Clock3, RotateCw } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import { useTheme } from "next-themes";
 import { auth } from "@/lib/firebase";
@@ -28,6 +28,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useUser } from '@/firebase';
 import AppNotificationCenter from '@/components/AppNotificationCenter';
 import { logoutClientSession } from '@/lib/client-session';
+import { useToast } from "@/components/ui/use-toast";
+import {
+  SCREEN_ORIENTATION_AUTO,
+  SCREEN_ORIENTATION_LANDSCAPE,
+  SCREEN_ORIENTATION_PORTRAIT,
+  getScreenOrientationLabel,
+  requestScreenOrientation,
+} from '@/lib/screenOrientation';
 
 
 const MotionDiv = motion.div;
@@ -45,7 +53,10 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const router = useRouter();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const [isSystemStatusOpen, setSystemStatusOpen] = useState(false);
+  const [orientationActionLoading, setOrientationActionLoading] = useState(false);
+  const [currentOrientationLabel, setCurrentOrientationLabel] = useState('Unknown');
   const { user } = useUser();
+  const { toast } = useToast();
   const settingsFetchInFlightRef = useRef(null);
 
   const scopedSettingsUrl = useMemo(() => {
@@ -153,6 +164,25 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
     return () => mediaQuery.removeListener(applyView);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const updateOrientationLabel = () => {
+      setCurrentOrientationLabel(getScreenOrientationLabel());
+    };
+
+    updateOrientationLabel();
+    window.addEventListener('resize', updateOrientationLabel);
+    window.addEventListener('orientationchange', updateOrientationLabel);
+    window.screen?.orientation?.addEventListener?.('change', updateOrientationLabel);
+
+    return () => {
+      window.removeEventListener('resize', updateOrientationLabel);
+      window.removeEventListener('orientationchange', updateOrientationLabel);
+      window.screen?.orientation?.removeEventListener?.('change', updateOrientationLabel);
+    };
+  }, []);
+
   const handleLogout = async () => {
     try {
       await logoutClientSession({ redirectTo: '/' });
@@ -161,6 +191,27 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
       setInfoDialog({ isOpen: true, title: "Error", message: "Could not log out. Please try again." });
     }
   };
+
+  const handleOrientationChange = useCallback(async (mode) => {
+    setOrientationActionLoading(true);
+    try {
+      const result = await requestScreenOrientation(mode);
+      setCurrentOrientationLabel(getScreenOrientationLabel());
+      toast({
+        title: result.ok ? 'Orientation Updated' : 'Orientation Limited',
+        description: result.message,
+        variant: result.ok ? 'default' : 'destructive',
+      });
+    } catch (error) {
+      toast({
+        title: 'Orientation Error',
+        description: error?.message || 'Could not change screen orientation right now.',
+        variant: 'destructive',
+      });
+    } finally {
+      setOrientationActionLoading(false);
+    }
+  }, [toast]);
 
   // ... (rest of the functions remain the same) ...
 
@@ -330,6 +381,64 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                   Role: {userRole || 'Owner'}
                 </p>
               </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="px-2 pb-2">
+                <div className="rounded-md border border-border bg-muted/30 p-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">Screen Orientation</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Current: {currentOrientationLabel}
+                      </p>
+                    </div>
+                    <RotateCw className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-[11px] font-semibold"
+                      disabled={orientationActionLoading}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleOrientationChange(SCREEN_ORIENTATION_PORTRAIT);
+                      }}
+                    >
+                      Portrait
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-[11px] font-semibold"
+                      disabled={orientationActionLoading}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleOrientationChange(SCREEN_ORIENTATION_LANDSCAPE);
+                      }}
+                    >
+                      Landscape
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-[11px] font-semibold"
+                      disabled={orientationActionLoading}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleOrientationChange(SCREEN_ORIENTATION_AUTO);
+                      }}
+                    >
+                      Auto
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <DropdownMenuSeparator />
               <div className="p-2">
                 <Label htmlFor="restaurant-status-header" className="flex items-center justify-between cursor-pointer">
