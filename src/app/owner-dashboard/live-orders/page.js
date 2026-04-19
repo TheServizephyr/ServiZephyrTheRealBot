@@ -163,6 +163,16 @@ const getOrderGrandTotal = (order = {}) => {
     return Math.max(0, fallbackTotal);
 };
 
+const ORDER_QUANTITY_TEXT_CLASSNAME = 'text-emerald-600 dark:text-emerald-400';
+
+const getOrderDisplayId = (order = {}, fallback = 'Unknown') => {
+    const customerOrderId = String(order?.customerOrderId || '').trim();
+    if (customerOrderId) return customerOrderId;
+
+    const rawId = String(order?.id || order?.orderId || '').trim();
+    return rawId ? rawId.substring(0, 8) : fallback;
+};
+
 const getItemLineTotal = (item = {}) => {
     const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
     const storedLineTotal = toAmount(item?.totalPrice, NaN);
@@ -287,7 +297,7 @@ const RejectOrderModal = ({
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
-                        <DialogTitle>Reject Order #{order?.id.substring(0, 5)}</DialogTitle>
+                        <DialogTitle>Reject Order #{getOrderDisplayId(order)}</DialogTitle>
                         <DialogDescription>
                             Are you sure you want to reject this order? This action cannot be undone. The customer will be notified.
                         </DialogDescription>
@@ -510,7 +520,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, initialSelectedOrders, ri
                                     />
                                     <Label htmlFor={`order-${order.id}`} className="cursor-pointer w-full flex flex-col">
                                         <div className="flex justify-between items-center w-full">
-                                            <span className="font-bold">#{order.customerOrderId || order.id.substring(0, 5)}</span>
+                                            <span className="font-bold">#{getOrderDisplayId(order)}</span>
                                             <span className="text-xs font-mono bg-muted px-1 rounded">₹{Math.round(getOrderGrandTotal(order))}</span>
                                         </div>
                                         <div className="flex justify-between text-xs text-muted-foreground mt-1">
@@ -871,7 +881,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-2xl bg-card border-border text-card-foreground">
                 <DialogHeader>
-                    <DialogTitle>Order Details #{order.id?.substring(0, 8) || 'Unknown'}</DialogTitle>
+                    <DialogTitle>Order Details #{getOrderDisplayId(order)}</DialogTitle>
                     <DialogDescription>
                         Full details for the order placed on {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'PPpp')}
                     </DialogDescription>
@@ -947,7 +957,7 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                 <div key={index} className="flex flex-col border-b border-border/50 pb-2 mb-2">
                                     <div className="flex justify-between items-start">
                                         <div className="flex items-start gap-2">
-                                            <span className="font-bold text-primary">{item.quantity}x</span>
+                                            <span className={cn("font-bold", ORDER_QUANTITY_TEXT_CLASSNAME)}>{item.quantity}x</span>
                                             <div className="flex flex-col">
                                                 <span className="font-medium">
                                                     {item.name}
@@ -1057,7 +1067,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Header */}
             <div className="flex justify-between items-start pr-8">
                 <div>
-                    <div className="font-extrabold text-lg tracking-tight">#{order.customerOrderId || order.id.substring(0, 8)}</div>
+                    <div className="font-extrabold text-lg tracking-tight">#{getOrderDisplayId(order)}</div>
                     <div className="text-xs text-muted-foreground mt-0.5 font-medium">
                         {formatSafeRelativeTime(order.orderDate)}
                     </div>
@@ -1154,7 +1164,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                     return (
                         <div key={idx} className="flex justify-between items-start text-sm">
                             <span className="text-foreground/90 leading-tight">
-                                <span className="font-extrabold text-primary mr-2">{qty}x</span>
+                                <span className={cn("font-extrabold mr-2", ORDER_QUANTITY_TEXT_CLASSNAME)}>{qty}x</span>
                                 {item.name}
                                 {getItemVariantLabel(item)}
                                 {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && <span className="text-xs text-muted-foreground"> +{(item.addons || item.selectedAddOns).length} adds</span>}
@@ -2578,7 +2588,7 @@ export default function LiveOrdersPage() {
                                                     )}
                                             </td>
                                             <td className="p-4 align-top">
-                                                <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.customerOrderId || order.id}</div>
+                                                <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{getOrderDisplayId(order, order.id || 'Unknown')}</div>
                                                 <div
                                                     onClick={() => handleDetailClick(order.id, order.customerId)}
                                                     className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"

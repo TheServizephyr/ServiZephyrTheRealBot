@@ -313,7 +313,10 @@ export async function GET(req) {
             const canViewCustomerDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_CUSTOMERS);
             const canViewPaymentDetails = callerHasPermission(callerRole, callerPermissions, PERMISSIONS.VIEW_PAYMENTS);
 
-            const redactedOrderData = redactOrderForViewer(orderData, canViewCustomerDetails, canViewPaymentDetails);
+            const redactedOrderData = redactOrderForViewer({
+                id: orderDoc.id,
+                ...orderData,
+            }, canViewCustomerDetails, canViewPaymentDetails);
 
             // If customerId is provided, fetch customer details as well
             let customerData = null;
