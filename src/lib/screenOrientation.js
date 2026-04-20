@@ -43,15 +43,7 @@ export const getScreenOrientationLabel = () => {
 };
 
 export const getOwnerDashboardLayoutMode = () => {
-  if (typeof window === 'undefined') return SCREEN_ORIENTATION_AUTO;
-
-  try {
-    return normalizeOrientationMode(
-      window.localStorage.getItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY) || SCREEN_ORIENTATION_AUTO
-    );
-  } catch {
-    return SCREEN_ORIENTATION_AUTO;
-  }
+  return SCREEN_ORIENTATION_AUTO;
 };
 
 export const getOwnerDashboardLayoutModeLabel = (mode = SCREEN_ORIENTATION_AUTO) => {
@@ -64,23 +56,17 @@ export const getOwnerDashboardLayoutModeLabel = (mode = SCREEN_ORIENTATION_AUTO)
 export const setOwnerDashboardLayoutMode = (mode = SCREEN_ORIENTATION_AUTO) => {
   if (typeof window === 'undefined') return SCREEN_ORIENTATION_AUTO;
 
-  const normalizedMode = normalizeOrientationMode(mode);
-
   try {
-    if (normalizedMode === SCREEN_ORIENTATION_AUTO) {
-      window.localStorage.removeItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY);
-    } else {
-      window.localStorage.setItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY, normalizedMode);
-    }
+    window.localStorage.removeItem(OWNER_DASHBOARD_LAYOUT_STORAGE_KEY);
   } catch {
     // Ignore localStorage failures and still broadcast best-effort below.
   }
 
   window.dispatchEvent(new CustomEvent(OWNER_DASHBOARD_LAYOUT_EVENT, {
-    detail: { mode: normalizedMode },
+    detail: { mode: SCREEN_ORIENTATION_AUTO },
   }));
 
-  return normalizedMode;
+  return SCREEN_ORIENTATION_AUTO;
 };
 
 export const onOwnerDashboardLayoutModeChange = (callback) => {
