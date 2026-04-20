@@ -100,7 +100,7 @@ export class IdempotencyRepository {
             cleanupAt: ttlDateFromNow(IDEMPOTENCY_TTL_MS),
         }, { merge: true });
 
-        console.log(`[IdempotencyRepository] Key marked as failed: ${idempotencyKey}`);
+        console.log(`[IdempotencyRepository] Key marked as failed: ${idempotencyKey} | Reason: ${error?.message || 'Unknown error'}`);
     }
 
     /**

@@ -607,33 +607,13 @@ export async function createOrderV2(req, options = {}) {
             return { refSession, bearerUid: decodedToken?.uid || null };
         })();
 
-        // 4. Delivery Config (⚡ fire both paths in parallel, use whichever exists)
+        // 4. Delivery Config
         const needsDeliveryValidation = (deliveryType === 'delivery' || deliveryType === 'car-order') 
             && !(skipAddressValidation && (customerLat === null || customerLng === null || !address?.full));
-        const deliveryConfigPromise = needsDeliveryValidation
-            ? (async () => {
-                // Fire both possible paths in parallel
-                const [pathA, pathB] = await Promise.all([
-                    firestore.collection('restaurants').doc(restaurantId).collection('delivery_settings').doc('config').get().catch(() => null),
-                    firestore.collection('cloud-kitchens').doc(restaurantId).collection('delivery_settings').doc('config').get().catch(() => null)
-                ]);
-                return (pathA && pathA.exists) ? pathA : (pathB && pathB.exists) ? pathB : null;
-            })()
-            : Promise.resolve(null);
-
-        // 5. Tables for dine-in
-        const tablesPromise = (deliveryType === 'dine-in' && body.tableId)
-            ? firestore.collection('restaurants').doc(restaurantId).collection('tables').get()
-            : Promise.resolve(null);
 
         // 6. Existing order for addons
         const existingOrderPromise = finalExistingOrderId 
             ? firestore.collection('orders').doc(finalExistingOrderId).get()
-            : Promise.resolve(null);
-
-        // 8. Coupon Fetch
-        const couponPromise = (coupon && coupon.id)
-            ? firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(coupon.id).get()
             : Promise.resolve(null);
 
         // 🔥 FIRE DISCOVERY BATCH (PHASE 1: Business & Identity)
@@ -661,8 +641,47 @@ export async function createOrderV2(req, options = {}) {
             return buildErrorResponse({ message: 'Restaurant is currently closed.', status: 403 });
         }
 
+        const resolvedBusinessRef = firestore.collection(business.collection).doc(String(business.id));
+
         // --- DISCOVERY PROMISES (PHASE 2: Business-Dependent Data) ---
         // Now that we have the business, we can accurately calculate pricing
+        const deliveryConfigPromise = needsDeliveryValidation
+            ? resolvedBusinessRef.collection('delivery_settings').doc('config').get().catch((deliveryConfigError) => {
+                console.warn('[createOrderV2] Delivery config lookup failed for resolved business:', {
+                    requestedRestaurantId: restaurantId,
+                    resolvedBusinessId: business.id,
+                    collection: business.collection,
+                    error: deliveryConfigError?.message || deliveryConfigError,
+                });
+                return null;
+            })
+            : Promise.resolve(null);
+
+        const tablesPromise = (deliveryType === 'dine-in' && body.tableId)
+            ? resolvedBusinessRef.collection('tables').get().catch((tablesError) => {
+                console.warn('[createOrderV2] Tables lookup failed for resolved business:', {
+                    requestedRestaurantId: restaurantId,
+                    resolvedBusinessId: business.id,
+                    collection: business.collection,
+                    error: tablesError?.message || tablesError,
+                });
+                return null;
+            })
+            : Promise.resolve(null);
+
+        const couponPromise = (coupon && coupon.id)
+            ? resolvedBusinessRef.collection('coupons').doc(String(coupon.id)).get().catch((couponLookupError) => {
+                console.warn('[createOrderV2] Coupon lookup failed for resolved business:', {
+                    requestedRestaurantId: restaurantId,
+                    resolvedBusinessId: business.id,
+                    collection: business.collection,
+                    couponId: coupon.id,
+                    error: couponLookupError?.message || couponLookupError,
+                });
+                return null;
+            })
+            : Promise.resolve(null);
+
         const pricingPromise = calculateServerTotal({
             restaurantId: business.id,
             items,
@@ -818,6 +837,12 @@ export async function createOrderV2(req, options = {}) {
                 // const couponSnap = await couponPromise; // Already awaited in parallel batch
 
                 if (!couponSnap || !couponSnap.exists) {
+                    console.warn('[createOrderV2] Coupon re-validation failed: coupon doc not found for resolved business path.', {
+                        requestedRestaurantId: restaurantId,
+                        resolvedBusinessId: business.id,
+                        collection: business.collection,
+                        couponId: coupon.id,
+                    });
                     await idempotencyRepository.fail(idempotencyKey, new Error('Selected coupon not found'));
                     return buildErrorResponse({
                         message: 'Selected coupon is no longer available.',
@@ -960,6 +985,13 @@ export async function createOrderV2(req, options = {}) {
 
                 console.log(`[createOrderV2] ✅ Coupon validated: ${verifiedCoupon.code || verifiedCoupon.id}, discount=₹${couponDiscountAmount}`);
             } catch (couponError) {
+                console.warn('[createOrderV2] Coupon validation rejected request:', {
+                    requestedRestaurantId: restaurantId,
+                    resolvedBusinessId: business.id,
+                    collection: business.collection,
+                    couponId: coupon?.id || null,
+                    reason: couponError?.message || couponError,
+                });
                 await idempotencyRepository.fail(idempotencyKey, couponError);
                 return buildErrorResponse({
                     message: couponError?.message || 'Coupon validation failed.',
