@@ -1822,9 +1822,9 @@ function ManualOrderPage() {
         [voiceMenuIndex]
     );
 
-    // Calculate dynamic default width based on the longest category name
+    // Calculate a compact default width based on the longest category name.
     const defaultSidebarWidth = useMemo(() => {
-        if (!visibleMenuEntries || visibleMenuEntries.length === 0) return 150;
+        if (!visibleMenuEntries || visibleMenuEntries.length === 0) return 132;
         let maxLen = 0;
         for (const [categoryId] of visibleMenuEntries) {
             const label = formatCategoryLabel(categoryId);
@@ -1832,8 +1832,8 @@ function ManualOrderPage() {
                 maxLen = label.length;
             }
         }
-        // Estimate width: 8.5px per char (text-sm) + 50px for padding, scrollbar, margins
-        return Math.max(130, Math.min(maxLen * 8.5 + 50, 400));
+        // Keep it slightly tighter by default while still leaving room for wrapped labels.
+        return Math.max(118, Math.min(maxLen * 7.75 + 42, 340));
     }, [visibleMenuEntries]);
 
     const sidebarWidth = manualSidebarWidth !== null ? manualSidebarWidth : defaultSidebarWidth;
@@ -1973,25 +1973,34 @@ function ManualOrderPage() {
         }
     };
 
-    // --- Sidebar Resizing Logic ---
-    const startResizing = useCallback((e) => {
-        e.preventDefault(); // Prevent text selection while dragging
-        isResizing.current = true;
+    const activateResizeMode = useCallback(() => {
         document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none'; // Prevent selection on body
+        document.body.style.userSelect = 'none';
     }, []);
 
-    const stopResizing = useCallback(() => {
-        if (!isResizing.current) return;
-        isResizing.current = false;
+    const clearResizeMode = useCallback(() => {
+        if (isResizing.current || isResizingBill.current) return;
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     }, []);
 
-    const handleMouseMove = useCallback((e) => {
+    // --- Sidebar Resizing Logic ---
+    const startResizing = useCallback((e) => {
+        e.preventDefault();
+        isResizing.current = true;
+        activateResizeMode();
+    }, [activateResizeMode]);
+
+    const stopResizing = useCallback(() => {
+        if (!isResizing.current) return;
+        isResizing.current = false;
+        clearResizeMode();
+    }, [clearResizeMode]);
+
+    const handleSidebarResizeMove = useCallback((clientX) => {
         if (!isResizing.current || !sidebarRef.current) return;
-        const newWidth = e.clientX - sidebarRef.current.getBoundingClientRect().left;
-        const minWidth = 130;
+        const newWidth = clientX - sidebarRef.current.getBoundingClientRect().left;
+        const minWidth = 118;
         const maxWidth = Math.min(800, window.innerWidth * 0.5);
         if (newWidth >= minWidth && newWidth <= maxWidth) {
             setManualSidebarWidth(newWidth);
@@ -2002,21 +2011,19 @@ function ManualOrderPage() {
     const startResizingBill = useCallback((e) => {
         e.preventDefault();
         isResizingBill.current = true;
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    }, []);
+        activateResizeMode();
+    }, [activateResizeMode]);
 
     const stopResizingBill = useCallback(() => {
         if (!isResizingBill.current) return;
         isResizingBill.current = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-    }, []);
+        clearResizeMode();
+    }, [clearResizeMode]);
 
-    const handleMouseMoveBill = useCallback((e) => {
+    const handleBillResizeMove = useCallback((clientX) => {
         if (!isResizingBill.current || !billContainerRef.current) return;
         const rect = billContainerRef.current.getBoundingClientRect();
-        const newWidth = rect.right - e.clientX;
+        const newWidth = rect.right - clientX;
         const minWidth = 280;
         const maxWidth = Math.min(800, window.innerWidth * 0.5);
         if (newWidth >= minWidth && newWidth <= maxWidth) {
@@ -2025,21 +2032,24 @@ function ManualOrderPage() {
     }, []);
 
     useEffect(() => {
-        const onMouseMove = (e) => {
-            if (isResizing.current) handleMouseMove(e);
-            if (isResizingBill.current) handleMouseMoveBill(e);
+        const onPointerMove = (e) => {
+            if (!(isResizing.current || isResizingBill.current)) return;
+            if (isResizing.current) handleSidebarResizeMove(e.clientX);
+            if (isResizingBill.current) handleBillResizeMove(e.clientX);
         };
-        const onMouseUp = () => {
+        const onPointerUp = () => {
             if (isResizing.current) stopResizing();
             if (isResizingBill.current) stopResizingBill();
         };
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
         return () => {
-            window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            window.removeEventListener('pointercancel', onPointerUp);
         };
-    }, [handleMouseMove, stopResizing, handleMouseMoveBill, stopResizingBill]);
+    }, [handleSidebarResizeMove, stopResizing, handleBillResizeMove, stopResizingBill]);
     // ------------------------------
 
 
@@ -5134,7 +5144,7 @@ function ManualOrderPage() {
                     <DialogHeader>
                         <DialogTitle>Add One-Time Item</DialogTitle>
                         <DialogDescription>
-                            This item will only be added to the current bill. It will not be saved in the menu.
+                            Added only to this bill. It will not be saved in the menu.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-2">
@@ -6039,10 +6049,11 @@ function ManualOrderPage() {
 
                             {/* RESIZE HANDLE */}
                             <div
-                                onMouseDown={startResizing}
-                                className="hidden md:block absolute top-0 bottom-0 z-10 w-2 cursor-col-resize flex items-center justify-center group"
-                                style={{ left: `${sidebarWidth - 1}px`, transform: 'translateX(-50%)' }}
+                                onPointerDown={startResizing}
+                                className="hidden select-none md:flex absolute top-0 bottom-0 z-10 w-4 cursor-col-resize items-center justify-center group"
+                                style={{ left: `${sidebarWidth - 1}px`, transform: 'translateX(-50%)', touchAction: 'none' }}
                                 title="Drag to resize sidebar"
+                                aria-label="Resize category sidebar"
                             >
                                 <div className="h-10 w-1 bg-border rounded-full group-hover:bg-primary transition-colors"></div>
                             </div>
@@ -6090,7 +6101,7 @@ function ManualOrderPage() {
                                                         whileHover={{ y: -4, scale: 1.02 }}
                                                         whileTap={{ scale: 0.98 }}
                                                         onClick={() => setIsCustomOpenItemModalOpen(true)}
-                                                        className="group relative overflow-hidden p-4 text-left bg-gradient-to-br from-emerald-950/30 via-emerald-900/15 to-emerald-900/5 hover:from-emerald-900/35 hover:via-emerald-800/20 hover:to-emerald-900/10 rounded-2xl border border-emerald-500/35 hover:border-emerald-400/70 transition-all shadow-md hover:shadow-xl hover:shadow-emerald-950/20 min-h-[130px] flex flex-col justify-between"
+                                                        className="group relative overflow-hidden p-4 text-left bg-gradient-to-br from-emerald-950/30 via-emerald-900/15 to-emerald-900/5 hover:from-emerald-900/35 hover:via-emerald-800/20 hover:to-emerald-900/10 rounded-2xl border border-emerald-500/35 hover:border-emerald-400/70 transition-all shadow-md hover:shadow-xl hover:shadow-emerald-950/20 min-h-[118px] flex flex-col justify-between"
                                                     >
                                                         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.14),transparent_55%)] pointer-events-none"></div>
                                                         <div className="relative flex items-start justify-between gap-3">
@@ -6105,8 +6116,8 @@ function ManualOrderPage() {
                                                             <p className="font-bold text-foreground text-lg leading-tight">
                                                                 Add One-Time Item
                                                             </p>
-                                                            <p className="text-sm text-muted-foreground mt-2 leading-snug max-w-[16rem]">
-                                                                Just enter the name and price. The item will be added directly to the current bill and will not be saved in the menu.
+                                                            <p className="text-xs text-muted-foreground mt-2 leading-snug max-w-[13rem] sm:max-w-[14rem]">
+                                                                Enter name and price. Adds only to this bill, not the menu.
                                                             </p>
                                                         </div>
                                                     </motion.button>
@@ -6314,10 +6325,11 @@ function ManualOrderPage() {
                 >
                     {!isMobileViewport && (
                         <div
-                            onMouseDown={startResizingBill}
-                            className="group absolute left-0 top-1/2 z-30 flex h-28 w-6 -translate-x-1/2 -translate-y-1/2 cursor-col-resize items-center justify-center"
+                            onPointerDown={startResizingBill}
+                            className="group absolute left-0 top-1/2 z-30 flex h-28 w-7 -translate-x-1/2 -translate-y-1/2 cursor-col-resize select-none items-center justify-center"
                             title="Drag to resize current order panel"
                             aria-label="Resize current order panel"
+                            style={{ touchAction: 'none' }}
                         >
                             <div className="flex h-full w-full items-center justify-center rounded-full bg-background/95 shadow-sm ring-1 ring-border transition-colors group-hover:ring-primary/30">
                                 <div className="flex h-20 w-4 items-center justify-center gap-1 rounded-full transition-colors group-hover:bg-primary/10">
