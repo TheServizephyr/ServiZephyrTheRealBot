@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
     ArrowDownLeft,
@@ -15,22 +15,35 @@ import {
     User,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+
+import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
+import { getBestEffortIdToken } from '@/lib/client-session';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { auth } from '@/lib/firebase';
+import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
-const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const SYNC_TOKEN_TIMEOUT_MS = 3000;
+
+const formatCurrency = (value) => `\u20B9${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const createBorrowerId = () => `borrower_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const createBorrowerHistoryId = () => `borrower_history_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const createBorrowerMutationKey = () => `borrower_mutation_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const normalizeBorrowerText = (value = '') => String(value ?? '').trim();
 const normalizeBorrowerAddress = (value = '') => String(value ?? '').replace(/\s+/g, ' ').trim();
+const normalizeBorrowerPhone = (value = '') => {
+    const digits = String(value ?? '').replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length > 10 ? digits.slice(-10) : digits;
+};
+const isValidBorrowerPhone = (value = '') => /^\d{10}$/.test(String(value || ''));
 
 const parseAmount = (value) => {
     const normalized = String(value ?? '').replace(/,/g, '').trim();
@@ -76,7 +89,7 @@ const normalizeBorrowerHistory = (entry = {}, index = 0) => {
 
 const createBorrowerCard = (borrower = {}) => {
     const name = normalizeBorrowerText(borrower?.name ?? borrower?.savedName);
-    const phone = normalizeBorrowerText(borrower?.phone ?? borrower?.savedPhone);
+    const phone = normalizeBorrowerPhone(borrower?.phone ?? borrower?.savedPhone);
     const address = normalizeBorrowerAddress(borrower?.address ?? borrower?.savedAddress);
     const history = (Array.isArray(borrower?.history) ? borrower.history : [])
         .map((entry, index) => normalizeBorrowerHistory(entry, index))
@@ -101,28 +114,31 @@ const createBorrowerCard = (borrower = {}) => {
     };
 };
 
-const serializeBorrowerCards = (borrowers = []) => (
+const sortBorrowersByLastEdited = (borrowers = []) => (
     Array.isArray(borrowers) ? borrowers : []
-).map((borrower) => {
-    const normalized = createBorrowerCard(borrower);
-    return {
-        id: normalized.id,
-        name: normalized.name,
-        phone: normalized.phone,
-        address: normalized.address,
-        amount: normalized.amount,
-        history: normalized.history.map((entry) => ({
-            id: entry.id,
-            type: entry.type,
-            amount: entry.amount,
-            delta: entry.delta,
-            note: entry.note,
-            updatedAt: entry.updatedAt,
-            resultingAmount: entry.resultingAmount,
-        })),
-        lastEditedAt: normalized.lastEditedAt,
-    };
-});
+).map((borrower) => createBorrowerCard(borrower)).sort(
+    (left, right) => Number(right.lastEditedAt || 0) - Number(left.lastEditedAt || 0)
+);
+
+const serializeBorrowerCards = (borrowers = []) => (
+    sortBorrowersByLastEdited(borrowers)
+).map((borrower) => ({
+    id: borrower.id,
+    name: borrower.name,
+    phone: borrower.phone,
+    address: borrower.address,
+    amount: borrower.amount,
+    history: borrower.history.map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        amount: entry.amount,
+        delta: entry.delta,
+        note: entry.note,
+        updatedAt: entry.updatedAt,
+        resultingAmount: entry.resultingAmount,
+    })),
+    lastEditedAt: borrower.lastEditedAt,
+}));
 
 const INITIAL_CREATE_DRAFT = {
     name: '',
@@ -135,10 +151,12 @@ const INITIAL_UPDATE_DRAFT = {
     mode: 'added',
     amount: '',
     note: '',
+    requestKey: '',
 };
 
 export default function OwnerBorrowersPage() {
     const { toast } = useToast();
+    const { user, isUserLoading } = useUser();
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
@@ -149,6 +167,12 @@ export default function OwnerBorrowersPage() {
     const [createDraft, setCreateDraft] = useState(INITIAL_CREATE_DRAFT);
     const [updateDraft, setUpdateDraft] = useState(INITIAL_UPDATE_DRAFT);
     const [historyBorrowerId, setHistoryBorrowerId] = useState('');
+    const [isCreatingBorrower, setIsCreatingBorrower] = useState(false);
+    const [isUpdatingBorrowerAmount, setIsUpdatingBorrowerAmount] = useState(false);
+    const [isDeletingBorrowerId, setIsDeletingBorrowerId] = useState('');
+    const createBorrowerInFlightRef = useRef(false);
+    const updateBorrowerInFlightRef = useRef(false);
+    const deleteBorrowerInFlightRef = useRef('');
 
     const borrowersCacheKey = useMemo(() => {
         const scope = impersonatedOwnerId
@@ -157,6 +181,17 @@ export default function OwnerBorrowersPage() {
                 ? `emp_${employeeOfOwnerId}`
                 : 'owner_self';
         return `owner_custom_bill_cache_v2_${scope}__borrowers_v1`;
+    }, [employeeOfOwnerId, impersonatedOwnerId]);
+
+    const borrowersApiPath = useMemo(() => {
+        const params = new URLSearchParams();
+        if (impersonatedOwnerId) {
+            params.set('impersonate_owner_id', impersonatedOwnerId);
+        } else if (employeeOfOwnerId) {
+            params.set('employee_of', employeeOfOwnerId);
+        }
+        const query = params.toString();
+        return query ? `/api/owner/borrowers?${query}` : '/api/owner/borrowers';
     }, [employeeOfOwnerId, impersonatedOwnerId]);
 
     const selectedHistoryBorrower = useMemo(
@@ -173,7 +208,7 @@ export default function OwnerBorrowersPage() {
         try {
             const raw = localStorage.getItem(borrowersCacheKey);
             const parsed = raw ? JSON.parse(raw) : null;
-            return Array.isArray(parsed) ? parsed.map((borrower) => createBorrowerCard(borrower)) : [];
+            return sortBorrowersByLastEdited(parsed);
         } catch {
             return [];
         }
@@ -186,9 +221,7 @@ export default function OwnerBorrowersPage() {
 
         try {
             const desktopBorrowers = await getOfflineNamespace('manual_borrowers', borrowersCacheKey, []);
-            return Array.isArray(desktopBorrowers)
-                ? desktopBorrowers.map((borrower) => createBorrowerCard(borrower))
-                : [];
+            return sortBorrowersByLastEdited(desktopBorrowers);
         } catch {
             return [];
         }
@@ -211,18 +244,81 @@ export default function OwnerBorrowersPage() {
             }
         }
 
-        return serialized.map((borrower) => createBorrowerCard(borrower));
+        return sortBorrowersByLastEdited(serialized);
     }, [borrowersCacheKey, desktopRuntime]);
 
+    const getBorrowersIdToken = useCallback(async (currentUser = auth.currentUser || user) => (
+        getBestEffortIdToken(currentUser, {
+            timeoutMs: desktopRuntime ? SYNC_TOKEN_TIMEOUT_MS : 0,
+        })
+    ), [desktopRuntime, user]);
+
+    const requestBorrowersApi = useCallback(async (method = 'GET', body = null) => {
+        const currentUser = auth.currentUser || user;
+        if (!currentUser) {
+            throw new Error('Authentication is required.');
+        }
+
+        const idToken = await getBorrowersIdToken(currentUser);
+        const response = await fetch(borrowersApiPath, {
+            method,
+            headers: {
+                Authorization: `Bearer ${idToken}`,
+                ...(body ? { 'Content-Type': 'application/json' } : {}),
+            },
+            ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(String(payload?.message || 'Unable to sync borrowers right now.'));
+        }
+
+        return payload;
+    }, [borrowersApiPath, getBorrowersIdToken, user]);
+
     useEffect(() => {
+        if (isUserLoading) return undefined;
+
         let isMounted = true;
         setIsLoading(true);
 
         const loadBorrowers = async () => {
-            try {
-                const cachedBorrowers = await resolveCachedBorrowers();
-                if (!isMounted) return;
+            const cachedBorrowers = await resolveCachedBorrowers();
+            if (!isMounted) return;
+
+            if (cachedBorrowers.length > 0) {
                 setBorrowers(cachedBorrowers);
+                setIsLoading(false);
+            }
+
+            if (!user) {
+                if (isMounted) {
+                    setIsLoading(false);
+                }
+                return;
+            }
+
+            try {
+                const payload = await requestBorrowersApi('GET');
+                if (!isMounted) return;
+
+                let syncedBorrowers = sortBorrowersByLastEdited(payload?.borrowers);
+                if (syncedBorrowers.length === 0 && cachedBorrowers.length > 0) {
+                    const migrationPayload = await requestBorrowersApi('PUT', {
+                        borrowers: serializeBorrowerCards(cachedBorrowers),
+                    });
+                    if (!isMounted) return;
+                    syncedBorrowers = sortBorrowersByLastEdited(migrationPayload?.borrowers);
+                }
+
+                setBorrowers(syncedBorrowers);
+                await writeCachedBorrowers(syncedBorrowers);
+            } catch (error) {
+                console.error('Failed to sync borrowers:', error);
+                if (isMounted && cachedBorrowers.length === 0) {
+                    setBorrowers([]);
+                }
             } finally {
                 if (isMounted) {
                     setIsLoading(false);
@@ -234,7 +330,7 @@ export default function OwnerBorrowersPage() {
         return () => {
             isMounted = false;
         };
-    }, [resolveCachedBorrowers]);
+    }, [isUserLoading, requestBorrowersApi, resolveCachedBorrowers, user, writeCachedBorrowers]);
 
     const openCreateDialog = useCallback(() => {
         setCreateDraft(INITIAL_CREATE_DRAFT);
@@ -242,59 +338,110 @@ export default function OwnerBorrowersPage() {
     }, []);
 
     const handleCreateBorrower = useCallback(async () => {
+        if (createBorrowerInFlightRef.current) return;
+
         const name = normalizeBorrowerText(createDraft.name);
-        const phone = normalizeBorrowerText(createDraft.phone);
+        const phone = normalizeBorrowerPhone(createDraft.phone);
         const address = normalizeBorrowerAddress(createDraft.address);
 
         if (!name && !phone) {
             toast({
-                title: 'Name or number required',
-                description: 'New borrower banane ke liye name ya number me se koi ek bhar do.',
+                title: 'Name or phone number required',
+                description: 'Enter at least a name or a 10-digit phone number before saving.',
                 variant: 'destructive',
             });
             return;
         }
 
-        const savedAt = Date.now();
-        const nextBorrowers = [
-            createBorrowerCard({
+        if (phone && !isValidBorrowerPhone(phone)) {
+            toast({
+                title: 'Invalid phone number',
+                description: 'Phone number must be exactly 10 digits.',
+                variant: 'destructive',
+            });
+            return;
+        }
+
+        createBorrowerInFlightRef.current = true;
+        setIsCreatingBorrower(true);
+
+        try {
+            const payload = await requestBorrowersApi('POST', {
+                name,
+                phone,
+                address,
+            });
+            const savedBorrower = createBorrowerCard(payload?.borrower || {
                 name,
                 phone,
                 address,
                 amount: 0,
                 history: [],
-                lastEditedAt: savedAt,
-            }),
-            ...borrowers,
-        ];
+                lastEditedAt: Date.now(),
+            });
+            const nextBorrowers = sortBorrowersByLastEdited([
+                savedBorrower,
+                ...borrowers.filter((borrower) => borrower.id !== savedBorrower.id),
+            ]);
 
-        setBorrowers(nextBorrowers);
-        await writeCachedBorrowers(nextBorrowers);
-        setCreateDraft(INITIAL_CREATE_DRAFT);
-        setIsCreateDialogOpen(false);
-        toast({
-            title: 'Borrower created',
-            description: 'Borrower card ready hai. Ab green/red button se amount update kar sakte ho.',
-            variant: 'success',
-        });
-    }, [borrowers, createDraft, toast, writeCachedBorrowers]);
+            setBorrowers(nextBorrowers);
+            await writeCachedBorrowers(nextBorrowers);
+            setCreateDraft(INITIAL_CREATE_DRAFT);
+            setIsCreateDialogOpen(false);
+            toast({
+                title: 'Borrower saved',
+                description: 'The borrower card has been created and synced to your account.',
+                variant: 'success',
+            });
+        } catch (error) {
+            toast({
+                title: 'Unable to save borrower',
+                description: error?.message || 'Please try again.',
+                variant: 'destructive',
+            });
+        } finally {
+            createBorrowerInFlightRef.current = false;
+            setIsCreatingBorrower(false);
+        }
+    }, [borrowers, createDraft.address, createDraft.name, createDraft.phone, requestBorrowersApi, toast, writeCachedBorrowers]);
 
     const handleDeleteBorrower = useCallback(async (borrowerId) => {
-        const nextBorrowers = borrowers.filter((borrower) => borrower.id !== borrowerId);
-        setBorrowers(nextBorrowers);
-        if (historyBorrowerId === borrowerId) {
-            setHistoryBorrowerId('');
+        if (!borrowerId || deleteBorrowerInFlightRef.current) return;
+
+        deleteBorrowerInFlightRef.current = borrowerId;
+        setIsDeletingBorrowerId(borrowerId);
+
+        try {
+            await requestBorrowersApi('DELETE', { borrowerId });
+            const nextBorrowers = borrowers.filter((borrower) => borrower.id !== borrowerId);
+            setBorrowers(nextBorrowers);
+
+            if (historyBorrowerId === borrowerId) {
+                setHistoryBorrowerId('');
+            }
+            if (updateDraft.borrowerId === borrowerId) {
+                setUpdateDraft(INITIAL_UPDATE_DRAFT);
+            }
+
+            await writeCachedBorrowers(nextBorrowers);
+            toast({
+                title: 'Borrower deleted',
+                description: 'The borrower card has been removed from your account.',
+                variant: 'success',
+            });
+        } catch (error) {
+            toast({
+                title: 'Unable to delete borrower',
+                description: error?.message || 'Please try again.',
+                variant: 'destructive',
+            });
+        } finally {
+            if (deleteBorrowerInFlightRef.current === borrowerId) {
+                deleteBorrowerInFlightRef.current = '';
+            }
+            setIsDeletingBorrowerId((current) => (current === borrowerId ? '' : current));
         }
-        if (updateDraft.borrowerId === borrowerId) {
-            setUpdateDraft(INITIAL_UPDATE_DRAFT);
-        }
-        await writeCachedBorrowers(nextBorrowers);
-        toast({
-            title: 'Borrower removed',
-            description: 'The borrower card has been removed from your list.',
-            variant: 'success',
-        });
-    }, [borrowers, historyBorrowerId, toast, updateDraft.borrowerId, writeCachedBorrowers]);
+    }, [borrowers, historyBorrowerId, requestBorrowersApi, toast, updateDraft.borrowerId, writeCachedBorrowers]);
 
     const openAmountDialog = useCallback((borrowerId, mode) => {
         setUpdateDraft({
@@ -302,10 +449,13 @@ export default function OwnerBorrowersPage() {
             mode,
             amount: '',
             note: '',
+            requestKey: createBorrowerMutationKey(),
         });
     }, []);
 
     const handleApplyAmountUpdate = useCallback(async () => {
+        if (updateBorrowerInFlightRef.current) return;
+
         const borrower = borrowers.find((entry) => entry.id === updateDraft.borrowerId);
         if (!borrower) return;
 
@@ -313,7 +463,7 @@ export default function OwnerBorrowersPage() {
         if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
             toast({
                 title: 'Enter a valid amount',
-                description: 'Amount me positive number dalo, jaise 500 ya 300.',
+                description: 'Amount must be a positive number such as 500 or 300.',
                 variant: 'destructive',
             });
             return;
@@ -324,43 +474,48 @@ export default function OwnerBorrowersPage() {
         if (nextAmount < 0) {
             toast({
                 title: 'Amount cannot go below zero',
-                description: 'Reduce karne wala amount outstanding amount se zyada nahi ho sakta.',
+                description: 'The reduction amount cannot be greater than the current outstanding total.',
                 variant: 'destructive',
             });
             return;
         }
 
-        const savedAt = Date.now();
-        const historyEntry = normalizeBorrowerHistory({
-            id: createBorrowerHistoryId(),
-            type: updateDraft.mode,
-            delta,
-            amount: rawAmount,
-            note: normalizeBorrowerText(updateDraft.note),
-            updatedAt: savedAt,
-            resultingAmount: nextAmount,
-        });
+        updateBorrowerInFlightRef.current = true;
+        setIsUpdatingBorrowerAmount(true);
 
-        const nextBorrowers = borrowers.map((entry) => (
-            entry.id === borrower.id
-                ? createBorrowerCard({
-                    ...entry,
-                    amount: nextAmount,
-                    history: [historyEntry, ...entry.history],
-                    lastEditedAt: savedAt,
-                })
-                : entry
-        ));
+        try {
+            const payload = await requestBorrowersApi('PATCH', {
+                borrowerId: borrower.id,
+                mode: updateDraft.mode,
+                amount: rawAmount,
+                note: normalizeBorrowerText(updateDraft.note),
+                operationKey: updateDraft.requestKey || createBorrowerMutationKey(),
+            });
+            const savedBorrower = createBorrowerCard(payload?.borrower || borrower);
+            const nextBorrowers = sortBorrowersByLastEdited([
+                savedBorrower,
+                ...borrowers.filter((entry) => entry.id !== savedBorrower.id),
+            ]);
 
-        setBorrowers(nextBorrowers);
-        await writeCachedBorrowers(nextBorrowers);
-        setUpdateDraft(INITIAL_UPDATE_DRAFT);
-        toast({
-            title: updateDraft.mode === 'reduced' ? 'Amount reduced' : 'Amount added',
-            description: `${updateDraft.mode === 'reduced' ? 'Reduced' : 'Added'} ${formatCurrency(rawAmount)} for this borrower.`,
-            variant: 'success',
-        });
-    }, [borrowers, toast, updateDraft, writeCachedBorrowers]);
+            setBorrowers(nextBorrowers);
+            await writeCachedBorrowers(nextBorrowers);
+            setUpdateDraft(INITIAL_UPDATE_DRAFT);
+            toast({
+                title: updateDraft.mode === 'reduced' ? 'Amount reduced' : 'Amount added',
+                description: `${updateDraft.mode === 'reduced' ? 'Reduced' : 'Added'} ${formatCurrency(rawAmount)} successfully.`,
+                variant: 'success',
+            });
+        } catch (error) {
+            toast({
+                title: 'Unable to update amount',
+                description: error?.message || 'Please try again.',
+                variant: 'destructive',
+            });
+        } finally {
+            updateBorrowerInFlightRef.current = false;
+            setIsUpdatingBorrowerAmount(false);
+        }
+    }, [borrowers, requestBorrowersApi, toast, updateDraft.amount, updateDraft.borrowerId, updateDraft.mode, updateDraft.note, updateDraft.requestKey, writeCachedBorrowers]);
 
     return (
         <>
@@ -377,13 +532,13 @@ export default function OwnerBorrowersPage() {
                             Borrowers
                         </h1>
                         <p className="mt-3 text-sm text-muted-foreground">
-                            Add karte waqt borrower details ek hi baar poochi jayengi. Uske baad card clean summary mode me rahega aur sirf red/green amount buttons se update hoga.
+                            Borrower details are captured once. After that, each card stays in summary mode and only the red and green amount buttons are used.
                         </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
                         <OfflineDesktopStatus />
-                        <Button type="button" onClick={openCreateDialog} className="h-11 rounded-xl px-4">
+                        <Button type="button" onClick={openCreateDialog} className="h-11 rounded-xl px-4" disabled={isCreatingBorrower || isUpdatingBorrowerAmount || Boolean(isDeletingBorrowerId)}>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Borrower
                         </Button>
@@ -396,7 +551,7 @@ export default function OwnerBorrowersPage() {
                             {borrowers.length} borrower card{borrowers.length === 1 ? '' : 's'}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                            Saved locally for this dashboard scope and available again when you reopen it.
+                            Synced to your account and cached locally for faster reloads.
                         </div>
                     </div>
 
@@ -411,7 +566,7 @@ export default function OwnerBorrowersPage() {
                             </div>
                             <h2 className="mt-4 text-xl font-bold text-foreground">No borrowers added yet</h2>
                             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                                Start with the Add Borrower button and create a summary card with amount tracking.
+                                Start with the Add Borrower button to create a borrower card with amount tracking.
                             </p>
                         </div>
                     ) : (
@@ -445,25 +600,19 @@ export default function OwnerBorrowersPage() {
                                         </div>
 
                                         <div className="mt-4 space-y-3">
-                                            <div>
-                                                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                                                    <User className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="truncate">{borrower.name || 'No name added'}</span>
-                                                </div>
+                                            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                                <User className="h-4 w-4 text-muted-foreground" />
+                                                <span className="truncate">{borrower.name || 'No name saved'}</span>
                                             </div>
 
-                                            <div>
-                                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                    <Phone className="h-4 w-4" />
-                                                    <span className="truncate">{borrower.phone || 'No number added'}</span>
-                                                </div>
+                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <Phone className="h-4 w-4" />
+                                                <span className="truncate">{borrower.phone || 'No phone saved'}</span>
                                             </div>
 
-                                            <div>
-                                                <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                                                    <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                                                    <span className="line-clamp-2">{borrower.address || 'No address added'}</span>
-                                                </div>
+                                            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                                                <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                                                <span className="line-clamp-2">{borrower.address || 'No address saved'}</span>
                                             </div>
                                         </div>
 
@@ -471,6 +620,7 @@ export default function OwnerBorrowersPage() {
                                             <Button
                                                 type="button"
                                                 onClick={() => openAmountDialog(borrower.id, 'reduced')}
+                                                disabled={isLoading || isUpdatingBorrowerAmount || isCreatingBorrower || Boolean(isDeletingBorrowerId)}
                                                 className="h-10 flex-1 rounded-xl bg-red-600 text-white hover:bg-red-700"
                                             >
                                                 <ArrowDownLeft className="mr-2 h-4 w-4" />
@@ -479,6 +629,7 @@ export default function OwnerBorrowersPage() {
                                             <Button
                                                 type="button"
                                                 onClick={() => openAmountDialog(borrower.id, 'added')}
+                                                disabled={isLoading || isUpdatingBorrowerAmount || isCreatingBorrower || Boolean(isDeletingBorrowerId)}
                                                 className="h-10 flex-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
                                             >
                                                 <ArrowUpRight className="mr-2 h-4 w-4" />
@@ -493,12 +644,15 @@ export default function OwnerBorrowersPage() {
                 </div>
             </div>
 
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+                if (isCreatingBorrower) return;
+                setIsCreateDialogOpen(open);
+            }}>
                 <DialogContent className="max-w-md bg-card text-foreground">
                     <DialogHeader>
                         <DialogTitle>Create Borrower</DialogTitle>
                         <DialogDescription>
-                            Borrower details ek baar save kar lo. Baad me card par sirf amount buttons dikhengi.
+                            Save borrower details once. After that, the card only needs amount updates.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -515,14 +669,19 @@ export default function OwnerBorrowersPage() {
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label>Number</Label>
+                            <Label>Phone</Label>
                             <input
                                 type="tel"
-                                inputMode="tel"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={10}
                                 value={createDraft.phone}
-                                onChange={(event) => setCreateDraft((prev) => ({ ...prev, phone: event.target.value }))}
+                                onChange={(event) => setCreateDraft((prev) => ({
+                                    ...prev,
+                                    phone: normalizeBorrowerPhone(event.target.value),
+                                }))}
                                 className="w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
-                                placeholder="Phone number"
+                                placeholder="10-digit phone number"
                             />
                         </div>
 
@@ -539,23 +698,26 @@ export default function OwnerBorrowersPage() {
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-0">
-                        <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                        <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={isCreatingBorrower}>
                             Cancel
                         </Button>
-                        <Button type="button" onClick={handleCreateBorrower}>
-                            Create Card
+                        <Button type="button" onClick={handleCreateBorrower} disabled={isCreatingBorrower}>
+                            {isCreatingBorrower ? 'Saving...' : 'Create Card'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={Boolean(updateTargetBorrower)} onOpenChange={(open) => { if (!open) setUpdateDraft(INITIAL_UPDATE_DRAFT); }}>
+            <Dialog open={Boolean(updateTargetBorrower)} onOpenChange={(open) => {
+                if (isUpdatingBorrowerAmount) return;
+                if (!open) setUpdateDraft(INITIAL_UPDATE_DRAFT);
+            }}>
                 <DialogContent className="max-w-md bg-card text-foreground">
                     <DialogHeader>
                         <DialogTitle>{updateDraft.mode === 'reduced' ? 'Reduce Amount' : 'Add Amount'}</DialogTitle>
                         <DialogDescription>
                             {updateTargetBorrower
-                                ? `${updateDraft.mode === 'reduced' ? 'Reduce' : 'Add'} amount for ${updateTargetBorrower.name || updateTargetBorrower.phone || 'this borrower'}. Current total: ${formatCurrency(updateTargetBorrower.amount)}`
+                                ? `${updateDraft.mode === 'reduced' ? 'Reduce' : 'Add'} an amount for ${updateTargetBorrower.name || updateTargetBorrower.phone || 'this borrower'}. Current total: ${formatCurrency(updateTargetBorrower.amount)}`
                                 : 'Update borrower amount'}
                         </DialogDescription>
                     </DialogHeader>
@@ -586,19 +748,24 @@ export default function OwnerBorrowersPage() {
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-0">
-                        <Button type="button" variant="outline" onClick={() => setUpdateDraft(INITIAL_UPDATE_DRAFT)}>
+                        <Button type="button" variant="outline" onClick={() => setUpdateDraft(INITIAL_UPDATE_DRAFT)} disabled={isUpdatingBorrowerAmount}>
                             Cancel
                         </Button>
                         <Button
                             type="button"
                             onClick={handleApplyAmountUpdate}
+                            disabled={isUpdatingBorrowerAmount}
                             className={cn(
                                 updateDraft.mode === 'reduced'
                                     ? 'bg-red-600 text-white hover:bg-red-700'
                                     : 'bg-emerald-600 text-white hover:bg-emerald-700'
                             )}
                         >
-                            {updateDraft.mode === 'reduced' ? 'Reduce Amount' : 'Add Amount'}
+                            {isUpdatingBorrowerAmount
+                                ? 'Saving...'
+                                : updateDraft.mode === 'reduced'
+                                    ? 'Reduce Amount'
+                                    : 'Add Amount'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -621,82 +788,82 @@ export default function OwnerBorrowersPage() {
                     {selectedHistoryBorrower ? (
                         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
                             <div className="space-y-4 pr-1">
-                            <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                                <div className="grid gap-2 text-sm text-muted-foreground">
-                                    <div className="flex items-center gap-2">
-                                        <User className="h-4 w-4" />
-                                        <span>{selectedHistoryBorrower.name || 'No name added'}</span>
+                                <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                                    <div className="grid gap-2 text-sm text-muted-foreground">
+                                        <div className="flex items-center gap-2">
+                                            <User className="h-4 w-4" />
+                                            <span>{selectedHistoryBorrower.name || 'No name saved'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Phone className="h-4 w-4" />
+                                            <span>{selectedHistoryBorrower.phone || 'No phone saved'}</span>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                                            <span>{selectedHistoryBorrower.address || 'No address saved'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Clock3 className="h-4 w-4" />
+                                            <span>Last edited {formatBorrowerLastEdited(selectedHistoryBorrower.lastEditedAt)}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <Phone className="h-4 w-4" />
-                                        <span>{selectedHistoryBorrower.phone || 'No number added'}</span>
-                                    </div>
-                                    <div className="flex items-start gap-2">
-                                        <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                                        <span>{selectedHistoryBorrower.address || 'No address added'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Clock3 className="h-4 w-4" />
-                                        <span>Last edited {formatBorrowerLastEdited(selectedHistoryBorrower.lastEditedAt)}</span>
+
+                                    <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-background px-4 py-3">
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-600">Current Amount</p>
+                                        <p className="mt-1 text-2xl font-black text-foreground">{formatCurrency(selectedHistoryBorrower.amount)}</p>
                                     </div>
                                 </div>
 
-                                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-background px-4 py-3">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-600">Current Amount</p>
-                                    <p className="mt-1 text-2xl font-black text-foreground">{formatCurrency(selectedHistoryBorrower.amount)}</p>
-                                </div>
-                            </div>
-
-                            {selectedHistoryBorrower.history.length > 0 ? (
-                                <div className="space-y-3">
-                                    {selectedHistoryBorrower.history.map((entry) => {
-                                        const isReduced = entry.type === 'reduced';
-                                        return (
-                                            <div key={entry.id} className="rounded-2xl border border-border bg-muted/20 p-4">
-                                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={cn(
-                                                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold',
-                                                                isReduced
-                                                                    ? 'bg-red-500/10 text-red-700'
-                                                                    : 'bg-emerald-500/10 text-emerald-700'
-                                                            )}>
-                                                                {isReduced ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                                                                {isReduced ? 'Reduced' : 'Added'}
-                                                            </span>
-                                                            <span className="text-sm font-semibold text-foreground">
-                                                                {isReduced ? '-' : '+'}{formatCurrency(entry.amount)}
-                                                            </span>
+                                {selectedHistoryBorrower.history.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {selectedHistoryBorrower.history.map((entry) => {
+                                            const isReduced = entry.type === 'reduced';
+                                            return (
+                                                <div key={entry.id} className="rounded-2xl border border-border bg-muted/20 p-4">
+                                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={cn(
+                                                                    'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold',
+                                                                    isReduced
+                                                                        ? 'bg-red-500/10 text-red-700'
+                                                                        : 'bg-emerald-500/10 text-emerald-700'
+                                                                )}>
+                                                                    {isReduced ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                                                                    {isReduced ? 'Reduced' : 'Added'}
+                                                                </span>
+                                                                <span className="text-sm font-semibold text-foreground">
+                                                                    {isReduced ? '-' : '+'}{formatCurrency(entry.amount)}
+                                                                </span>
+                                                            </div>
+                                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                                {formatBorrowerLastEdited(entry.updatedAt)}
+                                                            </p>
                                                         </div>
-                                                        <p className="mt-2 text-xs text-muted-foreground">
-                                                            {formatBorrowerLastEdited(entry.updatedAt)}
-                                                        </p>
+
+                                                        <div className="text-right">
+                                                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Resulting total</p>
+                                                            <p className="text-lg font-black text-foreground">{formatCurrency(entry.resultingAmount)}</p>
+                                                        </div>
                                                     </div>
 
-                                                    <div className="text-right">
-                                                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Resulting total</p>
-                                                        <p className="text-lg font-black text-foreground">{formatCurrency(entry.resultingAmount)}</p>
-                                                    </div>
+                                                    {entry.note && (
+                                                        <div className="mt-3 rounded-xl border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
+                                                            {entry.note}
+                                                        </div>
+                                                    )}
                                                 </div>
-
-                                                {entry.note && (
-                                                    <div className="mt-3 rounded-xl border border-border bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-                                                        {entry.note}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="rounded-2xl border border-dashed border-border bg-muted/10 px-4 py-10 text-center">
-                                    <p className="text-sm font-semibold text-foreground">No history yet</p>
-                                    <p className="mt-1 text-sm text-muted-foreground">
-                                        Green and red buttons se amount update karoge to yahan full history dikhegi.
-                                    </p>
-                                </div>
-                            )}
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-2xl border border-dashed border-border bg-muted/10 px-4 py-10 text-center">
+                                        <p className="text-sm font-semibold text-foreground">No history yet</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            Amount changes will appear here after you use the Add or Reduce buttons.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : null}
@@ -707,9 +874,10 @@ export default function OwnerBorrowersPage() {
                                 type="button"
                                 variant="destructive"
                                 onClick={() => handleDeleteBorrower(selectedHistoryBorrower.id)}
+                                disabled={isDeletingBorrowerId === selectedHistoryBorrower.id}
                             >
                                 <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Borrower
+                                {isDeletingBorrowerId === selectedHistoryBorrower.id ? 'Deleting...' : 'Delete Borrower'}
                             </Button>
                         </DialogFooter>
                     )}
