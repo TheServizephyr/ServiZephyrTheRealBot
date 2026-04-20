@@ -205,6 +205,7 @@ export const OWNER_DASHBOARD_PAGES = [
     { id: 'bookings', label: 'Bookings', description: 'Table reservations' },
     { id: 'employees', label: 'Team/Employees', description: 'View team members' },
     { id: 'customers', label: 'Customers', description: 'Customer list and data' },
+    { id: 'borrowers', label: 'Borrowers', description: 'Maintain a simple borrower card list for billing follow-up' },
     { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering link' },
     { id: 'analytics', label: 'Analytics', description: 'Sales and order analytics' },
     { id: 'delivery', label: 'Delivery', description: 'Delivery settings and riders' },
@@ -221,6 +222,7 @@ export const STORE_DASHBOARD_PAGES = [
     { id: 'inventory', label: 'Inventory', description: 'Track stock, low-stock items, and adjustments' },
     { id: 'employees', label: 'Team/Employees', description: 'View team members' },
     { id: 'customers', label: 'Customers', description: 'Customer list and purchase history' },
+    { id: 'borrowers', label: 'Borrowers', description: 'Maintain a simple borrower card list for payment follow-up' },
     { id: 'whatsapp-direct', label: 'WhatsApp Direct', description: 'WhatsApp ordering and support inbox' },
     { id: 'analytics', label: 'Analytics', description: 'Sales and item analytics' },
     { id: 'delivery', label: 'Delivery', description: 'Delivery settings and dispatch controls' },
@@ -308,7 +310,7 @@ const RESTAURANT_CUSTOM_ROLE_PRESETS = [
         id: 'billing-desk',
         roleName: 'Billing Desk',
         description: 'Take counter orders and handle billing without broader admin access.',
-        pages: ['manual-order', 'live-orders', 'customers', 'my-profile'],
+        pages: ['manual-order', 'live-orders', 'customers', 'borrowers', 'my-profile'],
     },
     {
         id: 'service-captain',
@@ -323,7 +325,7 @@ const STORE_CUSTOM_ROLE_PRESETS = [
         id: 'cashier',
         roleName: 'Store Cashier',
         description: 'Counter billing, walk-in checkout, and customer lookup.',
-        pages: ['dashboard', 'manual-order', 'live-orders', 'customers', 'my-profile'],
+        pages: ['dashboard', 'manual-order', 'live-orders', 'customers', 'borrowers', 'my-profile'],
     },
     {
         id: 'picker',
@@ -341,7 +343,7 @@ const STORE_CUSTOM_ROLE_PRESETS = [
         id: 'shift-manager',
         roleName: 'Shift Manager',
         description: 'Run day-to-day store operations without full owner settings access.',
-        pages: ['dashboard', 'manual-order', 'live-orders', 'menu', 'inventory', 'customers', 'analytics', 'delivery', 'my-profile'],
+        pages: ['dashboard', 'manual-order', 'live-orders', 'menu', 'inventory', 'customers', 'borrowers', 'analytics', 'delivery', 'my-profile'],
     },
 ];
 
@@ -377,7 +379,7 @@ export function getDefaultCustomRolePagesForBusinessType(businessType = 'restaur
 }
 
 // ============================================
-// ROLE → PERMISSIONS MAPPING
+// ROLE Ã¢â€ â€™ PERMISSIONS MAPPING
 // ============================================
 
 const P = PERMISSIONS; // Shorthand for cleaner code
@@ -604,7 +606,7 @@ export const EMPLOYEE_ROLES = [
 ];
 
 // ============================================
-// ROLE → ALLOWED PAGES MAPPING (For Sidebar)
+// ROLE Ã¢â€ â€™ ALLOWED PAGES MAPPING (For Sidebar)
 // ============================================
 
 // Feature IDs that each role can access
@@ -626,6 +628,7 @@ export const ROLE_ALLOWED_PAGES = {
         'bookings',
         'employees',
         'customers',
+        'borrowers',
         'whatsapp-direct',
         'analytics',
         'delivery',
@@ -662,6 +665,7 @@ export const ROLE_ALLOWED_PAGES = {
         'manual-order',
         'menu',
         'dine-in',
+        'borrowers',
         'my-profile',
     ],
 

@@ -1813,6 +1813,19 @@ function ManualOrderPage() {
         entries.push(['open-items', sortedOpenItems]);
         return entries;
     }, [menu, openItems, normalizedSearchQuery]);
+
+    const orderedVisibleMenuEntries = useMemo(() => {
+        if (categoryOrder.length === 0) return visibleMenuEntries;
+        return [...visibleMenuEntries].sort((a, b) => {
+            const idxA = categoryOrder.indexOf(a[0]);
+            const idxB = categoryOrder.indexOf(b[0]);
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+        });
+    }, [visibleMenuEntries, categoryOrder]);
+
     const voiceMenuIndex = useMemo(
         () => buildVoiceMenuIndex(menu, openItems, businessType),
         [menu, openItems, businessType]
@@ -1844,8 +1857,8 @@ function ManualOrderPage() {
         if (!container) return;
 
         const handleScroll = () => {
-            // Use visibleMenuEntries to get all categories including open-items
-            const categories = visibleMenuEntries.map(([catId]) => catId);
+            // Use the rendered category order so the active highlight matches the UI.
+            const categories = orderedVisibleMenuEntries.map(([catId]) => catId);
             if (categories.length === 0) return;
 
             let current = categories[0];
@@ -1866,12 +1879,12 @@ function ManualOrderPage() {
 
         container.addEventListener('scroll', handleScroll);
         // Set initial active category
-        const availableCategoryIds = visibleMenuEntries.map(([categoryId]) => categoryId);
+        const availableCategoryIds = orderedVisibleMenuEntries.map(([categoryId]) => categoryId);
         if (availableCategoryIds.length > 0) {
             setActiveCategory((prev) => (availableCategoryIds.includes(prev) ? prev : availableCategoryIds[0]));
         }
         return () => container.removeEventListener('scroll', handleScroll);
-    }, [visibleMenuEntries]);
+    }, [orderedVisibleMenuEntries]);
 
     const scrollToCategory = (catId) => {
         const element = document.getElementById(`cat-${catId}`);
@@ -5997,19 +6010,9 @@ function ManualOrderPage() {
                                 <DragDropContext onDragEnd={onCategoryDragEnd}>
                                     <Droppable droppableId="manual-categories">
                                         {(provided) => {
-                                            const sortedMenuEntries = [...visibleMenuEntries].sort((a, b) => {
-                                                if (categoryOrder.length === 0) return 0;
-                                                const idxA = categoryOrder.indexOf(a[0]);
-                                                const idxB = categoryOrder.indexOf(b[0]);
-                                                if (idxA === -1 && idxB === -1) return 0;
-                                                if (idxA === -1) return 1;
-                                                if (idxB === -1) return -1;
-                                                return idxA - idxB;
-                                            });
-
                                             return (
                                                 <div className="space-y-0.5 p-0.5" ref={provided.innerRef} {...provided.droppableProps}>
-                                                    {isMounted && sortedMenuEntries.map(([categoryId], index) => (
+                                                    {isMounted && orderedVisibleMenuEntries.map(([categoryId], index) => (
                                                         <Draggable key={`cat-${categoryId}`} draggableId={`cat-${categoryId}`} index={index}>
                                                             {(provided, snapshot) => (
                                                                 <div
@@ -6060,7 +6063,7 @@ function ManualOrderPage() {
 
                             <div className="absolute left-0 right-0 top-0 z-10 border-b border-border bg-card/95 px-3 py-2 backdrop-blur md:hidden">
                                 <div className="flex gap-2 overflow-x-auto pb-1" data-mobile-swipe-ignore="true">
-                                    {visibleMenuEntries.map(([categoryId]) => (
+                                    {orderedVisibleMenuEntries.map(([categoryId]) => (
                                         <button
                                             key={`mobile-cat-${categoryId}`}
                                             type="button"
@@ -6088,7 +6091,7 @@ function ManualOrderPage() {
                                         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
                                         <p>Loading menu...</p>
                                     </div>
-                                ) : visibleMenuEntries.map(([categoryId, filteredItems]) => (
+                                ) : orderedVisibleMenuEntries.map(([categoryId, filteredItems]) => (
                                     <div key={categoryId} id={`cat-${categoryId}`} className="mb-4 pt-1">
                                         <h3 className="sticky top-0 bg-card/95 backdrop-blur-sm py-2 px-3 z-10 mb-3 border-l-4 border-primary font-bold text-base capitalize text-foreground tracking-wide">
                                             {formatCategoryLabel(categoryId)}
