@@ -415,17 +415,12 @@ export async function GET(req) {
                 'on_the_way',
                 'rider_arrived',
             ]);
-            const start = new Date();
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(start);
-            end.setDate(end.getDate() + 1);
-
+            // Fetch recent 300 orders without date restriction, so that older incomplete orders
+            // (e.g. from previous days) can still show up and be managed.
             query = query
                 .where('restaurantId', '==', businessId)
-                .where('orderDate', '>=', start)
-                .where('orderDate', '<', end)
                 .orderBy('orderDate', 'desc')
-                .limit(100);
+                .limit(300);
 
             const cacheKey = `owner:orders:live:${businessId}:cust:${canViewCustomerDetails ? 1 : 0}:pay:${canViewPaymentDetails ? 1 : 0}`;
             const { orders, readCount } = await getOrSetEphemeralCache(cacheKey, LIVE_ORDERS_CACHE_TTL_MS, async () => {
@@ -512,7 +507,7 @@ export async function GET(req) {
         return respond({ orders }, 200);
 
     } catch (error) {
-        telemetryStatus = error?.status || 500;
+        require('fs').appendFileSync('orders_error_log.txt', (error.stack || error) + '\n'); telemetryStatus = error?.status || 500;
         telemetryError = error?.message || 'Owner orders GET failed';
         console.error("GET ORDERS ERROR:", error);
         return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);

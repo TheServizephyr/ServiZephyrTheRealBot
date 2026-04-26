@@ -1511,6 +1511,22 @@ export default function LiveOrdersPage() {
         setPrintModalData({ isOpen: true, order });
     };
 
+    // ── Loading timeout safeguard: prevent infinite spinner on slow impersonation ──
+    useEffect(() => {
+        if (!loading) return;
+        const timer = setTimeout(() => {
+            setLoading(false);
+            console.warn('[LiveOrders] Loading timeout reached (12s). Forcing loading=false.');
+            toast({
+                title: 'Slow Connection',
+                description: 'Data is taking longer than expected. Some information may still be loading.',
+                variant: 'destructive',
+                duration: 5000,
+            });
+        }, 12000);
+        return () => clearTimeout(timer);
+    }, [loading, toast]);
+
     const handleAutoBrowserPrint = useReactToPrint({
         content: () => autoPrintRef.current,
         documentTitle: autoPrintOrder?.customerOrderId || autoPrintOrder?.id || `Order-${Date.now()}`,
@@ -1654,6 +1670,10 @@ export default function LiveOrdersPage() {
 
     const fetchOrdersData = useCallback(async ({ showLoading = false } = {}) => {
         if (ordersApiInFlightRef.current) {
+            if (showLoading) {
+                setLoading(true);
+                ordersApiInFlightRef.current.finally(() => setLoading(false));
+            }
             return ordersApiInFlightRef.current;
         }
 
@@ -1785,11 +1805,14 @@ export default function LiveOrdersPage() {
         // Impersonation/employee views use API polling only.
         // Avoid attaching owner's realtime Firestore listener to prevent duplicate reads.
         if (impersonatedOwnerId || employeeOfOwnerId) {
-            fetchOrdersData({ showLoading: true });
-            const apiScopeKey = impersonatedOwnerId
-                ? `imp:${impersonatedOwnerId}`
-                : `emp:${employeeOfOwnerId}`;
-            fetchStaticDataForApiViews({ scopeKey: apiScopeKey });
+            // Fetch orders first (highest priority for user), then lazy-load riders/settings.
+            // Server-side auth caching (60s) ensures the second call is fast.
+            fetchOrdersData({ showLoading: true }).then(() => {
+                const apiScopeKey = impersonatedOwnerId
+                    ? `imp:${impersonatedOwnerId}`
+                    : `emp:${employeeOfOwnerId}`;
+                fetchStaticDataForApiViews({ scopeKey: apiScopeKey });
+            });
             return;
         }
 

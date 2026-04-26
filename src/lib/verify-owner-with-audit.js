@@ -7,7 +7,9 @@ import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
 import { PERMISSIONS, getPermissionsForRole, normalizeRole } from '@/lib/permissions';
+import { getEphemeralCache, setEphemeralCache } from '@/lib/server/ephemeralCache';
 
+const IMPERSONATION_CACHE_TTL_MS = 60 * 1000; // 60 seconds
 const isOwnerAuditDebugEnabled = process.env.DEBUG_OWNER_AUDIT === 'true';
 const debugLog = (...args) => {
     if (isOwnerAuditDebugEnabled) {
@@ -181,6 +183,20 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                 targetOwnerId = impersonatedOwnerId;
                 isImpersonating = true;
 
+                // ── EPHEMERAL CACHE: avoid re-reading owner doc + business query ──
+                const impCacheKey = `admin_imp:${uid}:${targetOwnerId}`;
+                const cachedImpContext = getEphemeralCache(impCacheKey);
+                if (cachedImpContext) {
+                    debugLog(`[verifyOwnerWithAudit] Impersonation cache HIT for ${impCacheKey}`);
+                    // Re-attach live admin data (email etc.) from current request
+                    return {
+                        ...cachedImpContext,
+                        userData,
+                        adminEmail: userData.email,
+                        _impCacheHit: true,
+                    };
+                }
+
                 // Use target owner's profile to resolve the correct business collection.
                 const targetOwnerDoc = await firestore.collection('users').doc(targetOwnerId).get();
                 if (targetOwnerDoc.exists) {
@@ -273,7 +289,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                 // so downstream APIs that check exact role strings remain consistent.
                 effectiveCallerRole = normalizeRole(effectiveCallerRole);
 
-                return {
+                const context = {
                     uid: targetOwnerId,
                     businessId: resolvedBusinessDoc.id,
                     businessSnap: resolvedBusinessDoc,
@@ -286,6 +302,15 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                     adminId: isImpersonating ? uid : null,
                     adminEmail: isImpersonating ? userData.email : null
                 };
+
+                // ── CACHE impersonation context so parallel requests reuse it ──
+                if (isImpersonating) {
+                    const impCacheKey = `admin_imp:${uid}:${targetOwnerId}`;
+                    setEphemeralCache(impCacheKey, context, IMPERSONATION_CACHE_TTL_MS);
+                    debugLog(`[verifyOwnerWithAudit] Impersonation context cached for ${impCacheKey}`);
+                }
+
+                return context;
             }
 
             // If we reached here, no business was found
@@ -301,7 +326,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
     }
 
     // 2. AWAIT RESOLUTION
-    const context = await req._ownerContextPromise;
+    let context; try { context = await req._ownerContextPromise; } catch (e) { require('fs').appendFileSync('audit_error_log.txt', (e.stack || e.message || JSON.stringify(e)) + '\n'); throw e; }
 
     // 2.5 OPTIONAL PERMISSION ENFORCEMENT
     if (requiredPermissions) {
@@ -323,7 +348,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
     }
 
     // 3. AUDIT LOGGING (Always run per check if impersonating)
-    if (context.isImpersonating && action) {
+    if (context.isImpersonating && action && !context._impCacheHit) {
         await logImpersonation({
             adminId: context.adminId,
             adminEmail: context.adminEmail,
