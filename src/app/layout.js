@@ -6,6 +6,7 @@ import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import AppCheckRequestBridge from '@/components/AppCheckRequestBridge';
 import DesktopAuthRecovery from '@/components/DesktopAuthRecovery';
 import ScreenOrientationHandler from '@/components/ScreenOrientationHandler';
+import GlobalErrorReporter from '@/components/GlobalErrorReporter';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -271,6 +272,7 @@ export default function RootLayout({ children }) {
             <ScreenOrientationHandler />
             <AppCheckRequestBridge />
             <DesktopAuthRecovery />
+            <GlobalErrorReporter />
             <LayoutWrapper>
               {children}
             </LayoutWrapper>

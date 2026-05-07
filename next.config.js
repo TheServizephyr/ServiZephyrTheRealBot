@@ -172,6 +172,9 @@ const nextConfig = {
   },
   // Disable x-powered-by header
   poweredByHeader: false,
+  experimental: {
+    instrumentationHook: true,
+  },
   // Suppress React DevTools suggestion
   reactStrictMode: true,
   // 🟢 FORCE BUILD SUCCESS: Ignore ESLint and TS errors during build

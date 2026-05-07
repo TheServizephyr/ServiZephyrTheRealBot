@@ -19,6 +19,7 @@ import {
   List, // Import List for Waitlist
   FileText, // Import FileText for Audit Logs
   Hash, // Import Hash for Check IDs
+  ShieldAlert,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -193,6 +194,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/ops-analytics" icon={Activity} isCollapsed={isCollapsed}>
                   Ops Analytics
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/ops-incidents" icon={ShieldAlert} isCollapsed={isCollapsed}>
+                  Incidents
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/audit-logs" icon={FileText} isCollapsed={isCollapsed}>
                   Audit Logs

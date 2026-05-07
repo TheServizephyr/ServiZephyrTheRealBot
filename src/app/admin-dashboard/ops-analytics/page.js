@@ -5,6 +5,7 @@ import { auth } from '@/lib/firebase';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RefreshCw, ServerCrash, Timer, Activity, Database } from 'lucide-react';
+import Link from 'next/link';
 
 const DEFAULT_TELEMETRY_TIMEZONE = 'Asia/Kolkata';
 
@@ -217,6 +218,12 @@ export default function AdminAnalyticsPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button asChild variant="outline">
+                        <Link href="/admin-dashboard/ops-incidents">
+                            <ServerCrash className="mr-2 h-4 w-4" />
+                            Incidents
+                        </Link>
+                    </Button>
                     <input
                         type="date"
                         value={day}

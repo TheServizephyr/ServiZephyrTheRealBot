@@ -1,4 +1,5 @@
 import { kv, isKvConfigured } from '@/lib/kv';
+import { reportIncident } from '@/lib/opsIncidentReporter';
 
 const TELEMETRY_ENABLED = process.env.ENABLE_OPS_TELEMETRY === 'true';
 const TELEMETRY_TTL_SECONDS = 14 * 24 * 60 * 60; // 14 days
@@ -249,17 +250,39 @@ export async function trackApiTelemetry({
     errorMessage = null,
     context = null,
 }) {
-    if (!TELEMETRY_ENABLED) return;
-    if (!isOpsTelemetryConfigured()) return;
-
     const endpointName = sanitizeEndpoint(endpoint);
     if (!endpointName) return;
-    if (shouldSkipEndpointTelemetry(endpointName)) return;
-
     const safeDuration = Math.max(0, toInt(durationMs, 0));
     const safeStatus = Math.max(0, toInt(statusCode, 0));
-    const day = getTelemetryDay();
     const isServerError = safeStatus >= 500;
+
+    if (isServerError) {
+        void reportIncident({
+            source: 'api_telemetry',
+            area: 'api',
+            severity: 'error',
+            title: `${endpointName} returned ${safeStatus}`,
+            message: String(errorMessage || 'Server error').slice(0, 300),
+            route: endpointName,
+            error: {
+                name: 'ApiServerError',
+                message: String(errorMessage || 'Server error').slice(0, 300),
+            },
+            context: {
+                endpoint: endpointName,
+                statusCode: safeStatus,
+                durationMs: safeDuration,
+                telemetryContext: context && typeof context === 'object' ? context : null,
+            },
+            fingerprint: `api_telemetry|${endpointName}|${safeStatus}|${String(errorMessage || 'Server error').slice(0, 180)}`,
+        }).catch(() => {});
+    }
+
+    if (!TELEMETRY_ENABLED) return;
+    if (!isOpsTelemetryConfigured()) return;
+    if (shouldSkipEndpointTelemetry(endpointName)) return;
+
+    const day = getTelemetryDay();
     const latencyBucket = getLatencyBucket(safeDuration);
 
     const reqKey = `telemetry:ops:req:${day}`;
