@@ -91,6 +91,10 @@ function buildEmailHtml({ incident, event, incidentUrl }) {
                 <tr><td style="padding:3px 16px 3px 0;color:#6b7280">Incident ID</td><td>${escapeHtml(incident.id)}</td></tr>
             </table>
             <p><a href="${escapeHtml(incidentUrl)}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;border-radius:6px">Open in Admin Panel</a></p>
+            <p style="font-size:13px;color:#4b5563;margin-top:10px">
+                Direct link:
+                <a href="${escapeHtml(incidentUrl)}" style="color:#2563eb;text-decoration:underline;word-break:break-all">${escapeHtml(incidentUrl)}</a>
+            </p>
             <h2 style="font-size:15px;margin-top:22px">Message</h2>
             <pre style="white-space:pre-wrap;background:#f3f4f6;border-radius:6px;padding:12px;font-size:13px">${message}</pre>
             ${stack ? `<h2 style="font-size:15px;margin-top:22px">Stack</h2><pre style="white-space:pre-wrap;background:#f3f4f6;border-radius:6px;padding:12px;font-size:12px">${stack}</pre>` : ''}
