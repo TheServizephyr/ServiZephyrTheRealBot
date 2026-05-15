@@ -1377,7 +1377,7 @@ const WaitlistManagement = ({
         }
         const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
         const lapseMinutes = Number(waitlistMeta?.noShowTimeoutMinutes || 10);
-        const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may be marked no-show after ${lapseMinutes} minutes, so please arrive soon.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
+        const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may lapse after ${lapseMinutes} minutes, so please arrive soon to avoid cancellation.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
         window.open(`https://wa.me/91${phoneDigits}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
     };
