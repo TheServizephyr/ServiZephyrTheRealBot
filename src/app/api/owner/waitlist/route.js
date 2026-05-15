@@ -112,8 +112,8 @@ function isLiveActiveWaitlistRecord(entry = {}, nowMs = Date.now()) {
     if (!ACTIVE_STATUSES.has(status)) return false;
     if (status !== 'no_show') return true;
 
-    const noShowAtMs = toMillis(entry.noShowAt) || toMillis(entry.updatedAt) || 0;
-    return !noShowAtMs || (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+    const noShowAtMs = toMillis(entry.noShowAt) || toMillis(entry.updatedAt) || toMillis(entry.createdAt) || 0;
+    return noShowAtMs > 0 && (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
 }
 
 function isValidDateKey(value) {

@@ -232,8 +232,8 @@ const getWaitlistHistoryTime = (entry) => (
 const isLiveActiveWaitlistEntry = (entry = {}, nowMs = Date.now()) => {
     const status = String(entry?.status || '').toLowerCase();
     if (status !== 'no_show') return true;
-    const noShowAtMs = getTimestampMs(entry?.noShowAt) || getTimestampMs(entry?.updatedAt);
-    return !noShowAtMs || (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+    const noShowAtMs = getTimestampMs(entry?.noShowAt) || getTimestampMs(entry?.updatedAt) || getTimestampMs(entry?.createdAt);
+    return noShowAtMs > 0 && (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
 };
 
 const filterWaitlistHistoryEntries = (entries = [], searchQuery = '') => {
@@ -1621,9 +1621,6 @@ const WaitlistManagement = ({
                                                     )}
                                                     {isRecommended && !isNotified && (
                                                         <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md border border-green-500/20">Ready to Seat</span>
-                                                    )}
-                                                    {isNoShow && (
-                                                        <span className="text-[10px] bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded-md border border-red-500/20">No Show</span>
                                                     )}
                                                 </h4>
                                                 <p className="text-xs text-muted-foreground">{hasContactPhone ? `+91 ${entryPhoneDigits}` : 'No phone added'}</p>
