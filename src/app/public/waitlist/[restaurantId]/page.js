@@ -17,6 +17,7 @@ export default function PublicWaitlistPage({ params }) {
     const { restaurantId } = params;
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
+    const [phoneTouched, setPhoneTouched] = useState(false);
     const [paxCount, setPaxCount] = useState('2');
     const [mode, setMode] = useState('waitlist'); // waitlist | booking
     const [bookingDate, setBookingDate] = useState('');
@@ -204,13 +205,14 @@ export default function PublicWaitlistPage({ params }) {
 
         try {
             const trimmedName = String(name || '').trim();
-            const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(-10);
+            const normalizedPhone = String(phone || '').replace(/\D/g, '');
             const normalizedPaxCount = Number.parseInt(String(paxCount || ''), 10);
             if (!trimmedName) {
                 throw new Error('Please enter your name.');
             }
             if (!/^\d{10}$/.test(normalizedPhone)) {
-                throw new Error('Please enter a valid 10-digit phone number.');
+                setPhoneTouched(true);
+                throw new Error('Please enter a valid phone number.');
             }
             if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
                 throw new Error('Please enter guests between 1 and 20.');
@@ -288,6 +290,10 @@ export default function PublicWaitlistPage({ params }) {
     const isOpen = !statusUnavailable && restaurantData?.isOpen !== false;
     const isWaitlistEnabled = !statusUnavailable && restaurantData?.services?.waitlist === true;
     const restaurantName = restaurantData?.name || 'Restaurant';
+    const phoneDigitCount = String(phone || '').replace(/\D/g, '').length;
+    const phoneValidationMessage = phoneTouched && phoneDigitCount !== 10
+        ? 'Please enter a valid phone number.'
+        : '';
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const arrivalUrl = (mode !== 'booking' && entryId && arrivalCode && typeof window !== 'undefined')
         ? `${window.location.origin}/public/waitlist-arrive?rid=${encodeURIComponent(restaurantId)}&eid=${encodeURIComponent(entryId)}&c=${encodeURIComponent(arrivalCode)}`
@@ -465,12 +471,12 @@ export default function PublicWaitlistPage({ params }) {
 
     return (
         <div className="min-h-screen bg-background flex flex-col p-4 md:justify-center md:items-center">
-            <header className="mb-8 md:text-center pt-8 md:pt-0">
+            <header className="mb-8 flex flex-col items-center text-center pt-8 md:pt-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 mb-3">
                     <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                     <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary">Live Queue</span>
                 </div>
-                <h1 className="text-4xl font-black tracking-tight mb-2 uppercase italic text-primary">{restaurantName}</h1>
+                <h1 className="mx-auto max-w-full text-center text-4xl font-black tracking-tight mb-2 uppercase italic leading-tight text-primary break-words">{restaurantName}</h1>
                 <p className="text-muted-foreground font-medium underline underline-offset-4 decoration-primary/30">Join Our Waitlist</p>
             </header>
 
@@ -549,19 +555,31 @@ export default function PublicWaitlistPage({ params }) {
                                             id="phone"
                                             name="tel"
                                             type="tel"
-                                            placeholder="9876543210"
-                                            className="pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg"
+                                            placeholder="0000000000"
+                                            className={cn(
+                                                "pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg",
+                                                phoneValidationMessage && "border-destructive focus-visible:ring-destructive/30"
+                                            )}
                                             value={phone}
                                             inputMode="numeric"
                                             autoComplete="tel-national"
-                                            maxLength={10}
+                                            maxLength={15}
+                                            aria-invalid={Boolean(phoneValidationMessage)}
+                                            aria-describedby={phoneValidationMessage ? 'phone-error' : undefined}
                                             onChange={(e) => {
-                                                const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                const digits = e.target.value.replace(/\D/g, '').slice(0, 15);
                                                 setPhone(digits);
+                                                setPhoneTouched(true);
                                             }}
+                                            onBlur={() => setPhoneTouched(true)}
                                             required
                                         />
                                     </div>
+                                    {phoneValidationMessage && (
+                                        <p id="phone-error" className="text-xs font-bold text-destructive">
+                                            {phoneValidationMessage}
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">

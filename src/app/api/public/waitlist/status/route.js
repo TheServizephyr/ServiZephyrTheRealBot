@@ -12,6 +12,19 @@ function toIso(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
+function maskName(value) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return '';
+    const firstChar = trimmed[0]?.toUpperCase() || '';
+    return firstChar ? `${firstChar}***` : '';
+}
+
+function maskPhone(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return '';
+    return `******${digits.slice(-4)}`;
+}
+
 const noStoreJson = (body, init = {}) => NextResponse.json(body, {
     ...init,
     headers: {
@@ -57,10 +70,11 @@ export async function GET(req) {
             id: entrySnap.id,
             status: String(data.status || 'pending').toLowerCase(),
             waitlistToken: data.waitlistToken || '',
-            name: data.name || '',
-            phone: data.phone || '',
+            name: maskName(data.name),
+            phone: maskPhone(data.phone),
             paxCount: data.paxCount || 1,
             restaurantName: data.restaurantName || '',
+            redacted: true,
             createdAt: toIso(data.createdAt),
             notifiedAt: toIso(data.notifiedAt),
             noShowDeadlineAt: toIso(data.noShowDeadlineAt),
