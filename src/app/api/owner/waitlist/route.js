@@ -16,6 +16,16 @@ const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
+const WAITLIST_VIEW_PERMISSIONS = [
+    PERMISSIONS.VIEW_BOOKINGS,
+    PERMISSIONS.MANAGE_BOOKINGS,
+    PERMISSIONS.VIEW_DINE_IN_ORDERS,
+    PERMISSIONS.MANAGE_DINE_IN,
+];
+const WAITLIST_MANAGE_PERMISSIONS = [
+    PERMISSIONS.MANAGE_BOOKINGS,
+    PERMISSIONS.MANAGE_DINE_IN,
+];
 
 function assertRestaurantBusiness(context) {
     if (context.collectionName !== 'restaurants') {
@@ -382,7 +392,7 @@ export async function GET(req) {
             'view_waitlist',
             {},
             false,
-            PERMISSIONS.VIEW_DINE_IN // Assuming same permission level as dine-in
+            WAITLIST_VIEW_PERMISSIONS
         );
         assertRestaurantBusiness(context);
         const { businessId, businessSnap } = context;
@@ -491,7 +501,7 @@ export async function POST(req) {
             'create_waitlist_entry',
             {},
             false,
-            PERMISSIONS.MANAGE_DINE_IN
+            WAITLIST_MANAGE_PERMISSIONS
         );
         assertRestaurantBusiness(context);
 
@@ -610,7 +620,7 @@ export async function PATCH(req) {
             'update_waitlist_entry',
             {},
             false,
-            PERMISSIONS.MANAGE_DINE_IN
+            WAITLIST_MANAGE_PERMISSIONS
         );
         assertRestaurantBusiness(context);
         const { businessId, businessSnap } = context;

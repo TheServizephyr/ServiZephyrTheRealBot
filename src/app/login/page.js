@@ -31,6 +31,33 @@ const getRedirectLabel = (path) => {
     return "where you left off";
 };
 
+const getBusinessTypeForOutlet = (outlet = {}) => {
+    if (outlet.collectionName === "shops") return "store";
+    if (outlet.collectionName === "street_vendors") return "street-vendor";
+    return outlet.businessType || "restaurant";
+};
+
+const persistEmployeeOutletContext = (outlet = {}) => {
+    localStorage.setItem("role", "employee");
+    localStorage.setItem("activeOutletId", outlet.outletId || "");
+    localStorage.setItem("activeOwnerId", outlet.ownerId || "");
+    localStorage.setItem("activeOutletName", outlet.outletName || "");
+    localStorage.setItem("employeeRole", outlet.employeeRole || "");
+    localStorage.setItem("businessType", getBusinessTypeForOutlet(outlet));
+
+    if (Array.isArray(outlet.permissions)) {
+        localStorage.setItem("employeePermissions", JSON.stringify(outlet.permissions));
+    } else {
+        localStorage.removeItem("employeePermissions");
+    }
+
+    if (outlet.employeeRole === "custom" && Array.isArray(outlet.customAllowedPages)) {
+        localStorage.setItem("customAllowedPages", JSON.stringify(outlet.customAllowedPages));
+    } else {
+        localStorage.removeItem("customAllowedPages");
+    }
+};
+
 function LoginPageContent() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -280,8 +307,12 @@ function LoginPageContent() {
             if (data.redirectTo) {
                 persistResolvedAuthProfile(user, data);
                 console.log("[Login] API returned redirectTo:", data.redirectTo);
-                localStorage.setItem("role", data.role || "employee");
-                localStorage.removeItem("businessType");
+                if (data.role === "employee" && data.outlet) {
+                    persistEmployeeOutletContext(data.outlet);
+                } else {
+                    localStorage.setItem("role", data.role || "employee");
+                    localStorage.removeItem("businessType");
+                }
                 sessionStorage.setItem('justLoggedIn', JSON.stringify({ timestamp: Date.now() }));
                 window.location.href = data.redirectTo;
                 return;

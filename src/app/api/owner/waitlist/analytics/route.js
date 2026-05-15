@@ -5,6 +5,12 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 const ANALYTICS_TIMEZONE = 'Asia/Kolkata';
+const WAITLIST_ANALYTICS_PERMISSIONS = [
+    PERMISSIONS.VIEW_BOOKINGS,
+    PERMISSIONS.MANAGE_BOOKINGS,
+    PERMISSIONS.VIEW_DINE_IN_ORDERS,
+    PERMISSIONS.MANAGE_DINE_IN,
+];
 
 function toDate(value) {
     if (!value) return null;
@@ -62,7 +68,7 @@ export async function GET(req) {
             'view_waitlist_analytics',
             {},
             false,
-            PERMISSIONS.VIEW_DINE_IN
+            WAITLIST_ANALYTICS_PERMISSIONS
         );
         const { businessSnap } = context;
         const businessRef = businessSnap.ref;

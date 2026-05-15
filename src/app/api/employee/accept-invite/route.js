@@ -15,6 +15,54 @@ import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin'
 import { ROLE_PERMISSIONS, ROLE_DISPLAY_NAMES } from '@/lib/permissions';
 import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
 
+function getBusinessTypeFromCollectionName(collectionName) {
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+}
+
+function buildInviteRedirect(inviteData = {}) {
+    const ownerId = inviteData.ownerId;
+    if (inviteData.collectionName === 'street_vendors') {
+        return appendDashboardScope('/street-vendor-dashboard', { employeeOfOwnerId: ownerId });
+    }
+
+    const defaultOwnerPath = getDefaultOwnerDashboardPathForAccess({
+        role: inviteData.role,
+        customAllowedPages: inviteData.customAllowedPages,
+        businessType: getBusinessTypeFromCollectionName(inviteData.collectionName),
+    });
+    return appendDashboardScope(defaultOwnerPath, { employeeOfOwnerId: ownerId });
+}
+
+function buildEmployeePayload(inviteData = {}) {
+    return {
+        outletId: inviteData.outletId,
+        outletName: inviteData.outletName,
+        ownerId: inviteData.ownerId,
+        businessType: getBusinessTypeFromCollectionName(inviteData.collectionName),
+        role: inviteData.role,
+        roleDisplay: inviteData.role === 'custom'
+            ? (inviteData.customRoleName || ROLE_DISPLAY_NAMES[inviteData.role] || 'Custom')
+            : ROLE_DISPLAY_NAMES[inviteData.role],
+        permissions: inviteData.permissions || ROLE_PERMISSIONS[inviteData.role] || [],
+        customAllowedPages: inviteData.role === 'custom' ? (inviteData.customAllowedPages || null) : null,
+    };
+}
+
+function serializeInvitation(inviteData = {}) {
+    return {
+        outletName: inviteData.outletName,
+        role: inviteData.role,
+        roleDisplay: inviteData.role === 'custom'
+            ? (inviteData.customRoleName || ROLE_DISPLAY_NAMES[inviteData.role] || 'Custom')
+            : ROLE_DISPLAY_NAMES[inviteData.role],
+        invitedEmail: inviteData.email,
+        invitedName: inviteData.name,
+        expiresAt: inviteData.expiresAt,
+    };
+}
+
 // ============================================
 // POST: Accept invitation and link employee to outlet
 // ============================================
@@ -50,6 +98,15 @@ export async function POST(req) {
 
         // Check invitation status
         if (inviteData.status !== 'pending') {
+            if (inviteData.status === 'accepted' && inviteData.acceptedBy === uid) {
+                return NextResponse.json({
+                    message: 'You are already part of this team.',
+                    alreadyAccepted: true,
+                    employee: buildEmployeePayload(inviteData),
+                    redirectTo: buildInviteRedirect(inviteData),
+                }, { status: 200 });
+            }
+
             return NextResponse.json(
                 { message: `This invitation has already been ${inviteData.status}.` },
                 { status: 400 }
@@ -181,31 +238,15 @@ export async function POST(req) {
 
         // Determine redirect URL based on outlet type
         // CRITICAL: Add employee_of parameter so employee sees EMPLOYER's dashboard
-        const ownerId = inviteData.ownerId;
-        const defaultOwnerPath = getDefaultOwnerDashboardPathForAccess({
-            role: inviteData.role,
-            customAllowedPages: inviteData.customAllowedPages,
-            businessType: inviteData.collectionName === 'shops' ? 'store' : 'restaurant',
-        });
-        let redirectTo = appendDashboardScope(defaultOwnerPath, { employeeOfOwnerId: ownerId });
-        if (inviteData.collectionName === 'street_vendors') {
-            redirectTo = appendDashboardScope('/street-vendor-dashboard', { employeeOfOwnerId: ownerId });
-        }
+        const redirectTo = buildInviteRedirect(inviteData);
 
         return NextResponse.json({
             message: 'Welcome to the team!',
-            employee: {
-                outletId: inviteData.outletId,
-                outletName: inviteData.outletName,
-                ownerId,
-                businessType: inviteData.collectionName === 'shops'
-                    ? 'store'
-                    : (inviteData.collectionName === 'street_vendors' ? 'street-vendor' : 'restaurant'),
-                role: inviteData.role,
-                roleDisplay: ROLE_DISPLAY_NAMES[inviteData.role],
+            employee: buildEmployeePayload({
+                ...inviteData,
                 permissions: linkedOutletEntry.permissions,
                 customAllowedPages: linkedOutletEntry.customAllowedPages || null,
-            },
+            }),
             redirectTo,
         }, { status: 200 });
 
@@ -250,6 +291,16 @@ export async function GET(req) {
 
         // Check status
         if (inviteData.status !== 'pending') {
+            if (inviteData.status === 'accepted') {
+                return NextResponse.json({
+                    valid: true,
+                    alreadyAccepted: true,
+                    status: 'accepted',
+                    message: 'This invitation has already been accepted. Sign in with the invited email to continue.',
+                    invitation: serializeInvitation(inviteData),
+                }, { status: 200 });
+            }
+
             return NextResponse.json({
                 valid: false,
                 message: `This invitation has been ${inviteData.status}.`,
@@ -271,14 +322,7 @@ export async function GET(req) {
         // Return invitation details (for UI to show)
         return NextResponse.json({
             valid: true,
-            invitation: {
-                outletName: inviteData.outletName,
-                role: inviteData.role,
-                roleDisplay: ROLE_DISPLAY_NAMES[inviteData.role],
-                invitedEmail: inviteData.email,
-                invitedName: inviteData.name,
-                expiresAt: inviteData.expiresAt,
-            },
+            invitation: serializeInvitation(inviteData),
         }, { status: 200 });
 
     } catch (error) {

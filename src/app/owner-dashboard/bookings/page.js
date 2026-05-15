@@ -35,7 +35,8 @@ import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole } from '@/lib/
 export const dynamic = 'force-dynamic';
 
 const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived'];
-const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
+const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_BOOKINGS, PERMISSIONS.MANAGE_BOOKINGS, PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
+const DINE_IN_TABLE_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN, PERMISSIONS.VIEW_TABLES, PERMISSIONS.ASSIGN_TABLE];
 
 const parseStoredJsonArray = (key) => {
     if (typeof window === 'undefined') return null;
@@ -70,11 +71,24 @@ const getStoredEmployeeAccessSnapshot = (employeeOfOwnerId) => {
     };
 };
 
-const canUseWaitlistForAccess = ({ role, permissions }) => {
+const canUseWaitlistForAccess = ({ role, permissions, customAllowedPages }) => {
     if (role === ROLES.OWNER || role === ROLES.STREET_VENDOR) return true;
     if (!role) return false;
     const effectivePermissions = Array.isArray(permissions) ? permissions : getPermissionsForRole(role);
-    return WAITLIST_REQUIRED_PERMISSIONS.some((permission) => effectivePermissions.includes(permission));
+    return (
+        WAITLIST_REQUIRED_PERMISSIONS.some((permission) => effectivePermissions.includes(permission)) ||
+        canAccessPage(role, 'bookings', customAllowedPages, 'restaurant')
+    );
+};
+
+const canUseDineInTablesForAccess = ({ role, permissions, customAllowedPages }) => {
+    if (role === ROLES.OWNER || role === ROLES.STREET_VENDOR) return true;
+    if (!role) return false;
+    const effectivePermissions = Array.isArray(permissions) ? permissions : getPermissionsForRole(role);
+    return (
+        DINE_IN_TABLE_REQUIRED_PERMISSIONS.some((permission) => effectivePermissions.includes(permission)) ||
+        canAccessPage(role, 'dine-in', customAllowedPages, 'restaurant')
+    );
 };
 
 const canUseBookingsForAccess = ({ role, permissions, customAllowedPages }) => {
@@ -99,11 +113,15 @@ const getFeatureList = (businessInfo, key) => (
     Array.isArray(businessInfo?.[key]) ? businessInfo[key] : []
 );
 
-const isWaitlistLockedForBusiness = (businessInfo) => {
+const isFeatureLockedForBusiness = (businessInfo, featureId) => {
     const lockedFeatures = getFeatureList(businessInfo, 'lockedFeatures');
     const restrictedFeatures = getFeatureList(businessInfo, 'restrictedFeatures');
     const blockedFeatures = new Set([...lockedFeatures, ...restrictedFeatures]);
-    return ['waitlist', 'dine-in', 'bookings'].some((featureId) => blockedFeatures.has(featureId));
+    return blockedFeatures.has(featureId);
+};
+
+const isWaitlistLockedForBusiness = (businessInfo) => {
+    return ['waitlist', 'bookings'].some((featureId) => isFeatureLockedForBusiness(businessInfo, featureId));
 };
 
 const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
@@ -933,6 +951,7 @@ const WaitlistManagement = ({
     impersonatedOwnerId,
     employeeOfOwnerId,
     waitlistSeatingMode,
+    canUseDineInTables = true,
     onWaitlistUpdate,
     onBookingCreated,
     refreshSignal = 0,
@@ -956,6 +975,7 @@ const WaitlistManagement = ({
     const [quickAddForm, setQuickAddForm] = useState(getInitialQuickAddForm);
     const [quickAddLoading, setQuickAddLoading] = useState(false);
     const [quickAddPhoneTouched, setQuickAddPhoneTouched] = useState(false);
+    const effectiveWaitlistSeatingMode = canUseDineInTables ? waitlistSeatingMode : 'manual_seat';
 
     const openQuickAdd = useCallback((mode = 'waitlist') => {
         setQuickAddMode(mode);
@@ -1009,10 +1029,11 @@ const WaitlistManagement = ({
         }
         if (!silent) setLoading(true);
         try {
-            const [waitlistData, tablesData] = await Promise.all([
-                handleApiCall('GET', null, '/api/owner/waitlist'),
-                handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables')
-            ]);
+            const waitlistPromise = handleApiCall('GET', null, '/api/owner/waitlist');
+            const tablesPromise = canUseDineInTables
+                ? handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables')
+                : Promise.resolve({ tables: [] });
+            const [waitlistData, tablesData] = await Promise.all([waitlistPromise, tablesPromise]);
             setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
             setWaitlistMeta(waitlistData?.meta || { noShowTimeoutMinutes: 10, capacity: null });
             setAllTables(tablesData?.tables || []);
@@ -1022,7 +1043,7 @@ const WaitlistManagement = ({
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [handleApiCall, toast]);
+    }, [canUseDineInTables, handleApiCall, toast]);
 
     const handleQuickAddSubmit = useCallback(async (event) => {
         event.preventDefault();
@@ -1179,7 +1200,7 @@ const WaitlistManagement = ({
 
     const seatWaitlistEntry = useCallback(async (entry, overrideTableId = null, source = 'manual') => {
         const tableId = overrideTableId || selectedTables[entry.id];
-        const usesTraditionalSeating = waitlistSeatingMode === 'manual_seat';
+        const usesTraditionalSeating = effectiveWaitlistSeatingMode === 'manual_seat';
         if (!usesTraditionalSeating && !tableId) return;
         setActionLoading(entry.id);
         try {
@@ -1202,7 +1223,7 @@ const WaitlistManagement = ({
         } finally {
             setActionLoading(null);
         }
-    }, [selectedTables, waitlistSeatingMode, handleApiCall, fetchData, toast]);
+    }, [effectiveWaitlistSeatingMode, selectedTables, handleApiCall, fetchData, toast]);
 
     const handleSeatCustomer = async (entry) => {
         await seatWaitlistEntry(entry, null, 'manual');
@@ -1248,18 +1269,20 @@ const WaitlistManagement = ({
                 throw new Error('Invalid token QR.');
             }
 
-            const fitTables = allTables
-                .filter((t) => t.state === 'available' && t.max_capacity >= entry.paxCount)
-                .sort((a, b) => a.max_capacity - b.max_capacity);
+            const fitTables = canUseDineInTables
+                ? allTables
+                    .filter((t) => t.state === 'available' && t.max_capacity >= entry.paxCount)
+                    .sort((a, b) => a.max_capacity - b.max_capacity)
+                : [];
 
             setScanSeatingEntry(entry);
-            setScanSelectedTableId(waitlistSeatingMode === 'manual_seat' ? '' : (fitTables[0]?.id || ''));
+            setScanSelectedTableId(effectiveWaitlistSeatingMode === 'manual_seat' ? '' : (fitTables[0]?.id || ''));
             setIsArrivalScannerOpen(false);
             toast({ title: 'Token Scanned', description: `${entry.name} found in active waitlist.` });
         } catch (err) {
             toast({ title: 'Scan Error', description: err.message || 'Invalid QR code.', variant: 'destructive' });
         }
-    }, [restaurant?.id, entries, waitlistSeatingMode, allTables, toast]);
+    }, [allTables, canUseDineInTables, effectiveWaitlistSeatingMode, entries, restaurant?.id, toast]);
 
     const scannedWaitlistEntry = useMemo(() => {
         if (!scanSeatingEntry?.id) return null;
@@ -1267,11 +1290,11 @@ const WaitlistManagement = ({
     }, [entries, scanSeatingEntry]);
 
     const scannedFitTables = useMemo(() => {
-        if (!scannedWaitlistEntry) return [];
+        if (!scannedWaitlistEntry || !canUseDineInTables) return [];
         return allTables
             .filter((t) => t.state === 'available' && t.max_capacity >= Number(scannedWaitlistEntry?.paxCount || 1))
             .sort((a, b) => a.max_capacity - b.max_capacity);
-    }, [allTables, scannedWaitlistEntry]);
+    }, [allTables, canUseDineInTables, scannedWaitlistEntry]);
 
     const scannedWaitlistAgeLabel = useMemo(() => {
         if (!scannedWaitlistEntry) return '';
@@ -1281,7 +1304,7 @@ const WaitlistManagement = ({
 
     useEffect(() => {
         if (!scannedWaitlistEntry) return;
-        if (waitlistSeatingMode === 'manual_seat') {
+        if (effectiveWaitlistSeatingMode === 'manual_seat') {
             setScanSelectedTableId('');
             return;
         }
@@ -1292,10 +1315,10 @@ const WaitlistManagement = ({
         if (!scannedFitTables.some((table) => table.id === scanSelectedTableId)) {
             setScanSelectedTableId(scannedFitTables[0].id);
         }
-    }, [scannedWaitlistEntry, scannedFitTables, scanSelectedTableId, waitlistSeatingMode]);
+    }, [effectiveWaitlistSeatingMode, scannedWaitlistEntry, scannedFitTables, scanSelectedTableId]);
 
     const recommendedEntries = useMemo(() => {
-        if (!entries.length || !allTables.length) return new Set();
+        if (!canUseDineInTables || !entries.length || !allTables.length) return new Set();
 
         const sortedEntries = [...entries].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
         const availableTables = allTables
@@ -1318,7 +1341,7 @@ const WaitlistManagement = ({
             }
         }
         return recommendedIds;
-    }, [entries, allTables]);
+    }, [allTables, canUseDineInTables, entries]);
 
     const quickAddPhoneDigits = String(quickAddForm.phone || '').replace(/\D/g, '');
     const quickAddPhoneRequired = quickAddMode === 'booking';
@@ -1377,9 +1400,11 @@ const WaitlistManagement = ({
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {entries.map(entry => {
-                        const usesTraditionalSeating = waitlistSeatingMode === 'manual_seat';
+                        const usesTraditionalSeating = effectiveWaitlistSeatingMode === 'manual_seat';
                         const tableId = selectedTables[entry.id];
-                        const fitTables = allTables.filter(t => t.state === 'available' && t.max_capacity >= entry.paxCount);
+                        const fitTables = canUseDineInTables
+                            ? allTables.filter(t => t.state === 'available' && t.max_capacity >= entry.paxCount)
+                            : [];
                         const isRecommended = !usesTraditionalSeating && recommendedEntries.has(entry.id);
                         const isNotified = entry.status === 'notified';
                         const isReadyToNotify = entry.status === 'ready_to_notify';
@@ -1523,7 +1548,7 @@ const WaitlistManagement = ({
                 </div>
             )}
 
-            {waitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
+            {effectiveWaitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
                 <Card className="border-amber-500/30 bg-amber-500/5">
                     <CardContent className="p-3 text-sm text-amber-700">
                         Capacity Alert: {waitlistMeta?.capacity?.message}
@@ -1733,7 +1758,7 @@ const WaitlistManagement = ({
                                     </Button>
                                 </CardContent>
                             </Card>
-                            {waitlistSeatingMode !== 'manual_seat' && (
+                            {effectiveWaitlistSeatingMode !== 'manual_seat' && (
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Seat at table</Label>
                                     {scannedFitTables.length > 0 ? (
@@ -1787,14 +1812,14 @@ const WaitlistManagement = ({
                             type="button"
                             disabled={
                                 !scannedWaitlistEntry
-                                || (waitlistSeatingMode !== 'manual_seat' && !scanSelectedTableId)
+                                || (effectiveWaitlistSeatingMode !== 'manual_seat' && !scanSelectedTableId)
                                 || actionLoading === scannedWaitlistEntry?.id
                             }
                             onClick={async () => {
                                 if (!scannedWaitlistEntry) return;
                                 await seatWaitlistEntry(
                                     scannedWaitlistEntry,
-                                    waitlistSeatingMode === 'manual_seat' ? null : scanSelectedTableId,
+                                    effectiveWaitlistSeatingMode === 'manual_seat' ? null : scanSelectedTableId,
                                     'scan'
                                 );
                                 setScanSeatingEntry(null);
@@ -1854,6 +1879,7 @@ function BookingsPageContent() {
     const [capacityDraft, setCapacityDraft] = useState('40');
     const [noShowTimeoutDraft, setNoShowTimeoutDraft] = useState('10');
     const [waitlistRefreshSignal, setWaitlistRefreshSignal] = useState(0);
+    const hasAppliedEmployeeDefaultTabRef = useRef(false);
     const { toast } = useToast();
     const bookingsCacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
@@ -1861,6 +1887,7 @@ function BookingsPageContent() {
     }, [impersonatedOwnerId, employeeOfOwnerId]);
     const canUseWaitlist = canUseWaitlistForAccess(employeeAccess) && !isWaitlistLockedForBusiness(businessInfo);
     const canUseBookings = canUseBookingsForAccess(employeeAccess);
+    const canUseDineInTables = canUseDineInTablesForAccess(employeeAccess) && !isFeatureLockedForBusiness(businessInfo, 'dine-in');
     const shouldRenderWaitlist = canUseWaitlist && (!employeeOfOwnerId || employeeAccess.isLoaded);
     const shouldRenderBookings = !employeeOfOwnerId || !employeeAccess.isLoaded || canUseBookings;
     const canMountWaitlistManagement = shouldRenderWaitlist && Boolean(businessInfo?.id && businessInfo?.collection);
@@ -1946,6 +1973,15 @@ function BookingsPageContent() {
             setActiveTab('waitlist');
         }
     }, [activeTab, shouldRenderBookings, shouldRenderWaitlist]);
+
+    useEffect(() => {
+        if (!employeeOfOwnerId || hasAppliedEmployeeDefaultTabRef.current) return;
+        if (!employeeAccess.isLoaded) return;
+        hasAppliedEmployeeDefaultTabRef.current = true;
+        if (shouldRenderWaitlist) {
+            setActiveTab('waitlist');
+        }
+    }, [employeeAccess.isLoaded, employeeOfOwnerId, shouldRenderWaitlist]);
 
     useEffect(() => {
         if (canUseWaitlist) return;
@@ -2355,6 +2391,7 @@ function BookingsPageContent() {
                                 impersonatedOwnerId={impersonatedOwnerId}
                                 employeeOfOwnerId={employeeOfOwnerId}
                                 waitlistSeatingMode={waitlistSeatingMode}
+                                canUseDineInTables={canUseDineInTables}
                                 onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
                                 onBookingCreated={handleBookingCreatedFromQuickAdd}
                                 refreshSignal={waitlistRefreshSignal}
@@ -2415,9 +2452,9 @@ function BookingsPageContent() {
                             <div className="inline-flex rounded-lg border border-border overflow-hidden">
                                 <Button
                                     type="button"
-                                    variant={waitlistSeatingMode === 'table_assign' ? 'default' : 'ghost'}
+                                    variant={canUseDineInTables && waitlistSeatingMode === 'table_assign' ? 'default' : 'ghost'}
                                     className="rounded-none"
-                                    disabled={waitlistConfigLoading}
+                                    disabled={waitlistConfigLoading || !canUseDineInTables}
                                     onClick={() => handleWaitlistSeatingModeChange('table_assign')}
                                 >
                                     Table

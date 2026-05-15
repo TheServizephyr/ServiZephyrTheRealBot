@@ -21,7 +21,51 @@ export default function JoinPage() {
     const [inviteData, setInviteData] = useState(null);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [alreadyAccepted, setAlreadyAccepted] = useState(false);
     const hasAttemptedAccept = useRef(false);
+
+    const getBusinessTypeForOutlet = (outlet = {}) => {
+        if (outlet.collectionName === 'shops') return 'store';
+        if (outlet.collectionName === 'street_vendors') return 'street-vendor';
+        return outlet.businessType || 'restaurant';
+    };
+
+    const persistEmployeeContext = (employee = {}) => {
+        try {
+            localStorage.setItem('role', 'employee');
+            localStorage.setItem('activeOutletId', employee.outletId || '');
+            localStorage.setItem('activeOwnerId', employee.ownerId || '');
+            localStorage.setItem('activeOutletName', employee.outletName || '');
+            localStorage.setItem('employeeRole', employee.role || employee.employeeRole || '');
+            if (employee.businessType) {
+                localStorage.setItem('businessType', employee.businessType);
+            }
+            if (Array.isArray(employee.permissions)) {
+                localStorage.setItem('employeePermissions', JSON.stringify(employee.permissions));
+            } else {
+                localStorage.removeItem('employeePermissions');
+            }
+            if ((employee.role === 'custom' || employee.employeeRole === 'custom') && Array.isArray(employee.customAllowedPages)) {
+                localStorage.setItem('customAllowedPages', JSON.stringify(employee.customAllowedPages));
+            } else {
+                localStorage.removeItem('customAllowedPages');
+            }
+        } catch {
+            // Ignore storage failures; the dashboard layout rehydrates from Firestore.
+        }
+    };
+
+    const persistEmployeeOutletContext = (outlet = {}) => {
+        persistEmployeeContext({
+            outletId: outlet.outletId,
+            outletName: outlet.outletName,
+            ownerId: outlet.ownerId,
+            role: outlet.employeeRole,
+            businessType: getBusinessTypeForOutlet(outlet),
+            permissions: outlet.permissions,
+            customAllowedPages: outlet.customAllowedPages,
+        });
+    };
 
     // Fetch invitation details on mount
     useEffect(() => {
@@ -32,10 +76,15 @@ export default function JoinPage() {
                 const response = await fetch(`/api/employee/accept-invite?code=${inviteCode}`);
                 const data = await response.json();
 
-                if (!response.ok || !data.valid) {
+                if (data.alreadyAccepted && data.invitation) {
+                    setInviteData(data.invitation);
+                    setAlreadyAccepted(true);
+                    setError(null);
+                } else if (!response.ok || !data.valid) {
                     setError(data.message || 'Invalid or expired invitation');
                 } else {
                     setInviteData(data.invitation);
+                    setAlreadyAccepted(false);
                 }
             } catch (err) {
                 console.error('Fetch invite error:', err);
@@ -59,9 +108,12 @@ export default function JoinPage() {
         const invitedEmail = inviteData.invitedEmail?.toLowerCase();
 
         if (userEmail === invitedEmail) {
-            // Correct email - auto accept
             hasAttemptedAccept.current = true;
-            handleAcceptInvite();
+            if (alreadyAccepted) {
+                continueToDashboard(user);
+            } else {
+                handleAcceptInvite();
+            }
         } else {
             // Wrong email logged in - sign out silently so user can choose correct account
             // Don't show error, just let them click button to choose account
@@ -70,7 +122,7 @@ export default function JoinPage() {
                 auth.signOut();
             }
         }
-    }, [user, inviteData, accepting, success]);
+    }, [user, inviteData, accepting, success, alreadyAccepted]);
 
     // Handle Google Sign In with account picker (using redirect for mobile compatibility)
     async function handleGoogleSignIn() {
@@ -115,8 +167,11 @@ export default function JoinPage() {
                 return;
             }
 
-            // Proceed to accept invite
-            await acceptInviteAPI(result.user);
+            if (alreadyAccepted) {
+                await continueToDashboard(result.user);
+            } else {
+                await acceptInviteAPI(result.user);
+            }
 
         } catch (err) {
             console.error('Google sign in error:', err);
@@ -128,6 +183,56 @@ export default function JoinPage() {
             } else {
                 setError('Failed to sign in with Google. Please try again.');
             }
+            setAccepting(false);
+        }
+    }
+
+    async function continueToDashboard(currentUser) {
+        try {
+            setAccepting(true);
+            setError(null);
+
+            const token = await currentUser.getIdToken();
+            const response = await fetch('/api/auth/check-role', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Could not verify your team access. Please sign in again.');
+            }
+
+            if (data.outlet) {
+                persistEmployeeOutletContext(data.outlet);
+            }
+
+            if (data.employee) {
+                persistEmployeeContext(data.employee);
+            }
+
+            if (data.hasMultipleRoles) {
+                router.push('/select-role');
+                return;
+            }
+
+            if (data.redirectTo) {
+                router.push(data.redirectTo);
+                return;
+            }
+
+            if (data.role === 'employee') {
+                router.push('/select-role');
+                return;
+            }
+
+            router.push('/');
+        } catch (err) {
+            console.error('Continue to dashboard error:', err);
+            setError(err.message || 'Could not continue. Please try signing in again.');
             setAccepting(false);
         }
     }
@@ -159,26 +264,7 @@ export default function JoinPage() {
             setSuccess(true);
 
             if (data.employee) {
-                try {
-                    localStorage.setItem('role', 'employee');
-                    localStorage.setItem('activeOutletId', data.employee.outletId || '');
-                    localStorage.setItem('activeOwnerId', data.employee.ownerId || '');
-                    localStorage.setItem('activeOutletName', data.employee.outletName || '');
-                    localStorage.setItem('employeeRole', data.employee.role || '');
-                    if (data.employee.businessType) {
-                        localStorage.setItem('businessType', data.employee.businessType);
-                    }
-                    if (Array.isArray(data.employee.permissions)) {
-                        localStorage.setItem('employeePermissions', JSON.stringify(data.employee.permissions));
-                    }
-                    if (data.employee.role === 'custom' && Array.isArray(data.employee.customAllowedPages)) {
-                        localStorage.setItem('customAllowedPages', JSON.stringify(data.employee.customAllowedPages));
-                    } else {
-                        localStorage.removeItem('customAllowedPages');
-                    }
-                } catch {
-                    // Ignore storage failures; the dashboard layout rehydrates from Firestore.
-                }
+                persistEmployeeContext(data.employee);
             }
 
             // Haptic success feedback
@@ -212,6 +298,11 @@ export default function JoinPage() {
         if (userEmail !== invitedEmail) {
             setError(`Please sign in with ${inviteData.invitedEmail}. You are logged in as ${user.email}.`);
             setAccepting(false);
+            return;
+        }
+
+        if (alreadyAccepted) {
+            await continueToDashboard(user);
             return;
         }
 
@@ -349,7 +440,7 @@ export default function JoinPage() {
                     {accepting ? (
                         <>
                             <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                            {user ? 'Joining...' : 'Signing in...'}
+                            {alreadyAccepted ? 'Continuing...' : (user ? 'Joining...' : 'Signing in...')}
                         </>
                     ) : (
                         <>
@@ -359,7 +450,7 @@ export default function JoinPage() {
                                 <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                                 <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                             </svg>
-                            Sign in with Google to Join
+                            {alreadyAccepted ? 'Sign in with Google to Continue' : 'Sign in with Google to Join'}
                         </>
                     )}
                 </Button>

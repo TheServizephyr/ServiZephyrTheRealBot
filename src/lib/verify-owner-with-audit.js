@@ -84,6 +84,9 @@ const ACTION_FEATURE_MAP = {
     view_dine_in_history: 'dine-in',
     owner_waitlist_get: 'bookings',
     owner_waitlist_post: 'bookings',
+    view_waitlist: 'bookings',
+    create_waitlist_entry: 'bookings',
+    update_waitlist_entry: 'bookings',
     view_waitlist_analytics: 'bookings',
     view_payouts: 'payouts',
     view_inventory: 'inventory',
@@ -299,6 +302,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                     userData,
                     callerRole: effectiveCallerRole,
                     callerPermissions: effectiveCallerPermissions,
+                    callerCustomAllowedPages: employeeAccessResult?.customAllowedPages || null,
                     adminId: isImpersonating ? uid : null,
                     adminEmail: isImpersonating ? userData.email : null
                 };
@@ -328,13 +332,20 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
     // 2. AWAIT RESOLUTION
     let context; try { context = await req._ownerContextPromise; } catch (e) { require('fs').appendFileSync('audit_error_log.txt', (e.stack || e.message || JSON.stringify(e)) + '\n'); throw e; }
 
+    const inferredFeatureId = inferFeatureIdFromAction(action, req);
+
     // 2.5 OPTIONAL PERMISSION ENFORCEMENT
     if (requiredPermissions) {
         const required = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
         const callerPermissions = context.callerPermissions || [];
         const hasRequiredPermission = required.some((permission) => callerPermissions.includes(permission));
+        const hasCustomPageAccess =
+            context.callerRole === 'custom' &&
+            inferredFeatureId &&
+            Array.isArray(context.callerCustomAllowedPages) &&
+            context.callerCustomAllowedPages.includes(inferredFeatureId);
 
-        if (!hasRequiredPermission) {
+        if (!hasRequiredPermission && !hasCustomPageAccess) {
             throw {
                 message: `Access Denied: Missing required permission (${required.join(' OR ')}).`,
                 status: 403
@@ -342,7 +353,6 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
         }
     }
 
-    const inferredFeatureId = inferFeatureIdFromAction(action, req);
     if (inferredFeatureId) {
         assertFeatureUnlocked(context, inferredFeatureId);
     }
@@ -413,4 +423,3 @@ function inferFeatureIdFromAction(action, req) {
     if (pathname.includes('/api/owner/payouts')) return 'payouts';
     return null;
 }
-
