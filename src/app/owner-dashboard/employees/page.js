@@ -9,15 +9,16 @@ import {
     UserPlus,
     Shield,
     MoreVertical,
-    Check,
-    X,
     Clock,
     Trash2,
     Copy,
     CheckCircle,
     RefreshCw,
     MessageSquare,
-    Link as LinkIcon
+    Link as LinkIcon,
+    ShieldOff,
+    Unlock,
+    UserCog
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -412,6 +413,75 @@ function AddEmployeeModal({ isOpen, onClose, onSubmit, invitableRoles, loading, 
     );
 }
 
+function ManageEmployeeRoleModal({ employee, isOpen, onClose, onSubmit, invitableRoles, loading, businessType }) {
+    const [role, setRole] = useState(employee?.role || '');
+    const roleHelperText = getRoleHelperText(role, businessType);
+
+    useEffect(() => {
+        const firstBuiltInRole = (invitableRoles || []).find((option) => option.value !== 'custom')?.value || '';
+        setRole(employee?.role === 'custom' ? firstBuiltInRole : (employee?.role || ''));
+    }, [employee, invitableRoles]);
+
+    if (!isOpen || !employee) return null;
+
+    const roleOptions = [
+        { value: employee.role, label: employee.roleDisplay || employee.role },
+        ...(invitableRoles || []),
+    ]
+        .filter((option) => option?.value && option.value !== 'custom')
+        .filter((option, index, list) => list.findIndex((item) => item.value === option.value) === index);
+
+    const handleSubmit = (event) => {
+        event.preventDefault();
+        if (!role || role === employee.role) return;
+        onSubmit(employee, role);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700 shadow-xl">
+                <div className="p-5 border-b border-slate-200 dark:border-slate-700">
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Change Permission</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Update access for {employee.name || employee.email}.
+                    </p>
+                </div>
+                <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            New Role
+                        </label>
+                        <select
+                            value={role}
+                            onChange={(event) => setRole(event.target.value)}
+                            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                            {roleOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        {roleHelperText ? (
+                            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                {roleHelperText}
+                            </p>
+                        ) : null}
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <Button type="button" variant="ghost" onClick={onClose} className="flex-1" disabled={loading}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" className="flex-1 bg-blue-500 hover:bg-blue-600 text-white" disabled={!role || role === employee.role || loading}>
+                            {loading ? 'Saving...' : 'Save Role'}
+                        </Button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
 
 // Employee Card
 function EmployeeCard({ employee, onAction, isPending, businessType, pageLabelMap }) {
@@ -421,6 +491,8 @@ function EmployeeCard({ employee, onAction, isPending, businessType, pageLabelMa
     const customAccessSummary = employee.role === 'custom'
         ? summarizeAllowedPages(employee.customAllowedPages, pageLabelMap)
         : '';
+    const canManageEmployee = !employee.isOwner && !employee.isYou;
+    const hasMenuActions = isPending || canManageEmployee;
 
     const roleColors = {
         owner: 'bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-700 dark:from-yellow-900/40 dark:to-orange-900/40 dark:text-yellow-300',
@@ -501,23 +573,24 @@ function EmployeeCard({ employee, onAction, isPending, businessType, pageLabelMa
                 </div>
 
                 {/* Actions */}
-                <div className="relative">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setShowMenu(!showMenu)}
-                        className="text-slate-400 hover:text-slate-600"
-                    >
-                        <MoreVertical className="w-5 h-5" />
-                    </Button>
+                {hasMenuActions && (
+                    <div className="relative">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowMenu(!showMenu)}
+                            className="text-slate-400 hover:text-slate-600"
+                        >
+                            <MoreVertical className="w-5 h-5" />
+                        </Button>
 
-                    {showMenu && (
-                        <>
-                            <div
-                                className="fixed inset-0 z-40"
-                                onClick={() => setShowMenu(false)}
-                            />
-                            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-700 rounded-xl shadow-lg border border-slate-200 dark:border-slate-600 py-1 min-w-[160px] z-50">
+                        {showMenu && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setShowMenu(false)}
+                                />
+                                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-700 rounded-xl shadow-lg border border-slate-200 dark:border-slate-600 py-1 min-w-[160px] z-50">
                                 {isPending && (
                                     <button
                                         onClick={() => { copyInviteLink(); setShowMenu(false); }}
@@ -527,35 +600,47 @@ function EmployeeCard({ employee, onAction, isPending, businessType, pageLabelMa
                                         {copied ? 'Copied!' : 'Copy Invite Link'}
                                     </button>
                                 )}
-                                {!isPending && employee.status === 'active' && (
+                                {!isPending && canManageEmployee && (
+                                    <button
+                                        onClick={() => { onAction('manageRole', employee); setShowMenu(false); }}
+                                        className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center gap-2"
+                                    >
+                                        <UserCog className="w-4 h-4" />
+                                        Change Role / Permissions
+                                    </button>
+                                )}
+                                {!isPending && canManageEmployee && employee.status === 'active' && (
                                     <button
                                         onClick={() => { onAction('deactivate', employee); setShowMenu(false); }}
                                         className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center gap-2"
                                     >
-                                        <X className="w-4 h-4" />
-                                        Deactivate
+                                        <ShieldOff className="w-4 h-4" />
+                                        Block Access
                                     </button>
                                 )}
-                                {!isPending && employee.status === 'inactive' && (
+                                {!isPending && canManageEmployee && employee.status === 'inactive' && (
                                     <button
                                         onClick={() => { onAction('reactivate', employee); setShowMenu(false); }}
                                         className="w-full px-4 py-2 text-left text-sm text-green-600 hover:bg-slate-100 dark:hover:bg-slate-600 flex items-center gap-2"
                                     >
-                                        <Check className="w-4 h-4" />
-                                        Reactivate
+                                        <Unlock className="w-4 h-4" />
+                                        Unblock Access
                                     </button>
                                 )}
-                                <button
-                                    onClick={() => { onAction('remove', employee); setShowMenu(false); }}
-                                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    {isPending ? 'Cancel Invite' : 'Remove'}
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
+                                {(isPending || canManageEmployee) && (
+                                    <button
+                                        onClick={() => { onAction('remove', employee); setShowMenu(false); }}
+                                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        {isPending ? 'Cancel Invite' : 'Remove'}
+                                    </button>
+                                )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -598,6 +683,7 @@ export default function EmployeesPage() {
     const [actionLoading, setActionLoading] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [inviteDialog, setInviteDialog] = useState({ isOpen: false, link: '', email: '', role: '', accessSummary: '' });
+    const [roleDialog, setRoleDialog] = useState({ isOpen: false, employee: null });
     const [businessType, setBusinessType] = useState('restaurant');
 
     // Fetch employees
@@ -717,29 +803,47 @@ export default function EmployeesPage() {
         }
     };
 
+    const parseEmployeeResponse = async (response, fallbackMessage) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.message || fallbackMessage);
+        }
+        return data;
+    };
+
     // Handle employee actions
     const handleEmployeeAction = async (action, employee) => {
+        if (action === 'manageRole') {
+            setRoleDialog({ isOpen: true, employee });
+            return;
+        }
+
         try {
             setActionLoading(true);
             const token = await user.getIdToken();
 
             if (action === 'remove' && employee.status === 'pending') {
                 // Cancel pending invite
-                await fetch(buildEmployeesApiUrl('/api/owner/employees', { inviteCode: employee.id }), {
+                const response = await fetch(buildEmployeesApiUrl('/api/owner/employees', { inviteCode: employee.id }), {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
+                await parseEmployeeResponse(response, 'Failed to cancel invitation');
                 setPendingInvites(prev => prev.filter(p => p.id !== employee.id));
             } else if (action === 'remove') {
+                if (!window.confirm(`Remove ${employee.name || employee.email} from this team?`)) {
+                    return;
+                }
                 // Remove active employee
-                await fetch(buildEmployeesApiUrl('/api/owner/employees', { employeeId: employee.userId }), {
+                const response = await fetch(buildEmployeesApiUrl('/api/owner/employees', { employeeId: employee.userId }), {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` },
                 });
+                await parseEmployeeResponse(response, 'Failed to remove employee');
                 setEmployees(prev => prev.filter(e => e.userId !== employee.userId));
             } else {
                 // Update employee status
-                await fetch(buildEmployeesApiUrl(), {
+                const response = await fetch(buildEmployeesApiUrl(), {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -750,6 +854,7 @@ export default function EmployeesPage() {
                         action,
                     }),
                 });
+                await parseEmployeeResponse(response, 'Failed to update employee');
                 fetchEmployees(); // Refresh list
             }
 
@@ -758,7 +863,37 @@ export default function EmployeesPage() {
 
         } catch (error) {
             console.error('Action error:', error);
-            alert('Failed to perform action');
+            alert(error.message || 'Failed to perform action');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleUpdateEmployeeRole = async (employee, newRole) => {
+        try {
+            setActionLoading(true);
+            const token = await user.getIdToken();
+            const response = await fetch(buildEmployeesApiUrl(), {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    employeeId: employee.userId,
+                    action: 'updateRole',
+                    newRole,
+                }),
+            });
+
+            await parseEmployeeResponse(response, 'Failed to update role');
+            setRoleDialog({ isOpen: false, employee: null });
+            await fetchEmployees();
+            setSuccessMessage('Employee role updated successfully!');
+            setTimeout(() => setSuccessMessage(''), 3000);
+        } catch (error) {
+            console.error('Role update error:', error);
+            alert(error.message || 'Failed to update role');
         } finally {
             setActionLoading(false);
         }
@@ -893,6 +1028,16 @@ export default function EmployeesPage() {
                 invitableRoles={invitableRoles}
                 loading={actionLoading}
                 allDashboardPages={allDashboardPages}
+                businessType={businessType}
+            />
+
+            <ManageEmployeeRoleModal
+                isOpen={roleDialog.isOpen}
+                employee={roleDialog.employee}
+                onClose={() => setRoleDialog({ isOpen: false, employee: null })}
+                onSubmit={handleUpdateEmployeeRole}
+                invitableRoles={invitableRoles}
+                loading={actionLoading}
                 businessType={businessType}
             />
 

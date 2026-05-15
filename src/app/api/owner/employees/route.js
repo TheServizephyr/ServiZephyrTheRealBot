@@ -65,6 +65,17 @@ function getEmployeeIdentityKey(employee = {}) {
     return String(employee.userId || employee.uid || employee.id || employee.email || '').trim().toLowerCase();
 }
 
+function employeeMatchesId(employee = {}, employeeId = '') {
+    const target = String(employeeId || '').trim().toLowerCase();
+    if (!target) return false;
+    return [
+        employee.userId,
+        employee.uid,
+        employee.id,
+        employee.email,
+    ].some((value) => String(value || '').trim().toLowerCase() === target);
+}
+
 function normalizeEmployeeForList(employee = {}, fallbackId = '', outletBusinessType = 'restaurant', roleHierarchy = {}) {
     const role = employee.role || employee.employeeRole || 'custom';
     const userId = employee.userId || employee.uid || employee.id || fallbackId || employee.email || '';
@@ -77,6 +88,50 @@ function normalizeEmployeeForList(employee = {}, fallbackId = '', outletBusiness
             : getRoleDisplayName(role, outletBusinessType),
         hierarchyOrder: roleHierarchy[role] || 99,
     };
+}
+
+async function updateLegacyEmployeeArray(firestore, collectionName, outletId, employeeId, updater) {
+    const outletRef = firestore.collection(collectionName).doc(outletId);
+    let matchedEmployee = null;
+
+    await firestore.runTransaction(async (transaction) => {
+        const outletSnap = await transaction.get(outletRef);
+        const outletData = outletSnap.exists ? outletSnap.data() : {};
+        const legacyEmployees = Array.isArray(outletData?.employees) ? outletData.employees : [];
+
+        let changed = false;
+        const nextEmployees = [];
+
+        for (const employee of legacyEmployees) {
+            if (!employeeMatchesId(employee, employeeId)) {
+                nextEmployees.push(employee);
+                continue;
+            }
+
+            matchedEmployee = employee;
+            const nextEmployee = updater(employee);
+            changed = true;
+            if (nextEmployee) {
+                nextEmployees.push(nextEmployee);
+            }
+        }
+
+        if (changed) {
+            transaction.update(outletRef, {
+                employees: nextEmployees,
+                updatedAt: FieldValue.serverTimestamp(),
+            });
+        }
+    });
+
+    return matchedEmployee;
+}
+
+async function findLegacyEmployeeRecord(firestore, collectionName, outletId, employeeId) {
+    const outletSnap = await firestore.collection(collectionName).doc(outletId).get();
+    const outletData = outletSnap.exists ? outletSnap.data() : {};
+    const legacyEmployees = Array.isArray(outletData?.employees) ? outletData.employees : [];
+    return legacyEmployees.find((employee) => employeeMatchesId(employee, employeeId)) || null;
 }
 
 // ============================================
@@ -479,8 +534,11 @@ export async function PATCH(req) {
             .doc(employeeId);
 
         const employeeDoc = await employeeRef.get();
+        const legacyEmployee = employeeDoc.exists
+            ? null
+            : await findLegacyEmployeeRecord(firestore, collectionName, outletId, employeeId);
 
-        if (!employeeDoc.exists) {
+        if (!employeeDoc.exists && !legacyEmployee) {
             return NextResponse.json(
                 { message: 'Employee not found.' },
                 { status: 404 }
@@ -488,7 +546,11 @@ export async function PATCH(req) {
         }
 
         // Clone data for processing (no longer index based)
-        const currentEmployee = { ...employeeDoc.data(), userId: employeeDoc.id };
+        const currentEmployee = normalizeEmployeeForList(
+            employeeDoc.exists ? employeeDoc.data() : legacyEmployee,
+            employeeDoc.exists ? employeeDoc.id : employeeId,
+            outletBusinessType
+        );
         const updates = {};
 
         // Check if current user can manage this employee's role
@@ -497,6 +559,15 @@ export async function PATCH(req) {
                 { message: 'You cannot manage employees at or above your level.' },
                 { status: 403 }
             );
+        }
+
+        if (['deactivate', 'reactivate', 'updateRole', 'updatePermissions'].includes(action)) {
+            const rateLimitCheck = roleChangeLimiter.check(accessContext.uid, outletId);
+            if (!rateLimitCheck.allowed) {
+                return NextResponse.json({
+                    message: `Too many role or permission changes. Please wait ${rateLimitCheck.retryAfter} seconds.`
+                }, { status: 429 });
+            }
         }
 
         // Apply action
@@ -521,7 +592,7 @@ export async function PATCH(req) {
                     );
                 }
                 updates.role = newRole;
-                updates.permissions = ROLE_PERMISSIONS[newRole];
+                updates.permissions = ROLE_PERMISSIONS[newRole] || [];
                 break;
 
             case 'updatePermissions':
@@ -556,7 +627,14 @@ export async function PATCH(req) {
         updates.updatedBy = accessContext.uid;
 
         // ✅ NEW: Update sub-collection doc
-        await employeeRef.update(updates);
+        if (employeeDoc.exists) {
+            await employeeRef.update(updates);
+        }
+        await updateLegacyEmployeeArray(firestore, collectionName, outletId, employeeId, (employee) => ({
+            ...employee,
+            ...updates,
+            userId: employee.userId || employeeId,
+        }));
 
         // Also update the employee's user document if deactivating/reactivating
         if (action === 'deactivate' || action === 'reactivate' || action === 'updateRole' || action === 'updatePermissions') {
@@ -565,14 +643,6 @@ export async function PATCH(req) {
 
             if (employeeUserDoc.exists) {
                 const linkedOutlets = employeeUserDoc.data().linkedOutlets || [];
-                // 🔒 Rate limit check (10 role changes per minute)
-                const rateLimitCheck = roleChangeLimiter.check(accessContext.uid, outletId);
-                if (!rateLimitCheck.allowed) {
-                    return NextResponse.json({
-                        message: `Too many role changes. Please wait ${rateLimitCheck.retryAfter} seconds.`
-                    }, { status: 429 });
-                }
-
                 // Update role in Firestore
                 const outletIndex = linkedOutlets.findIndex(o => o.outletId === outletId);
 
@@ -682,15 +752,18 @@ export async function DELETE(req) {
             .doc(employeeId);
 
         const employeeDoc = await employeeRef.get();
+        const legacyEmployee = employeeDoc.exists
+            ? null
+            : await findLegacyEmployeeRecord(firestore, collectionName, outletId, employeeId);
 
-        if (!employeeDoc.exists) {
+        if (!employeeDoc.exists && !legacyEmployee) {
             return NextResponse.json(
                 { message: 'Employee not found.' },
                 { status: 404 }
             );
         }
 
-        const removedEmployee = employeeDoc.data();
+        const removedEmployee = employeeDoc.exists ? employeeDoc.data() : legacyEmployee;
 
         // Check if current user can manage this employee
         if (!canManageRole(accessContext.role, removedEmployee.role)) {
@@ -700,16 +773,18 @@ export async function DELETE(req) {
             );
         }
 
-        // ✅ NEW: Delete from sub-collection
-        await employeeRef.delete();
-
-        // 🔒 Rate limit check
+        // Check rate limit before mutating employee records
         const rateLimitCheck = employeeRemoveLimiter.check(accessContext.uid, outletId);
         if (!rateLimitCheck.allowed) {
             return NextResponse.json({
                 message: `Too many employee removals. Please wait ${rateLimitCheck.retryAfter} seconds.`
             }, { status: 429 });
         }
+
+        if (employeeDoc.exists) {
+            await employeeRef.delete();
+        }
+        await updateLegacyEmployeeArray(firestore, collectionName, outletId, employeeId, () => null);
 
         // Update employee's user document - remove this outlet from linkedOutlets
         const employeeUserRef = firestore.collection('users').doc(employeeId);
