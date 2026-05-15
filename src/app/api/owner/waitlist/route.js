@@ -8,7 +8,7 @@ import crypto from 'crypto';
 export const dynamic = 'force-dynamic';
 
 const READY_TO_NOTIFY_STATUS = 'ready_to_notify';
-const ACTIVE_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived']);
+const ACTIVE_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived', 'no_show']);
 const HISTORY_STATUSES = new Set(['seated', 'cancelled', 'no_show']);
 const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
@@ -307,11 +307,12 @@ async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
         if (!normalizedPhone) continue;
 
         const lockRef = businessRef.collection('waitlist_active_phone').doc(normalizedPhone);
-        const lockSnap = await lockRef.get();
-        const lockEntryId = String(lockSnap.data()?.entryId || '').trim();
-        if (lockSnap.exists && lockEntryId === entryDoc.id) {
-            batch.delete(lockRef);
-        }
+        batch.set(lockRef, {
+            phone: normalizedPhone,
+            entryId: entryDoc.id,
+            status: 'active',
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
     }
 
     await batch.commit();
@@ -419,9 +420,6 @@ export async function GET(req) {
                 businessName: businessData.name,
             });
             autoExpiredCount = await expireNoShows({ firestore, businessRef, noShowTimeoutMs });
-            if (autoExpiredCount > 0) {
-                promotedEntryId = await autoPromoteNextPending({ firestore, businessRef });
-            }
         }
 
         let waitlistDocs = [];
@@ -709,7 +707,7 @@ export async function PATCH(req) {
             }
         });
 
-        const shouldPromoteNext = ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled', 'no_show'].includes(status);
+        const shouldPromoteNext = ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled'].includes(status);
         const promotedEntryId = shouldPromoteNext
             ? await autoPromoteNextPending({ firestore, businessRef })
             : null;

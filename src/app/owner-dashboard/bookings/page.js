@@ -34,7 +34,7 @@ import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole, resolveRolePe
 
 export const dynamic = 'force-dynamic';
 
-const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived'];
+const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived', 'no_show'];
 const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_BOOKINGS, PERMISSIONS.MANAGE_BOOKINGS, PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
 const DINE_IN_TABLE_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN, PERMISSIONS.VIEW_TABLES, PERMISSIONS.ASSIGN_TABLE];
 
@@ -525,7 +525,7 @@ const HistoryCard = ({ name, phone, pax, time, status, type, token }) => {
         seated: "bg-green-500/10 text-green-500",
         cancelled: "bg-red-500/10 text-red-500",
         completed: "bg-blue-500/10 text-blue-500",
-        no_show: "bg-amber-500/10 text-amber-600",
+        no_show: "bg-red-500/10 text-red-600",
     };
 
     return (
@@ -1237,9 +1237,23 @@ const WaitlistManagement = ({
         }
         const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
         const lapseMinutes = Number(waitlistMeta?.noShowTimeoutMinutes || 10);
-        const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may lapse after ${lapseMinutes} minutes, so please arrive soon to avoid cancellation.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
+        const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may be marked no-show after ${lapseMinutes} minutes, so please arrive soon.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
         window.open(`https://wa.me/91${phoneDigits}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
+    };
+
+    const handleCallCustomer = async (entry) => {
+        const phoneDigits = String(entry?.phone || '').replace(/\D/g, '');
+        if (!/^\d{10}$/.test(phoneDigits)) {
+            toast({ title: "Phone Missing", description: "Add a valid phone number before calling.", variant: "destructive" });
+            return;
+        }
+
+        if (entry.status !== 'notified' && entry.status !== 'no_show') {
+            await handleUpdateStatus(entry.id, 'notified');
+        }
+
+        window.location.href = `tel:+91${phoneDigits}`;
     };
 
     const handleArrivalScanSuccess = useCallback(async (decodedText) => {
@@ -1409,6 +1423,7 @@ const WaitlistManagement = ({
                         const isNotified = entry.status === 'notified';
                         const isReadyToNotify = entry.status === 'ready_to_notify';
                         const isArrived = entry.status === 'arrived';
+                        const isNoShow = entry.status === 'no_show';
                         const notifiedAtMs = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
                         const computedDeadlineMs = notifiedAtMs
                             ? (notifiedAtMs + Math.max(1, Number(waitlistMeta?.noShowTimeoutMinutes || 10)) * 60 * 1000)
@@ -1433,9 +1448,10 @@ const WaitlistManagement = ({
                         return (
                             <Card key={entry.id} className={cn(
                                 "border-l-4 transition-all duration-300",
-                                isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isArrived ? "border-l-purple-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
+                                isNoShow ? "border-l-red-500 bg-red-500/5" : isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isArrived ? "border-l-purple-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
                                 isRecommended && !isNotified && "animate-pulse-green border-green-500/50",
-                                isNotified && "animate-pulse-yellow border-amber-500/50"
+                                isNotified && "animate-pulse-yellow border-amber-500/50",
+                                isNoShow && "border-red-500/50"
                             )}>
                                 <CardContent className="p-4 space-y-4">
                                     <div className="flex justify-between items-start">
@@ -1452,6 +1468,9 @@ const WaitlistManagement = ({
                                             {isArrived && (
                                                 <div className="mt-1.5 h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
                                             )}
+                                            {isNoShow && (
+                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-red-500" />
+                                            )}
                                             <div>
                                                 <h4 className="font-bold flex items-center gap-2">
                                                     {entry.name}
@@ -1463,13 +1482,16 @@ const WaitlistManagement = ({
                                                     {isRecommended && !isNotified && (
                                                         <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md border border-green-500/20">Ready to Seat</span>
                                                     )}
+                                                    {isNoShow && (
+                                                        <span className="text-[10px] bg-red-500/10 text-red-600 px-1.5 py-0.5 rounded-md border border-red-500/20">No Show</span>
+                                                    )}
                                                 </h4>
                                                 <p className="text-xs text-muted-foreground">{hasContactPhone ? `+91 ${entryPhoneDigits}` : 'No phone added'}</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
-                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isArrived ? "bg-purple-500/10 text-purple-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
-                                                {isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isArrived ? 'Arrived' : isRecommended ? 'Recommended' : 'Waiting'}
+                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNoShow ? "bg-red-500/10 text-red-600" : isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isArrived ? "bg-purple-500/10 text-purple-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                                {isNoShow ? 'No Show' : isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isArrived ? 'Arrived' : isRecommended ? 'Recommended' : 'Waiting'}
                                             </div>
                                             {isNotified && remainingNoShowMinutes !== null && (
                                                 <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
@@ -1510,8 +1532,14 @@ const WaitlistManagement = ({
                                             <FaWhatsapp size={15} className="mr-1.5 text-green-500" /> Notify
                                         </Button>
                                         {hasContactPhone ? (
-                                            <Button variant="outline" size="sm" className="h-9 text-xs" asChild>
-                                                <a href={`tel:+91${entryPhoneDigits}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-9 text-xs"
+                                                disabled={actionLoading === entry.id}
+                                                onClick={() => handleCallCustomer(entry)}
+                                            >
+                                                <PhoneCall size={14} className="mr-1.5" /> Call
                                             </Button>
                                         ) : (
                                             <Button variant="outline" size="sm" className="h-9 text-xs" disabled>
@@ -1734,8 +1762,13 @@ const WaitlistManagement = ({
                                             <FaWhatsapp size={15} className="mr-1.5 text-green-500" /> Notify
                                         </Button>
                                         {hasScannedContactPhone ? (
-                                            <Button variant="outline" size="sm" asChild>
-                                                <a href={`tel:+91${scannedPhoneDigits}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={actionLoading === scannedWaitlistEntry.id}
+                                                onClick={() => handleCallCustomer(scannedWaitlistEntry)}
+                                            >
+                                                <PhoneCall size={14} className="mr-1.5" /> Call
                                             </Button>
                                         ) : (
                                             <Button variant="outline" size="sm" disabled>
@@ -2518,7 +2551,7 @@ function BookingsPageContent() {
                                     <Save size={14} className="mr-2" /> Save
                                 </Button>
                             </div>
-                            <p className="text-xs text-muted-foreground">Used for auto no-show expiry after notify.</p>
+                            <p className="text-xs text-muted-foreground">After notify/call, marks the live card red as No Show.</p>
                         </div>
 
                         <div className="pt-1">
