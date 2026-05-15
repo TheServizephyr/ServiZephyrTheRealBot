@@ -170,6 +170,15 @@ export async function POST(req) {
             'features.employeeManagement': true,
         });
 
+        const employeeSubcollectionRef = outletRef.collection('employees').doc(uid);
+        batch.set(employeeSubcollectionRef, {
+            ...employeeEntryForOutlet,
+            userId: uid,
+            addedAt: FieldValue.serverTimestamp(),
+            acceptedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
         // 3. Prepare linked outlet data for user's document
         const linkedOutletEntry = {
             outletId: inviteData.outletId,

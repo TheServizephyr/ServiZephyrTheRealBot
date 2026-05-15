@@ -1,6 +1,6 @@
 /**
  * Employee Management API
- * 
+ *
  * Endpoints:
  * - POST: Invite new employee (send email invitation)
  * - GET: List employees for outlet
@@ -59,6 +59,24 @@ function getBusinessTypeFromCollectionName(collectionName) {
     if (collectionName === 'shops') return 'store';
     if (collectionName === 'street_vendors') return 'street-vendor';
     return 'restaurant';
+}
+
+function getEmployeeIdentityKey(employee = {}) {
+    return String(employee.userId || employee.uid || employee.id || employee.email || '').trim().toLowerCase();
+}
+
+function normalizeEmployeeForList(employee = {}, fallbackId = '', outletBusinessType = 'restaurant', roleHierarchy = {}) {
+    const role = employee.role || employee.employeeRole || 'custom';
+    const userId = employee.userId || employee.uid || employee.id || fallbackId || employee.email || '';
+    return {
+        ...employee,
+        userId,
+        role,
+        roleDisplay: role === 'custom'
+            ? (employee.customRoleName || 'Custom')
+            : getRoleDisplayName(role, outletBusinessType),
+        hierarchyOrder: roleHierarchy[role] || 99,
+    };
 }
 
 // ============================================
@@ -299,14 +317,45 @@ export async function GET(req) {
             .collection('employees')
             .get();
 
-        const employeesFromOutlet = employeesSnap.docs.map(doc => ({
-            ...doc.data(),
-            userId: doc.id, // Ensure ID is present
-            roleDisplay: doc.data().role === 'custom'
-                ? (doc.data().customRoleName || 'Custom')
-                : getRoleDisplayName(doc.data().role, outletBusinessType),
-            hierarchyOrder: ROLE_HIERARCHY[doc.data().role] || 99,
-        }));
+        const employeesFromOutlet = employeesSnap.docs.map(doc => (
+            normalizeEmployeeForList(doc.data(), doc.id, outletBusinessType, ROLE_HIERARCHY)
+        ));
+
+        const seenEmployees = new Set(employeesFromOutlet.map(getEmployeeIdentityKey).filter(Boolean));
+        const legacyEmployees = Array.isArray(outletData.employees)
+            ? outletData.employees
+                .map((employee) => normalizeEmployeeForList(employee, employee?.userId || '', outletBusinessType, ROLE_HIERARCHY))
+                .filter((employee) => {
+                    const key = getEmployeeIdentityKey(employee);
+                    if (!key || seenEmployees.has(key)) return false;
+                    seenEmployees.add(key);
+                    return true;
+                })
+            : [];
+
+        if (legacyEmployees.length > 0) {
+            const backfillBatch = firestore.batch();
+            let backfillCount = 0;
+            for (const employee of legacyEmployees) {
+                const employeeUserId = String(employee.userId || '').trim();
+                if (!employeeUserId || employeeUserId.includes('@')) continue;
+                const employeeRef = firestore
+                    .collection(collectionName)
+                    .doc(outletId)
+                    .collection('employees')
+                    .doc(employeeUserId);
+                backfillBatch.set(employeeRef, {
+                    ...employee,
+                    userId: employeeUserId,
+                    migratedFromLegacyEmployeesArray: true,
+                    updatedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
+                backfillCount += 1;
+            }
+            if (backfillCount > 0) {
+                await backfillBatch.commit();
+            }
+        }
 
         // Create owner entry (always at top)
         const ownerId = accessContext.isOwner
@@ -328,7 +377,7 @@ export async function GET(req) {
         };
 
         // Combine owner + employees, sort by hierarchy
-        const allTeamMembers = [ownerEntry, ...employeesFromOutlet]
+        const allTeamMembers = [ownerEntry, ...employeesFromOutlet, ...legacyEmployees]
             .sort((a, b) => a.hierarchyOrder - b.hierarchyOrder);
 
         // Get pending invitations
@@ -357,7 +406,7 @@ export async function GET(req) {
             };
         }).sort((a, b) => a.hierarchyOrder - b.hierarchyOrder);
 
-        // Get roles that current user can invite  
+        // Get roles that current user can invite
         const invitableRoles = getInvitableRoles(accessContext.role).map(role => ({
             value: role,
             label: getRoleDisplayName(role, outletBusinessType),
