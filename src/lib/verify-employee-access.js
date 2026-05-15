@@ -1,23 +1,24 @@
 /**
  * Employee Access Verification Helper
- * 
+ *
  * SECURITY: This module verifies that a user is authorized to access an owner's data.
- * 
+ *
  * Access is granted if:
  * 1. User is the owner themselves
  * 2. User is an admin (impersonation)
  * 3. User is an employee of the owner's outlet (employee_of)
- * 
+ *
  * Access is DENIED for:
  * - Random users trying to access via URL manipulation
  * - Employees trying to access outlets they don't belong to
  */
 
 import { getFirestore } from '@/lib/firebase-admin';
+import { resolveRolePermissions } from '@/lib/permissions';
 
 /**
  * Verify if a user has access to an owner's data
- * 
+ *
  * @param {string} requesterId - The UID of the user making the request
  * @param {string} targetOwnerId - The UID of the owner whose data is being accessed
  * @param {object} userData - The requester's user document data
@@ -47,7 +48,7 @@ export async function verifyEmployeeAccess(requesterId, targetOwnerId, userData)
             authorized: true,
             reason: 'employee_access',
             employeeRole: matchingOutlet.employeeRole,
-            permissions: matchingOutlet.permissions || [],
+            permissions: resolveRolePermissions(matchingOutlet.employeeRole, matchingOutlet.permissions),
             customAllowedPages: matchingOutlet.customAllowedPages || null,
             outletId: matchingOutlet.outletId,
             outletName: matchingOutlet.outletName,
@@ -67,7 +68,7 @@ export async function verifyEmployeeAccess(requesterId, targetOwnerId, userData)
 /**
  * Helper to get target owner ID and verify access
  * Use this in API routes to securely handle impersonate_owner_id and employee_of params
- * 
+ *
  * @param {Request} req - The incoming request
  * @param {string} uid - Current user's UID
  * @param {object} userData - Current user's data from Firestore

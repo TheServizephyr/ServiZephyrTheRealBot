@@ -553,6 +553,22 @@ export function getPermissionsForRole(role) {
     return ROLE_PERMISSIONS[effectiveRole] || [];
 }
 
+export function resolveRolePermissions(role, storedPermissions = null) {
+    const effectiveRole = normalizeRole(role);
+    const stored = Array.isArray(storedPermissions)
+        ? storedPermissions.filter((permission) => typeof permission === 'string')
+        : [];
+
+    if (effectiveRole === ROLES.CUSTOM) {
+        return stored;
+    }
+
+    return Array.from(new Set([
+        ...getPermissionsForRole(effectiveRole),
+        ...stored,
+    ]));
+}
+
 /**
  * Check if user has any of the required permissions
  * @param {string[]} userPermissions - User's permissions array

@@ -30,7 +30,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
-import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole } from '@/lib/permissions';
+import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole, resolveRolePermissions } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,7 +65,7 @@ const getStoredEmployeeAccessSnapshot = (employeeOfOwnerId) => {
 
     return {
         role,
-        permissions,
+        permissions: resolveRolePermissions(role, permissions),
         customAllowedPages,
         isLoaded: false,
     };
@@ -1924,9 +1924,13 @@ function BookingsPageContent() {
                     entry?.ownerId === employeeOfOwnerId && entry?.status === 'active'
                 ));
 
+                const nextRole = outlet?.employeeRole || storedSnapshot.role;
+                const nextStoredPermissions = Array.isArray(outlet?.permissions)
+                    ? outlet.permissions
+                    : storedSnapshot.permissions;
                 const nextAccess = {
-                    role: outlet?.employeeRole || storedSnapshot.role,
-                    permissions: Array.isArray(outlet?.permissions) ? outlet.permissions : storedSnapshot.permissions,
+                    role: nextRole,
+                    permissions: resolveRolePermissions(nextRole, nextStoredPermissions),
                     customAllowedPages: Array.isArray(outlet?.customAllowedPages)
                         ? outlet.customAllowedPages
                         : storedSnapshot.customAllowedPages,

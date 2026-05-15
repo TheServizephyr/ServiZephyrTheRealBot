@@ -6,7 +6,7 @@
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 import { verifyEmployeeAccess } from '@/lib/verify-employee-access';
-import { PERMISSIONS, getPermissionsForRole, normalizeRole } from '@/lib/permissions';
+import { PERMISSIONS, getPermissionsForRole, normalizeRole, resolveRolePermissions } from '@/lib/permissions';
 import { getEphemeralCache, setEphemeralCache } from '@/lib/server/ephemeralCache';
 
 const IMPERSONATION_CACHE_TTL_MS = 60 * 1000; // 60 seconds
@@ -138,7 +138,7 @@ function getPreferredCollections(userRole, userBusinessType) {
 /**
  * Verify owner/admin and get business with audit logging support
  * This is a common helper that can be used across all owner API routes
- * 
+ *
  * @param {Request} req - Next.js request object
  * @param {string} action - Action being performed (e.g., 'view_orders', 'update_settings')
  * @param {Object} metadata - Additional metadata to log (optional)
@@ -148,7 +148,7 @@ function getPreferredCollections(userRole, userBusinessType) {
 /**
  * Verify owner/admin and get business with audit logging support
  * This is a common helper that can be used across all owner API routes
- * 
+ *
  * @param {Request} req - Next.js request object
  * @param {string} action - Action being performed (e.g., 'view_orders', 'update_settings')
  * @param {Object} metadata - Additional metadata to log (optional)
@@ -285,11 +285,9 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
                     effectiveCallerPermissions = Object.values(PERMISSIONS);
                 } else if (employeeOfOwnerId && employeeAccessResult) {
                     effectiveCallerRole = employeeAccessResult.employeeRole || userRole;
-                    // Prefer explicit per-employee permissions stored in linkedOutlets.
-                    // Fallback to role defaults for backward compatibility.
-                    effectiveCallerPermissions = (employeeAccessResult.permissions && employeeAccessResult.permissions.length > 0)
-                        ? employeeAccessResult.permissions
-                        : getPermissionsForRole(effectiveCallerRole);
+                    // Merge built-in role defaults with stored permissions so older
+                    // employee records pick up new permissions added to their role.
+                    effectiveCallerPermissions = resolveRolePermissions(effectiveCallerRole, employeeAccessResult.permissions);
                 } else {
                     // For direct owner access, use getPermissionsForRole to properly flatten nested permissions
                     effectiveCallerPermissions = getPermissionsForRole(effectiveCallerRole);

@@ -1,17 +1,17 @@
 /**
  * ServiZephyr RBAC - Access Verification Helper
- * 
+ *
  * This replaces/extends the existing verify-owner-with-audit.js for RBAC support.
  * It handles both:
  * 1. Old users (owner with ownerId in restaurant) - backward compatible
  * 2. New users (employees with linkedOutlets) - RBAC enabled
- * 
+ *
  * Usage:
  * const { outletId, role, permissions, isOwner } = await verifyAccessWithRBAC(req, 'view_orders');
  */
 
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
-import { PERMISSIONS, ROLE_PERMISSIONS, ROLES, hasPermission } from '@/lib/permissions';
+import { PERMISSIONS, ROLES, hasPermission, resolveRolePermissions } from '@/lib/permissions';
 
 // ============================================
 // MAIN RBAC VERIFICATION FUNCTION
@@ -20,7 +20,7 @@ import { PERMISSIONS, ROLE_PERMISSIONS, ROLES, hasPermission } from '@/lib/permi
 /**
  * Verify user access with RBAC support
  * Works for both owners and employees
- * 
+ *
  * @param {Request} req - Next.js request object
  * @param {string|string[]} requiredPermission - Permission(s) required for this action
  * @param {Object} options - Additional options
@@ -189,7 +189,7 @@ async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId,
     }
 
     // Get permissions for this employee at this outlet
-    const permissions = linkedOutlet.permissions || ROLE_PERMISSIONS[linkedOutlet.employeeRole] || [];
+    const permissions = resolveRolePermissions(linkedOutlet.employeeRole, linkedOutlet.permissions);
 
     // Check required permission
     if (requiredPermission) {
@@ -244,7 +244,7 @@ async function verifyEmployeeAccess(firestore, uid, userData, requestedOutletId,
 /**
  * Quick permission check without full context
  * Use when you already have the access context
- * 
+ *
  * @param {Object} accessContext - Context from verifyAccessWithRBAC
  * @param {string} permission - Permission to check
  * @returns {boolean}
@@ -256,7 +256,7 @@ export function checkPermission(accessContext, permission) {
 
 /**
  * Throw error if permission not present
- * 
+ *
  * @param {Object} accessContext - Context from verifyAccessWithRBAC
  * @param {string} permission - Permission to require
  * @throws Error if permission not present
