@@ -20,6 +20,7 @@ import {
   FileText, // Import FileText for Audit Logs
   Hash, // Import Hash for Check IDs
   ShieldAlert,
+  UserCog,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -182,6 +183,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/users" icon={Users} isCollapsed={isCollapsed}>
                   Users
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/employees" icon={UserCog} isCollapsed={isCollapsed}>
+                  Employees
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/check-ids" icon={Hash} isCollapsed={isCollapsed}>
                   Check IDs
