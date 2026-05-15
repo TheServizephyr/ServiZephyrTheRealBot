@@ -37,6 +37,7 @@ export const dynamic = 'force-dynamic';
 const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived', 'no_show'];
 const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_BOOKINGS, PERMISSIONS.MANAGE_BOOKINGS, PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
 const DINE_IN_TABLE_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN, PERMISSIONS.VIEW_TABLES, PERMISSIONS.ASSIGN_TABLE];
+const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 const parseStoredJsonArray = (key) => {
     if (typeof window === 'undefined') return null;
@@ -224,7 +225,74 @@ const getWaitlistHistoryMs = (entry) => (
     || getTimestampMs(entry?.createdAt)
 );
 
-const sortActiveWaitlistEntries = (entries = []) => [...entries].sort((a, b) => {
+const getWaitlistHistoryTime = (entry) => (
+    entry?.noShowAt || entry?.seatedAt || entry?.cancelledAt || entry?.createdAt || entry?.updatedAt
+);
+
+const isLiveActiveWaitlistEntry = (entry = {}, nowMs = Date.now()) => {
+    const status = String(entry?.status || '').toLowerCase();
+    if (status !== 'no_show') return true;
+    const noShowAtMs = getTimestampMs(entry?.noShowAt) || getTimestampMs(entry?.updatedAt);
+    return !noShowAtMs || (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+};
+
+const filterWaitlistHistoryEntries = (entries = [], searchQuery = '') => {
+    const q = String(searchQuery || '').trim().toLowerCase();
+    const sortedEntries = [...entries].sort((a, b) => getWaitlistHistoryMs(b) - getWaitlistHistoryMs(a));
+    if (!q) return sortedEntries;
+    return sortedEntries.filter((entry) => {
+        const name = String(entry?.name || '').toLowerCase();
+        const phone = String(entry?.phone || '');
+        const token = String(entry?.waitlistToken || '').toLowerCase();
+        return name.includes(q) || phone.includes(q) || token.includes(q);
+    });
+};
+
+const formatHistoryStatus = (status) => String(status || '').replace(/_/g, ' ').toUpperCase();
+
+const escapeExcelHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const sanitizeExportFilePart = (value) => (
+    String(value || 'service-history')
+        .trim()
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'service-history'
+);
+
+const downloadHistoryExcel = ({ rows, fileName }) => {
+    const headers = ['Type', 'Name', 'Phone', 'Token', 'Pax', 'Status', 'Time', 'Reference ID'];
+    const tableRows = rows.map((row) => (
+        `<tr>${row.map((cell) => `<td style='mso-number-format:"\\@";'>${escapeExcelHtml(cell)}</td>`).join('')}</tr>`
+    )).join('');
+    const workbookHtml = `
+        <html>
+            <head><meta charset="UTF-8" /></head>
+            <body>
+                <table border="1">
+                    <thead><tr>${headers.map((header) => `<th>${escapeExcelHtml(header)}</th>`).join('')}</tr></thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            </body>
+        </html>
+    `;
+    const blob = new Blob(['\ufeff', workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+};
+
+const sortActiveWaitlistEntries = (entries = []) => [...entries].filter(isLiveActiveWaitlistEntry).sort((a, b) => {
     const pA = Number(a?.queuePriority || 2);
     const pB = Number(b?.queuePriority || 2);
     if (pA !== pB) return pA - pB;
@@ -584,15 +652,7 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
     useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
     const filteredEntries = useMemo(() => {
-        const q = String(searchQuery || '').trim().toLowerCase();
-        const sortedEntries = [...entries].sort((a, b) => getWaitlistHistoryMs(b) - getWaitlistHistoryMs(a));
-        if (!q) return sortedEntries;
-        return sortedEntries.filter((entry) => {
-            const name = String(entry?.name || '').toLowerCase();
-            const phone = String(entry?.phone || '');
-            const token = String(entry?.waitlistToken || '').toLowerCase();
-            return name.includes(q) || phone.includes(q) || token.includes(q);
-        });
+        return filterWaitlistHistoryEntries(entries, searchQuery);
     }, [entries, searchQuery]);
 
     return (
@@ -611,7 +671,7 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
                             name={entry.name}
                             phone={entry.phone}
                             pax={entry.paxCount}
-                            time={entry.noShowAt || entry.seatedAt || entry.cancelledAt || entry.createdAt}
+                            time={getWaitlistHistoryTime(entry)}
                             status={entry.status}
                             type="waitlist"
                             token={entry.waitlistToken}
@@ -781,10 +841,12 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
 };
 
 const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true }) => {
+    const { toast } = useToast();
     const [historySearchQuery, setHistorySearchQuery] = useState('');
     const [historyRangeMode, setHistoryRangeMode] = useState('today');
     const [historyStartDate, setHistoryStartDate] = useState(() => getLocalDateKey());
     const [historyEndDate, setHistoryEndDate] = useState(() => getLocalDateKey());
+    const [isExportingHistory, setIsExportingHistory] = useState(false);
     const historyDateRange = useMemo(
         () => normalizeDateRange(historyStartDate, historyEndDate),
         [historyStartDate, historyEndDate]
@@ -818,6 +880,73 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
             return name.includes(q) || phone.includes(q) || token.includes(q);
         });
     }, [bookingsHistory, historyDateRange.endDate, historyDateRange.startDate, historySearchQuery]);
+
+    const fetchWaitlistHistoryForExport = useCallback(async () => {
+        if (!canUseWaitlist) return [];
+        const user = auth.currentUser;
+        if (!user) throw new Error('Please sign in again before exporting history.');
+        const idToken = await user.getIdToken();
+        const url = new URL('/api/owner/waitlist', window.location.origin);
+        url.searchParams.append('history', 'true');
+        url.searchParams.append('startDate', historyDateRange.startDate);
+        url.searchParams.append('endDate', historyDateRange.endDate);
+        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+
+        const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || 'Failed to export waitlist history.');
+        return filterWaitlistHistoryEntries(data.entries || [], historySearchQuery);
+    }, [canUseWaitlist, employeeOfOwnerId, historyDateRange.endDate, historyDateRange.startDate, historySearchQuery, impersonatedOwnerId]);
+
+    const handleExportHistory = useCallback(async () => {
+        setIsExportingHistory(true);
+        try {
+            const waitlistRows = canUseWaitlist ? await fetchWaitlistHistoryForExport() : [];
+            const bookingRows = canUseBookings ? filteredBookingsHistory : [];
+            const rows = [
+                ...waitlistRows.map((entry) => [
+                    'Waitlist',
+                    entry.name || '',
+                    entry.phone || '',
+                    entry.waitlistToken || '',
+                    entry.paxCount || '',
+                    formatHistoryStatus(entry.status),
+                    formatDateTime(getWaitlistHistoryTime(entry)),
+                    entry.id || '',
+                ]),
+                ...bookingRows.map((booking) => [
+                    'Booking',
+                    booking.customerName || '',
+                    booking.customerPhone || '',
+                    booking.waitlistToken || '',
+                    booking.partySize || '',
+                    formatHistoryStatus(booking.status),
+                    formatDateTime(booking.bookingDateTime),
+                    booking.id || '',
+                ]),
+            ];
+
+            if (rows.length === 0) {
+                toast({ title: 'Nothing to Export', description: 'No history found for the selected filter.' });
+                return;
+            }
+
+            const restaurantName = sanitizeExportFilePart(restaurant?.name || 'service-history');
+            const rangeName = historyDateRange.startDate === historyDateRange.endDate
+                ? historyDateRange.startDate
+                : `${historyDateRange.startDate}-to-${historyDateRange.endDate}`;
+            downloadHistoryExcel({
+                rows,
+                fileName: `${restaurantName}-history-${rangeName}.xls`,
+            });
+            toast({ title: 'Export Ready', description: `${rows.length} history rows exported for Excel.` });
+        } catch (error) {
+            toast({ title: 'Export Error', description: error.message, variant: 'destructive' });
+        } finally {
+            setIsExportingHistory(false);
+        }
+    }, [canUseBookings, canUseWaitlist, fetchWaitlistHistoryForExport, filteredBookingsHistory, historyDateRange.endDate, historyDateRange.startDate, restaurant?.name, toast]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -875,6 +1004,17 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                                     />
                                 </PopoverContent>
                             </Popover>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="gap-2"
+                                disabled={isExportingHistory}
+                                onClick={handleExportHistory}
+                            >
+                                {isExportingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                Export
+                            </Button>
                         </div>
                     </div>
                 </DialogHeader>
@@ -2335,10 +2475,10 @@ function BookingsPageContent() {
         return getT(a.bookingDateTime) - getT(b.bookingDateTime);
     }), [filtered]);
 
-    const past = useMemo(() => filtered.filter(b => b.status === 'completed' || b.status === 'cancelled').sort((a, b) => {
+    const past = useMemo(() => bookings.filter(b => b.status === 'completed' || b.status === 'cancelled').sort((a, b) => {
         const getT = v => v?._seconds ? v._seconds * 1000 : new Date(v).getTime();
         return getT(b.bookingDateTime) - getT(a.bookingDateTime);
-    }), [filtered]);
+    }), [bookings]);
     const isRestaurantBusiness = businessInfo?.collection === 'restaurants';
 
     if (!loading && businessInfo && !isRestaurantBusiness) {

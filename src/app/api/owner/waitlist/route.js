@@ -11,6 +11,7 @@ const READY_TO_NOTIFY_STATUS = 'ready_to_notify';
 const ACTIVE_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived', 'no_show']);
 const HISTORY_STATUSES = new Set(['seated', 'cancelled', 'no_show']);
 const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
+const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -106,6 +107,15 @@ function getHistoryMillis(entry = {}) {
         || 0;
 }
 
+function isLiveActiveWaitlistRecord(entry = {}, nowMs = Date.now()) {
+    const status = String(entry?.status || '').toLowerCase();
+    if (!ACTIVE_STATUSES.has(status)) return false;
+    if (status !== 'no_show') return true;
+
+    const noShowAtMs = toMillis(entry.noShowAt) || toMillis(entry.updatedAt) || 0;
+    return !noShowAtMs || (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+}
+
 function isValidDateKey(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 }
@@ -199,8 +209,7 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
                 if (lockSnap.exists && lockedEntryId) {
                     const lockedEntryRef = businessRef.collection('waitlist').doc(lockedEntryId);
                     const lockedEntrySnap = await transaction.get(lockedEntryRef);
-                    const lockedStatus = String(lockedEntrySnap.data()?.status || '').toLowerCase();
-                    if (lockedEntrySnap.exists && ACTIVE_STATUSES.has(lockedStatus)) {
+                    if (lockedEntrySnap.exists && isLiveActiveWaitlistRecord(lockedEntrySnap.data())) {
                         linkedEntryId = lockedEntryId;
                     }
                 }
@@ -439,7 +448,7 @@ export async function GET(req) {
             waitlistDocs = waitlistSnap.docs;
         }
 
-        const entries = waitlistDocs.map((doc) => {
+        let entries = waitlistDocs.map((doc) => {
             const data = doc.data() || {};
             return {
                 id: doc.id,
@@ -454,6 +463,10 @@ export async function GET(req) {
                 arrivedAt: toIso(data.arrivedAt) || null,
             };
         });
+
+        if (!isHistory) {
+            entries = entries.filter((entry) => isLiveActiveWaitlistRecord(entry));
+        }
 
         if (isHistory) {
             entries.sort((a, b) => getHistoryMillis(b) - getHistoryMillis(a));
@@ -540,8 +553,7 @@ export async function POST(req) {
                 if (lockSnap.exists && existingEntryId) {
                     const existingEntryRef = businessRef.collection('waitlist').doc(existingEntryId);
                     const existingEntrySnap = await transaction.get(existingEntryRef);
-                    const existingStatus = String(existingEntrySnap.data()?.status || '').toLowerCase();
-                    if (existingEntrySnap.exists && ACTIVE_STATUSES.has(existingStatus)) {
+                    if (existingEntrySnap.exists && isLiveActiveWaitlistRecord(existingEntrySnap.data())) {
                         throw { message: 'Active waitlist entry already exists for this phone.', status: 409 };
                     }
                 } else if (lockSnap.exists) {
