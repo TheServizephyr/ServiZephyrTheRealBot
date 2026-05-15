@@ -6,6 +6,8 @@ import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Cloc
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from "@/components/ui/switch";
@@ -52,6 +54,25 @@ const normalizeDateRange = (startDate, endDate) => {
     const end = endDate || startDate || fallback;
     if (start > end) return { startDate: end, endDate: start };
     return { startDate: start, endDate: end };
+};
+
+const formatDateKeyLabel = (dateKey) => {
+    const date = new Date(`${dateKey}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? dateKey : format(date, 'dd MMM yyyy');
+};
+
+const parseDateKey = (dateKey) => {
+    if (!dateKey) return undefined;
+    const date = new Date(`${dateKey}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const getDateRangeLabel = (range, mode) => {
+    if (mode === 'today') return 'Today';
+    if (mode === 'yesterday') return 'Yesterday';
+    if (!range?.startDate || !range?.endDate) return 'Select dates';
+    if (range.startDate === range.endDate) return formatDateKeyLabel(range.startDate);
+    return `${formatDateKeyLabel(range.startDate)} - ${formatDateKeyLabel(range.endDate)}`;
 };
 
 const normalizeClientTimestamp = (value) => {
@@ -658,6 +679,14 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         () => normalizeDateRange(historyStartDate, historyEndDate),
         [historyStartDate, historyEndDate]
     );
+    const historyRangeLabel = useMemo(
+        () => getDateRangeLabel(historyDateRange, historyRangeMode),
+        [historyDateRange, historyRangeMode]
+    );
+    const historyCalendarRange = useMemo(() => ({
+        from: parseDateKey(historyDateRange.startDate),
+        to: parseDateKey(historyDateRange.endDate),
+    }), [historyDateRange.endDate, historyDateRange.startDate]);
     const applyQuickHistoryRange = useCallback((mode) => {
         const nextRange = getQuickDateRange(mode);
         setHistoryRangeMode(mode);
@@ -691,53 +720,50 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                             <DialogDescription>Review completed and cancelled services.</DialogDescription>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant={historyRangeMode === 'today' ? 'default' : 'outline'}
-                                onClick={() => applyQuickHistoryRange('today')}
-                            >
-                                Today
-                            </Button>
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant={historyRangeMode === 'yesterday' ? 'default' : 'outline'}
-                                onClick={() => applyQuickHistoryRange('yesterday')}
-                            >
-                                Yesterday
-                            </Button>
-                            <div className="flex items-center gap-1">
-                                <span className="text-xs text-muted-foreground">From</span>
-                                <input
-                                    type="date"
-                                    value={historyStartDate}
-                                    onChange={(e) => {
-                                        const nextStartDate = e.target.value;
-                                        setHistoryRangeMode('custom');
-                                        setHistoryStartDate(nextStartDate);
-                                        if (nextStartDate > historyEndDate) setHistoryEndDate(nextStartDate);
-                                    }}
-                                    onFocus={() => setHistoryRangeMode('custom')}
-                                    className="h-9 rounded-md border border-border bg-muted/30 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                                />
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <span className="text-xs text-muted-foreground">To</span>
-                                <input
-                                    type="date"
-                                    value={historyEndDate}
-                                    min={historyStartDate}
-                                    onChange={(e) => {
-                                        const nextEndDate = e.target.value;
-                                        setHistoryRangeMode('custom');
-                                        setHistoryEndDate(nextEndDate);
-                                        if (nextEndDate < historyStartDate) setHistoryStartDate(nextEndDate);
-                                    }}
-                                    onFocus={() => setHistoryRangeMode('custom')}
-                                    className="h-9 rounded-md border border-border bg-muted/30 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                                />
-                            </div>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button type="button" size="sm" variant="outline" className="min-w-[170px] justify-start gap-2">
+                                        <Filter className="h-4 w-4" />
+                                        <span className="truncate">{historyRangeLabel}</span>
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="end" className="w-auto p-2">
+                                    <div className="mb-2 grid grid-cols-2 gap-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={historyRangeMode === 'today' ? 'default' : 'outline'}
+                                            className="h-8"
+                                            onClick={() => applyQuickHistoryRange('today')}
+                                        >
+                                            Today
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant={historyRangeMode === 'yesterday' ? 'default' : 'outline'}
+                                            className="h-8"
+                                            onClick={() => applyQuickHistoryRange('yesterday')}
+                                        >
+                                            Yesterday
+                                        </Button>
+                                    </div>
+                                    <Calendar
+                                        mode="range"
+                                        numberOfMonths={1}
+                                        selected={historyCalendarRange}
+                                        onSelect={(range) => {
+                                            if (!range?.from) return;
+                                            const nextStartDate = getLocalDateKey(range.from);
+                                            const nextEndDate = getLocalDateKey(range.to || range.from);
+                                            setHistoryRangeMode('custom');
+                                            setHistoryStartDate(nextStartDate);
+                                            setHistoryEndDate(nextEndDate);
+                                        }}
+                                        className="rounded-md border border-border"
+                                    />
+                                </PopoverContent>
+                            </Popover>
                         </div>
                     </div>
                 </DialogHeader>
@@ -768,7 +794,6 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                             historyDateRange={historyDateRange}
                         />
                     </TabsContent>
-
                     <TabsContent value="bookings" className="space-y-4 py-4">
                         {filteredBookingsHistory.length === 0 ? (
                             <p className="text-center text-muted-foreground py-10">No booking history found.</p>
@@ -801,7 +826,6 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         </Dialog>
     );
 };
-
 const WaitlistManagement = ({
     restaurant,
     impersonatedOwnerId,
@@ -1023,28 +1047,51 @@ const WaitlistManagement = ({
                 throw new Error('Invalid token QR.');
             }
 
-            const usesTraditionalSeating = waitlistSeatingMode === 'manual_seat';
-            if (usesTraditionalSeating) {
-                setIsArrivalScannerOpen(false);
-                await seatWaitlistEntry(entry, null, 'scan');
-                return;
-            }
-
             const fitTables = allTables
                 .filter((t) => t.state === 'available' && t.max_capacity >= entry.paxCount)
                 .sort((a, b) => a.max_capacity - b.max_capacity);
 
-            if (fitTables.length === 0) {
-                throw new Error('No table available for this party size.');
-            }
-
             setScanSeatingEntry(entry);
-            setScanSelectedTableId(fitTables[0].id);
+            setScanSelectedTableId(waitlistSeatingMode === 'manual_seat' ? '' : (fitTables[0]?.id || ''));
             setIsArrivalScannerOpen(false);
+            toast({ title: 'Token Scanned', description: `${entry.name} found in active waitlist.` });
         } catch (err) {
             toast({ title: 'Scan Error', description: err.message || 'Invalid QR code.', variant: 'destructive' });
         }
-    }, [restaurant?.id, entries, waitlistSeatingMode, allTables, seatWaitlistEntry, toast]);
+    }, [restaurant?.id, entries, waitlistSeatingMode, allTables, toast]);
+
+    const scannedWaitlistEntry = useMemo(() => {
+        if (!scanSeatingEntry?.id) return null;
+        return entries.find((entry) => entry.id === scanSeatingEntry.id) || scanSeatingEntry;
+    }, [entries, scanSeatingEntry]);
+
+    const scannedFitTables = useMemo(() => {
+        if (!scannedWaitlistEntry) return [];
+        return allTables
+            .filter((t) => t.state === 'available' && t.max_capacity >= Number(scannedWaitlistEntry?.paxCount || 1))
+            .sort((a, b) => a.max_capacity - b.max_capacity);
+    }, [allTables, scannedWaitlistEntry]);
+
+    const scannedWaitlistAgeLabel = useMemo(() => {
+        if (!scannedWaitlistEntry) return '';
+        const createdAtMs = getTimestampMs(scannedWaitlistEntry.createdAt);
+        return createdAtMs ? formatDistanceToNow(new Date(createdAtMs), { addSuffix: true }) : 'Just now';
+    }, [scannedWaitlistEntry]);
+
+    useEffect(() => {
+        if (!scannedWaitlistEntry) return;
+        if (waitlistSeatingMode === 'manual_seat') {
+            setScanSelectedTableId('');
+            return;
+        }
+        if (!scannedFitTables.length) {
+            setScanSelectedTableId('');
+            return;
+        }
+        if (!scannedFitTables.some((table) => table.id === scanSelectedTableId)) {
+            setScanSelectedTableId(scannedFitTables[0].id);
+        }
+    }, [scannedWaitlistEntry, scannedFitTables, scanSelectedTableId, waitlistSeatingMode]);
 
     const recommendedEntries = useMemo(() => {
         if (!entries.length || !allTables.length) return new Set();
@@ -1282,29 +1329,86 @@ const WaitlistManagement = ({
             >
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Seat Customer from Token Scan</DialogTitle>
+                        <DialogTitle>Scanned Waitlist Token</DialogTitle>
                         <DialogDescription>
-                            Select table for {scanSeatingEntry?.name || 'guest'} ({scanSeatingEntry?.paxCount || 0} pax).
+                            Review the matched customer and choose the next action.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-3">
-                        <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto">
-                            {allTables
-                                .filter((t) => t.state === 'available' && t.max_capacity >= Number(scanSeatingEntry?.paxCount || 1))
-                                .sort((a, b) => a.max_capacity - b.max_capacity)
-                                .map((t) => (
+                    {scannedWaitlistEntry && (
+                        <div className="space-y-4">
+                            <Card className="border-primary/20 bg-muted/20">
+                                <CardContent className="space-y-3 p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <h4 className="truncate text-lg font-black">{scannedWaitlistEntry.name}</h4>
+                                            <p className="text-sm text-muted-foreground">{scannedWaitlistEntry.phone}</p>
+                                        </div>
+                                        <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                                            {scannedWaitlistEntry.waitlistToken || 'TOKEN'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1"><Users size={15} /> {scannedWaitlistEntry.paxCount} Pax</span>
+                                        <span className="inline-flex items-center gap-1"><Clock size={15} /> {scannedWaitlistAgeLabel}</span>
+                                        <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-xs font-bold uppercase text-foreground">
+                                            {String(scannedWaitlistEntry.status || 'pending').replace(/_/g, ' ')}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={actionLoading === scannedWaitlistEntry.id}
+                                            onClick={() => handleNotify(scannedWaitlistEntry)}
+                                        >
+                                            <FaWhatsapp size={15} className="mr-1.5 text-green-500" /> Notify
+                                        </Button>
+                                        <Button variant="outline" size="sm" asChild>
+                                            <a href={`tel:+91${scannedWaitlistEntry.phone}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
+                                        </Button>
+                                    </div>
                                     <Button
-                                        key={t.id}
                                         type="button"
-                                        size="sm"
-                                        variant={scanSelectedTableId === t.id ? 'default' : 'outline'}
-                                        onClick={() => setScanSelectedTableId(t.id)}
+                                        variant="outline"
+                                        className="w-full"
+                                        disabled={actionLoading === scannedWaitlistEntry.id || scannedWaitlistEntry.status === 'arrived'}
+                                        onClick={async () => {
+                                            await handleUpdateStatus(scannedWaitlistEntry.id, 'arrived');
+                                            setScanSeatingEntry((current) => current ? { ...current, status: 'arrived' } : current);
+                                        }}
                                     >
-                                        T{t.id} ({t.max_capacity}P)
+                                        {actionLoading === scannedWaitlistEntry.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check size={16} className="mr-2" />}
+                                        Mark Arrived
                                     </Button>
-                                ))}
+                                </CardContent>
+                            </Card>
+                            {waitlistSeatingMode !== 'manual_seat' && (
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Seat at table</Label>
+                                    {scannedFitTables.length > 0 ? (
+                                        <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+                                            {scannedFitTables.map((t) => (
+                                                <Button
+                                                    key={t.id}
+                                                    type="button"
+                                                    size="sm"
+                                                    variant={scanSelectedTableId === t.id ? 'default' : 'outline'}
+                                                    onClick={() => setScanSelectedTableId(t.id)}
+                                                >
+                                                    T{t.id} ({t.max_capacity}P)
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700">
+                                            No available table fits this party right now.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    )}
                     <DialogFooter>
                         <Button
                             type="button"
@@ -1318,15 +1422,37 @@ const WaitlistManagement = ({
                         </Button>
                         <Button
                             type="button"
-                            disabled={!scanSeatingEntry || !scanSelectedTableId || actionLoading === scanSeatingEntry?.id}
+                            variant="destructive"
+                            disabled={!scannedWaitlistEntry || actionLoading === scannedWaitlistEntry?.id}
                             onClick={async () => {
-                                if (!scanSeatingEntry || !scanSelectedTableId) return;
-                                await seatWaitlistEntry(scanSeatingEntry, scanSelectedTableId, 'scan');
+                                if (!scannedWaitlistEntry) return;
+                                await handleUpdateStatus(scannedWaitlistEntry.id, 'cancelled');
                                 setScanSeatingEntry(null);
                                 setScanSelectedTableId('');
                             }}
                         >
-                            Confirm Seat
+                            Cancel Entry
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={
+                                !scannedWaitlistEntry
+                                || (waitlistSeatingMode !== 'manual_seat' && !scanSelectedTableId)
+                                || actionLoading === scannedWaitlistEntry?.id
+                            }
+                            onClick={async () => {
+                                if (!scannedWaitlistEntry) return;
+                                await seatWaitlistEntry(
+                                    scannedWaitlistEntry,
+                                    waitlistSeatingMode === 'manual_seat' ? null : scanSelectedTableId,
+                                    'scan'
+                                );
+                                setScanSeatingEntry(null);
+                                setScanSelectedTableId('');
+                            }}
+                        >
+                            {actionLoading === scannedWaitlistEntry?.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Seat Customer
                         </Button>
                     </DialogFooter>
                 </DialogContent>

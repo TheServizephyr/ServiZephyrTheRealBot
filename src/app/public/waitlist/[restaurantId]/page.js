@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -114,14 +114,15 @@ export default function PublicWaitlistPage({ params }) {
 
         let isCancelled = false;
 
-        const pollWaitlistStatus = async () => {
+        const pollWaitlistStatus = async ({ force = false } = {}) => {
             try {
                 const params = new URLSearchParams({
                     restaurantId,
                     entryId,
                     arrivalCode,
                 });
-                if (document.visibilityState === 'hidden') return;
+                params.set('_', String(Date.now()));
+                if (!force && document.visibilityState === 'hidden') return;
                 const res = await fetch(`/api/public/waitlist/status?${params.toString()}`, { cache: 'no-store' });
                 const data = await res.json();
                 if (!res.ok || isCancelled) return;
@@ -150,19 +151,45 @@ export default function PublicWaitlistPage({ params }) {
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                void pollWaitlistStatus();
+                void pollWaitlistStatus({ force: true });
             }
         };
+        const handleActiveRefresh = () => {
+            void pollWaitlistStatus({ force: true });
+        };
 
-        void pollWaitlistStatus();
-        const interval = window.setInterval(pollWaitlistStatus, 12000);
+        void pollWaitlistStatus({ force: true });
+        const interval = window.setInterval(() => {
+            void pollWaitlistStatus();
+        }, 3000);
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleActiveRefresh);
+        window.addEventListener('online', handleActiveRefresh);
         return () => {
             isCancelled = true;
             window.clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleActiveRefresh);
+            window.removeEventListener('online', handleActiveRefresh);
         };
     }, [restaurantId, mode, success, entryId, arrivalCode]);
+
+    const returnToFreshWaitlistForm = useCallback(() => {
+        if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+        }
+
+        setSuccess(false);
+        setError('');
+        setStatusError('');
+        setWaitlistToken('');
+        setArrivalCode('');
+        setEntryId('');
+        setQueueStatus('pending');
+        setNotifiedAt('');
+        setNoShowDeadlineAt('');
+        setIsCoinFlipped(false);
+    }, [restaurantId]);
 
     useEffect(() => {
         if (!(mode === 'waitlist' && success)) return undefined;
@@ -421,17 +448,12 @@ export default function PublicWaitlistPage({ params }) {
                         {isSeated ? (
                             <Button
                                 className="w-full h-12 text-lg font-bold"
-                                onClick={() => {
-                                    if (typeof window !== 'undefined') {
-                                        window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
-                                        window.history.back();
-                                    }
-                                }}
+                                onClick={returnToFreshWaitlistForm}
                             >
                                 <ArrowLeft className="h-5 w-5 mr-2" /> Back
                             </Button>
                         ) : (
-                            <Button className="w-full h-12 text-lg font-bold" onClick={() => window.location.reload()}>
+                            <Button className="w-full h-12 text-lg font-bold" onClick={returnToFreshWaitlistForm}>
                                 Close
                             </Button>
                         )}
