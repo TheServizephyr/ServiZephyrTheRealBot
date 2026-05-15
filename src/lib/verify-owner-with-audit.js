@@ -96,6 +96,13 @@ const ACTION_FEATURE_MAP = {
     sync_inventory_from_menu: 'inventory',
 };
 
+const CUSTOM_PAGE_PERMISSION_FALLBACK_ACTIONS = new Set([
+    'view_waitlist',
+    'create_waitlist_entry',
+    'update_waitlist_entry',
+    'view_waitlist_analytics',
+]);
+
 function normalizeBusinessType(type) {
     const normalized = String(type || '').trim().toLowerCase();
     if (normalized === 'street_vendor') return 'street-vendor';
@@ -340,6 +347,7 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
         const callerPermissions = context.callerPermissions || [];
         const hasRequiredPermission = required.some((permission) => callerPermissions.includes(permission));
         const hasCustomPageAccess =
+            CUSTOM_PAGE_PERMISSION_FALLBACK_ACTIONS.has(action) &&
             context.callerRole === 'custom' &&
             inferredFeatureId &&
             Array.isArray(context.callerCustomAllowedPages) &&
