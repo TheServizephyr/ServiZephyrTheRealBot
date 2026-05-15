@@ -95,6 +95,17 @@ const getInitialBookingsTab = (employeeOfOwnerId) => {
     return 'upcoming';
 };
 
+const getFeatureList = (businessInfo, key) => (
+    Array.isArray(businessInfo?.[key]) ? businessInfo[key] : []
+);
+
+const isWaitlistLockedForBusiness = (businessInfo) => {
+    const lockedFeatures = getFeatureList(businessInfo, 'lockedFeatures');
+    const restrictedFeatures = getFeatureList(businessInfo, 'restrictedFeatures');
+    const blockedFeatures = new Set([...lockedFeatures, ...restrictedFeatures]);
+    return ['waitlist', 'dine-in', 'bookings'].some((featureId) => blockedFeatures.has(featureId));
+};
+
 const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
 
 const getInitialQuickAddForm = () => {
@@ -1848,10 +1859,11 @@ function BookingsPageContent() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_bookings::${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
-    const canUseWaitlist = canUseWaitlistForAccess(employeeAccess);
+    const canUseWaitlist = canUseWaitlistForAccess(employeeAccess) && !isWaitlistLockedForBusiness(businessInfo);
     const canUseBookings = canUseBookingsForAccess(employeeAccess);
-    const shouldRenderWaitlist = !employeeOfOwnerId || (employeeAccess.isLoaded && canUseWaitlist);
+    const shouldRenderWaitlist = canUseWaitlist && (!employeeOfOwnerId || employeeAccess.isLoaded);
     const shouldRenderBookings = !employeeOfOwnerId || !employeeAccess.isLoaded || canUseBookings;
+    const canMountWaitlistManagement = shouldRenderWaitlist && Boolean(businessInfo?.id && businessInfo?.collection);
 
     useEffect(() => {
         let cancelled = false;
@@ -2069,10 +2081,10 @@ function BookingsPageContent() {
 
     const handleRefreshAll = useCallback(() => {
         void fetchBookings(true);
-        if (canUseWaitlist) {
+        if (canMountWaitlistManagement) {
             setWaitlistRefreshSignal((value) => value + 1);
         }
-    }, [canUseWaitlist, fetchBookings]);
+    }, [canMountWaitlistManagement, fetchBookings]);
 
     const handleBookingCreatedFromQuickAdd = useCallback(() => fetchBookings(true), [fetchBookings]);
 
@@ -2337,15 +2349,22 @@ function BookingsPageContent() {
 
                 {shouldRenderWaitlist && (
                     <TabsContent value="waitlist">
-                        <WaitlistManagement
-                            restaurant={businessInfo}
-                            impersonatedOwnerId={impersonatedOwnerId}
-                            employeeOfOwnerId={employeeOfOwnerId}
-                            waitlistSeatingMode={waitlistSeatingMode}
-                            onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
-                            onBookingCreated={handleBookingCreatedFromQuickAdd}
-                            refreshSignal={waitlistRefreshSignal}
-                        />
+                        {canMountWaitlistManagement ? (
+                            <WaitlistManagement
+                                restaurant={businessInfo}
+                                impersonatedOwnerId={impersonatedOwnerId}
+                                employeeOfOwnerId={employeeOfOwnerId}
+                                waitlistSeatingMode={waitlistSeatingMode}
+                                onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
+                                onBookingCreated={handleBookingCreatedFromQuickAdd}
+                                refreshSignal={waitlistRefreshSignal}
+                            />
+                        ) : (
+                            <Card className="border-dashed py-12 text-center bg-muted/10">
+                                <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground/40 mb-4" />
+                                <p className="text-muted-foreground">Loading waitlist...</p>
+                            </Card>
+                        )}
                     </TabsContent>
                 )}
 
