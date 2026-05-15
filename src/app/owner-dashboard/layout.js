@@ -1101,6 +1101,50 @@ function OwnerDashboardContent({ children }) {
     userRole,
   ]);
 
+  useEffect(() => {
+    if (employeeOfOwnerId && !impersonatedOwnerId) return;
+    if (!user || isRoutingToAllowedPage) return;
+
+    const featureId = resolveOwnerFeatureIdFromPath(pathname);
+    const hasAccessToCurrentPage = canAccessOwnerDashboardFeature({
+      role: 'owner',
+      featureId,
+      businessType,
+      status: restaurantStatus.status,
+      restrictedFeatures: restaurantStatus.restrictedFeatures,
+      lockedFeatures: restaurantStatus.lockedFeatures,
+    });
+
+    if (hasAccessToCurrentPage) return;
+
+    const fallbackPath = getDefaultOwnerDashboardPathForAccess({
+      role: 'owner',
+      businessType,
+      status: restaurantStatus.status,
+      restrictedFeatures: restaurantStatus.restrictedFeatures,
+      lockedFeatures: restaurantStatus.lockedFeatures,
+    });
+
+    if (!fallbackPath || fallbackPath === pathname) return;
+
+    setIsRoutingToAllowedPage(true);
+    const targetPath = fallbackPath === '/select-role'
+      ? '/select-role'
+      : appendDashboardScope(fallbackPath, { impersonatedOwnerId });
+    router.replace(targetPath);
+  }, [
+    businessType,
+    employeeOfOwnerId,
+    impersonatedOwnerId,
+    isRoutingToAllowedPage,
+    pathname,
+    restaurantStatus.lockedFeatures,
+    restaurantStatus.restrictedFeatures,
+    restaurantStatus.status,
+    router,
+    user,
+  ]);
+
   if ((isUserLoading || !authChecked || isRecoveringSession) && !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -1192,7 +1236,7 @@ function OwnerDashboardContent({ children }) {
   }
 
   const blockedContent = renderStatusScreen();
-  const shouldHoldEmployeeRoute = !!employeeOfOwnerId && (isEmployeeAccessLoading || isRoutingToAllowedPage);
+  const shouldHoldRestrictedRoute = (!!employeeOfOwnerId && isEmployeeAccessLoading) || isRoutingToAllowedPage;
   const isCollapsed = !isSidebarOpen && !isMobile;
   const isSimulatedLandscape =
     layoutMode === SCREEN_ORIENTATION_LANDSCAPE &&
@@ -1319,7 +1363,7 @@ function OwnerDashboardContent({ children }) {
             "flex-1 min-h-0 overflow-y-auto",
             pathname?.startsWith('/owner-dashboard/manual-order') ? 'p-0' : 'p-4 md:p-6'
           )}>
-            {shouldHoldEmployeeRoute ? (
+            {shouldHoldRestrictedRoute ? (
               <div className="flex h-full min-h-[240px] items-center justify-center">
                 <GoldenCoinSpinner />
               </div>
