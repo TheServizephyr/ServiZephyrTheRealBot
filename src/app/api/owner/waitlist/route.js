@@ -87,6 +87,67 @@ function normalizeNoShowTimeoutMinutes(value, fallback = DEFAULT_NO_SHOW_TIMEOUT
     return Math.min(120, Math.max(1, parsed));
 }
 
+function getHistoryMillis(entry = {}) {
+    return toMillis(entry.noShowAt)
+        || toMillis(entry.seatedAt)
+        || toMillis(entry.cancelledAt)
+        || toMillis(entry.updatedAt)
+        || toMillis(entry.createdAt)
+        || 0;
+}
+
+function isValidDateKey(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+}
+
+function getHistoryDateRange(url) {
+    const dateKey = url.searchParams.get('date');
+    const startDateKey = url.searchParams.get('startDate') || dateKey;
+    const endDateKey = url.searchParams.get('endDate') || dateKey;
+
+    if (!startDateKey && !endDateKey) return null;
+    if (!isValidDateKey(startDateKey) || !isValidDateKey(endDateKey)) {
+        throw { message: 'Invalid history date filter.', status: 400 };
+    }
+
+    const start = new Date(`${startDateKey}T00:00:00+05:30`);
+    const endDayStart = new Date(`${endDateKey}T00:00:00+05:30`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(endDayStart.getTime())) {
+        throw { message: 'Invalid history date filter.', status: 400 };
+    }
+
+    if (start.getTime() > endDayStart.getTime()) {
+        return {
+            start: endDayStart,
+            end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
+        };
+    }
+
+    return {
+        start,
+        end: new Date(endDayStart.getTime() + 24 * 60 * 60 * 1000),
+    };
+}
+
+async function fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange }) {
+    const historyFields = ['noShowAt', 'seatedAt', 'cancelledAt', 'updatedAt', 'createdAt'];
+    const historySnaps = await Promise.all(historyFields.map((fieldName) => (
+        businessRef.collection('waitlist')
+            .where(fieldName, '>=', historyDateRange.start)
+            .where(fieldName, '<', historyDateRange.end)
+            .orderBy(fieldName, 'desc')
+            .limit(900)
+            .get()
+    )));
+
+    const seenDocIds = new Set();
+    return historySnaps.flatMap((snap) => snap.docs).filter((doc) => {
+        if (seenDocIds.has(doc.id)) return false;
+        seenDocIds.add(doc.id);
+        return HISTORY_STATUSES.has(String(doc.data()?.status || '').toLowerCase());
+    });
+}
+
 function toNoShowTimeoutMs(value) {
     return normalizeNoShowTimeoutMinutes(value) * 60 * 1000;
 }
@@ -328,6 +389,7 @@ export async function GET(req) {
         const firestore = await getFirestore();
         const url = new URL(req.url);
         const isHistory = url.searchParams.get('history') === 'true';
+        const historyDateRange = isHistory ? getHistoryDateRange(url) : null;
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data() || {};
         const waitlistSeatingMode = normalizeWaitlistSeatingMode(businessData.waitlistSeatingMode);
@@ -352,17 +414,24 @@ export async function GET(req) {
             }
         }
 
-        let queryRef = businessRef.collection('waitlist');
+        let waitlistDocs = [];
 
-        if (isHistory) {
-            queryRef = queryRef.where('status', 'in', Array.from(HISTORY_STATUSES));
+        if (isHistory && historyDateRange) {
+            waitlistDocs = await fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange });
         } else {
-            queryRef = queryRef.where('status', 'in', Array.from(ACTIVE_STATUSES));
+            let queryRef = businessRef.collection('waitlist');
+
+            if (isHistory) {
+                queryRef = queryRef.where('status', 'in', Array.from(HISTORY_STATUSES));
+            } else {
+                queryRef = queryRef.where('status', 'in', Array.from(ACTIVE_STATUSES));
+            }
+
+            const waitlistSnap = await queryRef.get();
+            waitlistDocs = waitlistSnap.docs;
         }
 
-        const waitlistSnap = await queryRef.get();
-
-        const entries = waitlistSnap.docs.map((doc) => {
+        const entries = waitlistDocs.map((doc) => {
             const data = doc.data() || {};
             return {
                 id: doc.id,
@@ -373,17 +442,23 @@ export async function GET(req) {
                 noShowAt: toIso(data.noShowAt) || null,
                 noShowDeadlineAt: toIso(data.noShowDeadlineAt) || null,
                 seatedAt: toIso(data.seatedAt) || null,
+                cancelledAt: toIso(data.cancelledAt) || null,
+                arrivedAt: toIso(data.arrivedAt) || null,
             };
         });
 
-        entries.sort((a, b) => {
-            const pA = normalizeQueuePriority(a.queuePriority, 2);
-            const pB = normalizeQueuePriority(b.queuePriority, 2);
-            if (pA !== pB) return pA - pB;
-            const dateA = new Date(a.createdAt || 0);
-            const dateB = new Date(b.createdAt || 0);
-            return dateA - dateB;
-        });
+        if (isHistory) {
+            entries.sort((a, b) => getHistoryMillis(b) - getHistoryMillis(a));
+        } else {
+            entries.sort((a, b) => {
+                const pA = normalizeQueuePriority(a.queuePriority, 2);
+                const pB = normalizeQueuePriority(b.queuePriority, 2);
+                if (pA !== pB) return pA - pB;
+                const dateA = new Date(a.createdAt || 0);
+                const dateB = new Date(b.createdAt || 0);
+                return dateA - dateB;
+            });
+        }
 
         const capacity = await getManualCapacityMetrics({
             businessRef,

@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import QRCode from 'qrcode.react';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, getDocs, limit, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, onSnapshot } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
@@ -30,6 +30,110 @@ import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 
 export const dynamic = 'force-dynamic';
+
+const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived'];
+
+const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
+
+const getYesterdayDateKey = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    return getLocalDateKey(date);
+};
+
+const getQuickDateRange = (mode) => {
+    const dateKey = mode === 'yesterday' ? getYesterdayDateKey() : getLocalDateKey();
+    return { startDate: dateKey, endDate: dateKey };
+};
+
+const normalizeDateRange = (startDate, endDate) => {
+    const fallback = getLocalDateKey();
+    const start = startDate || endDate || fallback;
+    const end = endDate || startDate || fallback;
+    if (start > end) return { startDate: end, endDate: start };
+    return { startDate: start, endDate: end };
+};
+
+const normalizeClientTimestamp = (value) => {
+    if (!value) return value;
+    if (typeof value?.toDate === 'function') {
+        const date = value.toDate();
+        return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    }
+    if (typeof value?._seconds === 'number') {
+        return new Date(value._seconds * 1000 + (value._nanoseconds || 0) / 1000000).toISOString();
+    }
+    if (typeof value?.seconds === 'number') {
+        return new Date(value.seconds * 1000 + (value.nanoseconds || 0) / 1000000).toISOString();
+    }
+    return value;
+};
+
+const getTimestampMs = (value) => {
+    if (!value) return 0;
+    if (typeof value?.toDate === 'function') {
+        const date = value.toDate();
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+    if (typeof value?._seconds === 'number') {
+        return value._seconds * 1000 + (value._nanoseconds || 0) / 1000000;
+    }
+    if (typeof value?.seconds === 'number') {
+        return value.seconds * 1000 + (value.nanoseconds || 0) / 1000000;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
+const getWaitlistHistoryMs = (entry) => (
+    getTimestampMs(entry?.noShowAt)
+    || getTimestampMs(entry?.seatedAt)
+    || getTimestampMs(entry?.cancelledAt)
+    || getTimestampMs(entry?.updatedAt)
+    || getTimestampMs(entry?.createdAt)
+);
+
+const sortActiveWaitlistEntries = (entries = []) => [...entries].sort((a, b) => {
+    const pA = Number(a?.queuePriority || 2);
+    const pB = Number(b?.queuePriority || 2);
+    if (pA !== pB) return pA - pB;
+    return getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+});
+
+const normalizeBookingSnapshotDoc = (snapshotDoc) => {
+    const data = snapshotDoc.data() || {};
+    return {
+        ...data,
+        id: snapshotDoc.id,
+        bookingDateTime: normalizeClientTimestamp(data.bookingDateTime),
+        createdAt: normalizeClientTimestamp(data.createdAt),
+        updatedAt: normalizeClientTimestamp(data.updatedAt),
+    };
+};
+
+const normalizeWaitlistSnapshotDoc = (snapshotDoc) => {
+    const data = snapshotDoc.data() || {};
+    return {
+        ...data,
+        id: snapshotDoc.id,
+        createdAt: normalizeClientTimestamp(data.createdAt),
+        updatedAt: normalizeClientTimestamp(data.updatedAt),
+        notifiedAt: normalizeClientTimestamp(data.notifiedAt),
+        noShowAt: normalizeClientTimestamp(data.noShowAt),
+        noShowDeadlineAt: normalizeClientTimestamp(data.noShowDeadlineAt),
+        seatedAt: normalizeClientTimestamp(data.seatedAt),
+        cancelledAt: normalizeClientTimestamp(data.cancelledAt),
+        arrivedAt: normalizeClientTimestamp(data.arrivedAt),
+    };
+};
+
+const isWithinDateRange = (dateValue, startDateKey, endDateKey) => {
+    if (!dateValue || !startDateKey || !endDateKey) return true;
+    const ms = getTimestampMs(dateValue);
+    if (!ms) return false;
+    const dateKey = getLocalDateKey(new Date(ms));
+    return dateKey >= startDateKey && dateKey <= endDateKey;
+};
 
 const formatDateTime = (dateValue) => {
     if (!dateValue) return 'N/A';
@@ -317,7 +421,7 @@ const HistoryCard = ({ name, phone, pax, time, status, type, token }) => {
     );
 };
 
-const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, searchQuery = '' }) => {
+const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, searchQuery = '', historyDateRange }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -330,6 +434,8 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
             const idToken = await user.getIdToken();
             let url = new URL('/api/owner/waitlist', window.location.origin);
             url.searchParams.append('history', 'true');
+            if (historyDateRange?.startDate) url.searchParams.append('startDate', historyDateRange.startDate);
+            if (historyDateRange?.endDate) url.searchParams.append('endDate', historyDateRange.endDate);
             if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
             else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
 
@@ -342,14 +448,15 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
         } finally {
             setLoading(false);
         }
-    }, [impersonatedOwnerId, employeeOfOwnerId, toast]);
+    }, [historyDateRange?.startDate, historyDateRange?.endDate, impersonatedOwnerId, employeeOfOwnerId, toast]);
 
     useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
     const filteredEntries = useMemo(() => {
         const q = String(searchQuery || '').trim().toLowerCase();
-        if (!q) return entries;
-        return entries.filter((entry) => {
+        const sortedEntries = [...entries].sort((a, b) => getWaitlistHistoryMs(b) - getWaitlistHistoryMs(a));
+        if (!q) return sortedEntries;
+        return sortedEntries.filter((entry) => {
             const name = String(entry?.name || '').toLowerCase();
             const phone = String(entry?.phone || '');
             const token = String(entry?.waitlistToken || '').toLowerCase();
@@ -544,25 +651,95 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
 
 const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics }) => {
     const [historySearchQuery, setHistorySearchQuery] = useState('');
+    const [historyRangeMode, setHistoryRangeMode] = useState('today');
+    const [historyStartDate, setHistoryStartDate] = useState(() => getLocalDateKey());
+    const [historyEndDate, setHistoryEndDate] = useState(() => getLocalDateKey());
+    const historyDateRange = useMemo(
+        () => normalizeDateRange(historyStartDate, historyEndDate),
+        [historyStartDate, historyEndDate]
+    );
+    const applyQuickHistoryRange = useCallback((mode) => {
+        const nextRange = getQuickDateRange(mode);
+        setHistoryRangeMode(mode);
+        setHistoryStartDate(nextRange.startDate);
+        setHistoryEndDate(nextRange.endDate);
+    }, []);
+
     const filteredBookingsHistory = useMemo(() => {
         const q = String(historySearchQuery || '').trim().toLowerCase();
-        if (!q) return bookingsHistory;
-        return bookingsHistory.filter((b) => {
+        const dateFilteredBookings = (bookingsHistory || [])
+            .filter((booking) => isWithinDateRange(booking?.bookingDateTime, historyDateRange.startDate, historyDateRange.endDate))
+            .sort((a, b) => getTimestampMs(b?.bookingDateTime) - getTimestampMs(a?.bookingDateTime));
+        if (!q) return dateFilteredBookings;
+        return dateFilteredBookings.filter((b) => {
             const name = String(b?.customerName || '').toLowerCase();
             const phone = String(b?.customerPhone || '');
             const token = String(b?.waitlistToken || '').toLowerCase();
             return name.includes(q) || phone.includes(q) || token.includes(q);
         });
-    }, [bookingsHistory, historySearchQuery]);
+    }, [bookingsHistory, historyDateRange.endDate, historyDateRange.startDate, historySearchQuery]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-border">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-                        <History className="text-primary" /> Service History
-                    </DialogTitle>
-                    <DialogDescription>Review completed and cancelled services.</DialogDescription>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div>
+                            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+                                <History className="text-primary" /> Service History
+                            </DialogTitle>
+                            <DialogDescription>Review completed and cancelled services.</DialogDescription>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={historyRangeMode === 'today' ? 'default' : 'outline'}
+                                onClick={() => applyQuickHistoryRange('today')}
+                            >
+                                Today
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={historyRangeMode === 'yesterday' ? 'default' : 'outline'}
+                                onClick={() => applyQuickHistoryRange('yesterday')}
+                            >
+                                Yesterday
+                            </Button>
+                            <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground">From</span>
+                                <input
+                                    type="date"
+                                    value={historyStartDate}
+                                    onChange={(e) => {
+                                        const nextStartDate = e.target.value;
+                                        setHistoryRangeMode('custom');
+                                        setHistoryStartDate(nextStartDate);
+                                        if (nextStartDate > historyEndDate) setHistoryEndDate(nextStartDate);
+                                    }}
+                                    onFocus={() => setHistoryRangeMode('custom')}
+                                    className="h-9 rounded-md border border-border bg-muted/30 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                />
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="text-xs text-muted-foreground">To</span>
+                                <input
+                                    type="date"
+                                    value={historyEndDate}
+                                    min={historyStartDate}
+                                    onChange={(e) => {
+                                        const nextEndDate = e.target.value;
+                                        setHistoryRangeMode('custom');
+                                        setHistoryEndDate(nextEndDate);
+                                        if (nextEndDate < historyStartDate) setHistoryStartDate(nextEndDate);
+                                    }}
+                                    onFocus={() => setHistoryRangeMode('custom')}
+                                    className="h-9 rounded-md border border-border bg-muted/30 px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </DialogHeader>
 
                 <div className="relative mt-2">
@@ -588,6 +765,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                             impersonatedOwnerId={impersonatedOwnerId}
                             employeeOfOwnerId={employeeOfOwnerId}
                             searchQuery={historySearchQuery}
+                            historyDateRange={historyDateRange}
                         />
                     </TabsContent>
 
@@ -630,6 +808,7 @@ const WaitlistManagement = ({
     employeeOfOwnerId,
     waitlistSeatingMode,
     onWaitlistUpdate,
+    refreshSignal = 0,
 }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
@@ -684,7 +863,7 @@ const WaitlistManagement = ({
                 handleApiCall('GET', null, '/api/owner/waitlist'),
                 handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables')
             ]);
-            setEntries(waitlistData?.entries || []);
+            setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
             setWaitlistMeta(waitlistData?.meta || { noShowTimeoutMinutes: 10, capacity: null });
             setAllTables(tablesData?.tables || []);
         } catch (err) {
@@ -711,6 +890,30 @@ const WaitlistManagement = ({
         setLoading(true);
         void fetchData();
 
+        let unsubscribeWaitlist = null;
+        try {
+            const activeWaitlistQuery = query(
+                collection(db, restaurant.collection, restaurant.id, 'waitlist'),
+                where('status', 'in', ACTIVE_WAITLIST_STATUSES)
+            );
+
+            unsubscribeWaitlist = onSnapshot(
+                activeWaitlistQuery,
+                (snapshot) => {
+                    const nextEntries = sortActiveWaitlistEntries(snapshot.docs.map(normalizeWaitlistSnapshotDoc));
+                    setEntries(nextEntries);
+                    setLoading(false);
+                },
+                (error) => {
+                    console.error('[Bookings] Waitlist realtime listener failed:', error);
+                    setLoading(false);
+                }
+            );
+        } catch (error) {
+            console.error('[Bookings] Waitlist realtime setup failed:', error);
+            setLoading(false);
+        }
+
         const intervalId = window.setInterval(() => {
             if (document.visibilityState === 'visible') {
                 void fetchData(true);
@@ -718,9 +921,17 @@ const WaitlistManagement = ({
         }, 60000);
 
         return () => {
+            if (typeof unsubscribeWaitlist === 'function') {
+                unsubscribeWaitlist();
+            }
             window.clearInterval(intervalId);
         };
     }, [restaurant, fetchData]);
+
+    useEffect(() => {
+        if (!refreshSignal) return;
+        void fetchData();
+    }, [fetchData, refreshSignal]);
 
     useEffect(() => {
         const interval = setInterval(() => setNowTs(Date.now()), 1000);
@@ -1156,11 +1367,22 @@ function BookingsPageContent() {
     const [isWaitlistSettingsOpen, setIsWaitlistSettingsOpen] = useState(false);
     const [capacityDraft, setCapacityDraft] = useState('40');
     const [noShowTimeoutDraft, setNoShowTimeoutDraft] = useState('10');
+    const [waitlistRefreshSignal, setWaitlistRefreshSignal] = useState(0);
     const { toast } = useToast();
     const bookingsCacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_bookings::${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+
+    const persistBookingsToCache = useCallback(async (nextBookings) => {
+        const payload = { bookings: Array.isArray(nextBookings) ? nextBookings : [] };
+        try {
+            localStorage.setItem(bookingsCacheKey, JSON.stringify({ ts: Date.now(), data: payload }));
+        } catch {}
+        if (isDesktopApp()) {
+            await setOfflineNamespace('owner_bookings', bookingsCacheKey, { ts: Date.now(), data: payload });
+        }
+    }, [bookingsCacheKey]);
 
     const fetchBookings = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -1177,13 +1399,7 @@ function BookingsPageContent() {
                 const data = await res.json();
                 const nextBookings = data.bookings || [];
                 setBookings(nextBookings);
-                const payload = { bookings: nextBookings };
-                try {
-                    localStorage.setItem(bookingsCacheKey, JSON.stringify({ ts: Date.now(), data: payload }));
-                } catch {}
-                if (isDesktopApp()) {
-                    await setOfflineNamespace('owner_bookings', bookingsCacheKey, { ts: Date.now(), data: payload });
-                }
+                await persistBookingsToCache(nextBookings);
             }
         } catch (err) {
             console.error(err);
@@ -1205,7 +1421,7 @@ function BookingsPageContent() {
             }
         }
         finally { clearTimeout(timeoutId); setLoading(false); }
-    }, [impersonatedOwnerId, employeeOfOwnerId, bookingsCacheKey]);
+    }, [impersonatedOwnerId, employeeOfOwnerId, bookingsCacheKey, persistBookingsToCache]);
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -1245,6 +1461,48 @@ function BookingsPageContent() {
             }
         };
     }, [impersonatedOwnerId, employeeOfOwnerId, fetchBookings]);
+
+    useEffect(() => {
+        if (!businessInfo?.id || businessInfo?.collection !== 'restaurants') return;
+
+        let unsubscribeBookings = null;
+        try {
+            const bookingsQuery = query(
+                collection(db, businessInfo.collection, businessInfo.id, 'bookings'),
+                orderBy('bookingDateTime', 'desc')
+            );
+
+            unsubscribeBookings = onSnapshot(
+                bookingsQuery,
+                (snapshot) => {
+                    const nextBookings = snapshot.docs.map(normalizeBookingSnapshotDoc);
+                    setBookings(nextBookings);
+                    void persistBookingsToCache(nextBookings);
+                    setLoading(false);
+                },
+                (error) => {
+                    console.error('[Bookings] Bookings realtime listener failed:', error);
+                    void fetchBookings(true);
+                    setLoading(false);
+                }
+            );
+        } catch (error) {
+            console.error('[Bookings] Bookings realtime setup failed:', error);
+            void fetchBookings(true);
+            setLoading(false);
+        }
+
+        return () => {
+            if (typeof unsubscribeBookings === 'function') {
+                unsubscribeBookings();
+            }
+        };
+    }, [businessInfo?.collection, businessInfo?.id, fetchBookings, persistBookingsToCache]);
+
+    const handleRefreshAll = useCallback(() => {
+        void fetchBookings(true);
+        setWaitlistRefreshSignal((value) => value + 1);
+    }, [fetchBookings]);
 
     useEffect(() => {
         setCapacityDraft(String(waitlistManualCapacity || 40));
@@ -1464,7 +1722,7 @@ function BookingsPageContent() {
                     <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2" disabled={!businessInfo}>
                         <Settings size={16} /> <span className="hidden md:inline">Settings</span>
                     </Button>
-                    <Button onClick={() => fetchBookings(true)} variant="outline" disabled={loading} className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center">
+                    <Button onClick={handleRefreshAll} variant="outline" disabled={loading} className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center">
                         <RefreshCw size={16} className={loading ? "animate-spin" : "md:mr-2"} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
                 </div>
@@ -1503,6 +1761,7 @@ function BookingsPageContent() {
                         employeeOfOwnerId={employeeOfOwnerId}
                         waitlistSeatingMode={waitlistSeatingMode}
                         onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
+                        refreshSignal={waitlistRefreshSignal}
                     />
                 </TabsContent>
 
@@ -1670,4 +1929,3 @@ export default function BookingsPage() {
         </Suspense>
     );
 }
-
