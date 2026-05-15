@@ -250,6 +250,7 @@ function MyProfileContent() {
         switch (role) {
             case 'owner': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
             case 'manager': return 'bg-purple-500/10 text-purple-500 border-purple-500/20';
+            case 'bookings_manager': return 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20';
             case 'cashier': return 'bg-green-500/10 text-green-500 border-green-500/20';
             case 'chef': return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
             case 'waiter': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';

@@ -358,6 +358,7 @@ function EmployeeCard({ employee, onAction, isPending }) {
     const roleColors = {
         owner: 'bg-gradient-to-r from-yellow-500/30 to-orange-500/30 text-yellow-500 border-yellow-500/50',
         manager: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+        bookings_manager: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
         chef: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
         waiter: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
         cashier: 'bg-green-500/20 text-green-400 border-green-500/30',

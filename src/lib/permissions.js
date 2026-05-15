@@ -1,13 +1,14 @@
 /**
  * ServiZephyr RBAC - Permission System
- * 
+ *
  * This file defines all roles and their permissions for the multi-tenant system.
- * 
+ *
  * ROLES:
  * - owner: Full control over everything
  * - manager: Almost everything except payment settings
  * - chef: Kitchen operations only
  * - waiter: Dine-in and table management
+ * - bookings_manager: Dine-in and bookings/waitlist management
  * - cashier: Billing and payment processing
  * - order_taker: Create orders only
  */
@@ -100,6 +101,7 @@ export const ROLES = {
 
     // ===== EMPLOYEE ROLES (Can be hired) =====
     MANAGER: 'manager',
+    BOOKINGS_MANAGER: 'bookings_manager',
     CHEF: 'chef',
     WAITER: 'waiter',
     CASHIER: 'cashier',
@@ -146,6 +148,7 @@ export function normalizeBusinessType(type) {
 
 export const ROLE_DISPLAY_NAMES = {
     [ROLES.MANAGER]: 'Manager (All except Payouts)',
+    [ROLES.BOOKINGS_MANAGER]: 'Bookings Manager (Dine-in & Bookings)',
     [ROLES.CHEF]: 'Chef (Kitchen & Orders only)',
     [ROLES.WAITER]: 'Waiter (Orders, Dine-in, Bookings)',
     [ROLES.CASHIER]: 'Cashier (Orders & Billing)',
@@ -158,6 +161,7 @@ export const ROLE_DISPLAY_NAMES = {
 
 export const STORE_ROLE_DISPLAY_NAMES = {
     [ROLES.MANAGER]: 'Store Manager (Operations & Orders)',
+    [ROLES.BOOKINGS_MANAGER]: 'Bookings Manager (Restaurant only)',
     [ROLES.CHEF]: 'Packing Staff (Order Processing)',
     [ROLES.WAITER]: 'Counter Staff (Customer Assistance)',
     [ROLES.CASHIER]: 'Billing Staff (Payments & Orders)',
@@ -169,6 +173,7 @@ export const STORE_ROLE_DISPLAY_NAMES = {
 
 export const STREET_VENDOR_ROLE_DISPLAY_NAMES = {
     [ROLES.MANAGER]: 'Operations Manager (Orders & Stall Ops)',
+    [ROLES.BOOKINGS_MANAGER]: 'Bookings Manager (Restaurant only)',
     [ROLES.CHEF]: 'Cooking Staff (Preparation & Orders)',
     [ROLES.WAITER]: 'Service Staff (Customer Handling)',
     [ROLES.CASHIER]: 'Billing Staff (Payments & Orders)',
@@ -271,6 +276,7 @@ export function getLockableSidebarFeaturesForBusinessType(businessType = 'restau
 const ROLE_HELPER_TEXT = {
     restaurant: {
         [ROLES.MANAGER]: 'Best for supervisors who need broad dashboard access across orders, menu, staff, and operations.',
+        [ROLES.BOOKINGS_MANAGER]: 'Best for staff who manage table bookings, waitlist, and dine-in seating.',
         [ROLES.CHEF]: 'Best for kitchen staff focused on preparing and marking orders ready.',
         [ROLES.WAITER]: 'Best for dine-in staff handling tables, tabs, and guest service.',
         [ROLES.CASHIER]: 'Best for billing counter staff handling payments and walk-in orders.',
@@ -448,6 +454,23 @@ export const ROLE_PERMISSIONS = {
         P.MANAGE_BOOKINGS,
     ],
 
+    // BOOKINGS MANAGER - Dine-in and bookings/waitlist management
+    [ROLES.BOOKINGS_MANAGER]: [
+        P.VIEW_ORDERS,
+        P.VIEW_DINE_IN_ORDERS,
+        P.CREATE_ORDER,
+        P.MARK_ORDER_SERVED,
+        P.MANAGE_DINE_IN,
+        P.VIEW_TABLES,
+        P.ASSIGN_TABLE,
+        P.ADD_TO_TAB,
+        P.CLOSE_TAB,
+        P.GENERATE_BILL,
+        P.VIEW_MENU,
+        P.VIEW_BOOKINGS,
+        P.MANAGE_BOOKINGS,
+    ],
+
     // CHEF - Kitchen operations only
     [ROLES.CHEF]: [
         P.VIEW_ORDERS,
@@ -564,6 +587,7 @@ export function getRoleLevel(role) {
         [ROLES.OWNER]: 100,
         [ROLES.MANAGER]: 80,
         [ROLES.CASHIER]: 50,
+        [ROLES.BOOKINGS_MANAGER]: 45,
         [ROLES.WAITER]: 40,
         [ROLES.CHEF]: 40,
         [ROLES.ORDER_TAKER]: 20,
@@ -586,10 +610,13 @@ export function canManageRole(roleA, roleB) {
  * @param {string} role - The role doing the inviting
  * @returns {string[]} - Roles that can be invited (employee roles only)
  */
-export function getInvitableRoles(role) {
+export function getInvitableRoles(role, businessType = 'restaurant') {
     // Only allow inviting EMPLOYEE roles (not owner/street-vendor)
     const currentLevel = getRoleLevel(role);
-    return EMPLOYEE_ROLES.filter(r => getRoleLevel(r) < currentLevel);
+    const normalizedBusinessType = normalizeBusinessType(businessType) || 'restaurant';
+    return EMPLOYEE_ROLES
+        .filter(r => getRoleLevel(r) < currentLevel)
+        .filter(r => normalizedBusinessType === 'restaurant' || r !== ROLES.BOOKINGS_MANAGER);
 }
 
 // ============================================
@@ -598,6 +625,7 @@ export function getInvitableRoles(role) {
 
 export const EMPLOYEE_ROLES = [
     ROLES.MANAGER,
+    ROLES.BOOKINGS_MANAGER,
     ROLES.CHEF,
     ROLES.WAITER,
     ROLES.CASHIER,
@@ -640,6 +668,12 @@ export const ROLE_ALLOWED_PAGES = {
         'location',
         'connections',
         'settings',
+    ],
+
+    [ROLES.BOOKINGS_MANAGER]: [
+        'dine-in',
+        'bookings',
+        'my-profile',
     ],
 
     // Chef - only live orders (to see and mark orders ready)
@@ -736,4 +770,3 @@ export function getDefaultPermissionsForRole(role) {
     const effectiveRole = normalizeRole(role);
     return ROLE_PERMISSIONS[effectiveRole] || [];
 }
-

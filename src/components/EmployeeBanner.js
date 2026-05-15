@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 /**
- * Employee Banner Component  
+ * Employee Banner Component
  * Shows a prominent banner when employee is accessing owner's dashboard
  */
 export default function EmployeeBanner({ vendorName, employeeRole }) {
@@ -17,6 +17,7 @@ export default function EmployeeBanner({ vendorName, employeeRole }) {
 
     const getRoleBadge = (role) => {
         switch (role) {
+            case 'bookings_manager': return 'Bookings Manager';
             case 'manager': return '👨‍💼 Manager';
             case 'cashier': return '💰 Cashier';
             case 'chef': return '👨‍🍳 Chef';

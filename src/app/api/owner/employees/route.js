@@ -142,6 +142,13 @@ export async function POST(req) {
             normalizeBusinessType(accessContext?.outletData?.businessType) ||
             getBusinessTypeFromCollectionName(collectionName);
 
+        if (role === ROLES.BOOKINGS_MANAGER && outletBusinessType !== 'restaurant') {
+            return NextResponse.json(
+                { message: 'Bookings Manager role is only available for restaurant businesses.' },
+                { status: 400 }
+            );
+        }
+
         // 🔒 Rate limit check (10 invites per minute)
         const rateLimitCheck = employeeInviteLimiter.check(accessContext.uid, outletId);
         if (!rateLimitCheck.allowed) {
@@ -303,11 +310,12 @@ export async function GET(req) {
         const ROLE_HIERARCHY = {
             'owner': 0,
             'manager': 1,
-            'chef': 2,
-            'waiter': 3,
-            'cashier': 4,
-            'order_taker': 5,
-            'custom': 6,
+            'bookings_manager': 2,
+            'chef': 3,
+            'waiter': 4,
+            'cashier': 5,
+            'order_taker': 6,
+            'custom': 7,
         };
 
         // ✅ NEW: Fetch from Sub-Collection
@@ -407,7 +415,7 @@ export async function GET(req) {
         }).sort((a, b) => a.hierarchyOrder - b.hierarchyOrder);
 
         // Get roles that current user can invite
-        const invitableRoles = getInvitableRoles(accessContext.role).map(role => ({
+        const invitableRoles = getInvitableRoles(accessContext.role, outletBusinessType).map(role => ({
             value: role,
             label: getRoleDisplayName(role, outletBusinessType),
         }));
@@ -459,6 +467,9 @@ export async function PATCH(req) {
 
         const outletId = accessContext.outletId;
         const collectionName = accessContext.collectionName;
+        const outletBusinessType =
+            normalizeBusinessType(accessContext?.outletData?.businessType) ||
+            getBusinessTypeFromCollectionName(collectionName);
 
         // ✅ NEW: Fetch individual doc from sub-collection
         const employeeRef = firestore
@@ -494,6 +505,12 @@ export async function PATCH(req) {
                 if (!newRole || !EMPLOYEE_ROLES.includes(newRole)) {
                     return NextResponse.json(
                         { message: 'Invalid new role.' },
+                        { status: 400 }
+                    );
+                }
+                if (newRole === ROLES.BOOKINGS_MANAGER && outletBusinessType !== 'restaurant') {
+                    return NextResponse.json(
+                        { message: 'Bookings Manager role is only available for restaurant businesses.' },
                         { status: 400 }
                     );
                 }
