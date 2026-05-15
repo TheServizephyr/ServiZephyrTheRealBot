@@ -48,21 +48,18 @@ import {
   onOwnerDashboardLayoutModeChange,
   resolveOwnerDashboardMobileState,
 } from '@/lib/screenOrientation';
+import {
+  appendDashboardScope,
+  canAccessOwnerDashboardFeature,
+  getDefaultOwnerDashboardPathForAccess,
+  resolveOwnerDashboardFeatureIdFromPath,
+} from '@/lib/ownerDashboardAccess';
 
 export const dynamic = 'force-dynamic';
 
 const buildLoginRedirect = (path) => `/login?redirect=${encodeURIComponent(path || '/owner-dashboard/live-orders')}`;
 
-const resolveOwnerFeatureIdFromPath = (pathname) => {
-  const segments = String(pathname || '').split('/').filter(Boolean);
-  if (segments[0] !== 'owner-dashboard') return segments[segments.length - 1] || '';
-  if (segments.length === 1) return 'dashboard';
-
-  const section = segments[1];
-  if (section === 'settings' && segments[2] === 'connections') return 'connections';
-  if (section === 'settings' && segments[2] === 'location') return 'location';
-  return section || 'dashboard';
-};
+const resolveOwnerFeatureIdFromPath = resolveOwnerDashboardFeatureIdFromPath;
 
 const normalizeBusinessType = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -167,6 +164,7 @@ function OwnerDashboardContent({ children }) {
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const [navbarOwnerSettings, setNavbarOwnerSettings] = useState(null);
   const [userRole, setUserRole] = useState(null); // For employee role-based access
+  const [customAllowedPages, setCustomAllowedPages] = useState(null);
   const [callSyncTarget, setCallSyncTarget] = useState({ businessId: '', collectionName: '' });
   const [incomingCallBanner, setIncomingCallBanner] = useState(null);
   const [businessType, setBusinessType] = useState(() => {
@@ -178,6 +176,8 @@ function OwnerDashboardContent({ children }) {
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
   const employeeOfOwnerId = searchParams.get('employee_of'); // Employee accessing owner's data
+  const [isEmployeeAccessLoading, setIsEmployeeAccessLoading] = useState(() => !!employeeOfOwnerId);
+  const [isRoutingToAllowedPage, setIsRoutingToAllowedPage] = useState(false);
   const [isShortcutHelpOpen, setIsShortcutHelpOpen] = useState(false);
 
   // Use either impersonation or employee context for fetching owner's data
@@ -413,9 +413,12 @@ function OwnerDashboardContent({ children }) {
   useEffect(() => {
     async function fetchEmployeeRole() {
       if (employeeOfOwnerId && user) {
+        setIsEmployeeAccessLoading(true);
         if (user.uid === employeeOfOwnerId) {
           console.log('[Layout] Owner detected, full access');
           setUserRole(null);
+          setCustomAllowedPages(null);
+          setIsEmployeeAccessLoading(false);
           return;
         }
 
@@ -441,31 +444,51 @@ function OwnerDashboardContent({ children }) {
 
               // For custom roles, store the allowed pages in localStorage
               if (outlet.employeeRole === 'custom' && outlet.customAllowedPages) {
-                localStorage.setItem('customAllowedPages', JSON.stringify(outlet.customAllowedPages));
-                console.log('[Layout] Custom role pages stored:', outlet.customAllowedPages);
+                const nextCustomAllowedPages = Array.isArray(outlet.customAllowedPages) ? outlet.customAllowedPages : [];
+                setCustomAllowedPages(nextCustomAllowedPages);
+                localStorage.setItem('customAllowedPages', JSON.stringify(nextCustomAllowedPages));
+                console.log('[Layout] Custom role pages stored:', nextCustomAllowedPages);
               } else {
                 // Clear custom pages if not a custom role
+                setCustomAllowedPages(null);
                 localStorage.removeItem('customAllowedPages');
+              }
+
+              if (Array.isArray(outlet.permissions)) {
+                localStorage.setItem('employeePermissions', JSON.stringify(outlet.permissions));
+              } else {
+                localStorage.removeItem('employeePermissions');
               }
             } else {
               console.error('[Layout] No matching outlet');
               setUserRole(null);
+              setCustomAllowedPages(null);
               localStorage.removeItem('customAllowedPages');
+              localStorage.removeItem('employeePermissions');
             }
           } else {
             console.error('[Layout] User doc not found');
             setUserRole(null);
+            setCustomAllowedPages(null);
             localStorage.removeItem('customAllowedPages');
+            localStorage.removeItem('employeePermissions');
           }
         } catch (err) {
           console.error('[Layout] Firestore error:', err);
           setUserRole(null);
+          setCustomAllowedPages(null);
           localStorage.removeItem('customAllowedPages');
+          localStorage.removeItem('employeePermissions');
+        } finally {
+          setIsEmployeeAccessLoading(false);
         }
       } else {
         setUserRole(null);
+        setCustomAllowedPages(null);
+        setIsEmployeeAccessLoading(false);
         // Owner accessing own dashboard - clear any custom pages
         localStorage.removeItem('customAllowedPages');
+        localStorage.removeItem('employeePermissions');
       }
     }
 
@@ -1022,6 +1045,62 @@ function OwnerDashboardContent({ children }) {
     impersonatedOwnerId
   ]);
 
+  useEffect(() => {
+    setIsRoutingToAllowedPage(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!employeeOfOwnerId || impersonatedOwnerId) return;
+    if (!user || isEmployeeAccessLoading) return;
+
+    const storedRole = typeof window !== 'undefined' ? localStorage.getItem('employeeRole') : null;
+    const effectiveRole = userRole || storedRole;
+    if (!effectiveRole) return;
+
+    const featureId = resolveOwnerFeatureIdFromPath(pathname);
+    const hasAccessToCurrentPage = canAccessOwnerDashboardFeature({
+      role: effectiveRole,
+      featureId,
+      customAllowedPages,
+      businessType,
+      status: restaurantStatus.status,
+      restrictedFeatures: restaurantStatus.restrictedFeatures,
+      lockedFeatures: restaurantStatus.lockedFeatures,
+    });
+
+    if (hasAccessToCurrentPage) return;
+
+    const fallbackPath = getDefaultOwnerDashboardPathForAccess({
+      role: effectiveRole,
+      customAllowedPages,
+      businessType,
+      status: restaurantStatus.status,
+      restrictedFeatures: restaurantStatus.restrictedFeatures,
+      lockedFeatures: restaurantStatus.lockedFeatures,
+    });
+
+    if (!fallbackPath || fallbackPath === pathname) return;
+
+    setIsRoutingToAllowedPage(true);
+    const targetPath = fallbackPath === '/select-role'
+      ? '/select-role'
+      : appendDashboardScope(fallbackPath, { employeeOfOwnerId });
+    router.replace(targetPath);
+  }, [
+    businessType,
+    customAllowedPages,
+    employeeOfOwnerId,
+    impersonatedOwnerId,
+    isEmployeeAccessLoading,
+    pathname,
+    restaurantStatus.lockedFeatures,
+    restaurantStatus.restrictedFeatures,
+    restaurantStatus.status,
+    router,
+    user,
+    userRole,
+  ]);
+
   if ((isUserLoading || !authChecked || isRecoveringSession) && !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -1113,6 +1192,7 @@ function OwnerDashboardContent({ children }) {
   }
 
   const blockedContent = renderStatusScreen();
+  const shouldHoldEmployeeRoute = !!employeeOfOwnerId && (isEmployeeAccessLoading || isRoutingToAllowedPage);
   const isCollapsed = !isSidebarOpen && !isMobile;
   const isSimulatedLandscape =
     layoutMode === SCREEN_ORIENTATION_LANDSCAPE &&
@@ -1239,7 +1319,11 @@ function OwnerDashboardContent({ children }) {
             "flex-1 min-h-0 overflow-y-auto",
             pathname?.startsWith('/owner-dashboard/manual-order') ? 'p-0' : 'p-4 md:p-6'
           )}>
-            {blockedContent || children}
+            {shouldHoldEmployeeRoute ? (
+              <div className="flex h-full min-h-[240px] items-center justify-center">
+                <GoldenCoinSpinner />
+              </div>
+            ) : (blockedContent || children)}
           </main>
         </div>
         <OwnerDashboardShortcutsDialog

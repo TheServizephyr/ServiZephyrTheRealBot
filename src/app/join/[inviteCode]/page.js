@@ -158,6 +158,29 @@ export default function JoinPage() {
 
             setSuccess(true);
 
+            if (data.employee) {
+                try {
+                    localStorage.setItem('role', 'employee');
+                    localStorage.setItem('activeOutletId', data.employee.outletId || '');
+                    localStorage.setItem('activeOwnerId', data.employee.ownerId || '');
+                    localStorage.setItem('activeOutletName', data.employee.outletName || '');
+                    localStorage.setItem('employeeRole', data.employee.role || '');
+                    if (data.employee.businessType) {
+                        localStorage.setItem('businessType', data.employee.businessType);
+                    }
+                    if (Array.isArray(data.employee.permissions)) {
+                        localStorage.setItem('employeePermissions', JSON.stringify(data.employee.permissions));
+                    }
+                    if (data.employee.role === 'custom' && Array.isArray(data.employee.customAllowedPages)) {
+                        localStorage.setItem('customAllowedPages', JSON.stringify(data.employee.customAllowedPages));
+                    } else {
+                        localStorage.removeItem('customAllowedPages');
+                    }
+                } catch {
+                    // Ignore storage failures; the dashboard layout rehydrates from Firestore.
+                }
+            }
+
             // Haptic success feedback
             if (navigator.vibrate) {
                 navigator.vibrate([100, 50, 100]);

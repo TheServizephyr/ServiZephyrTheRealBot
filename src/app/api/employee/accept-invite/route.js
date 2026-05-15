@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { ROLE_PERMISSIONS, ROLE_DISPLAY_NAMES } from '@/lib/permissions';
+import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
 
 // ============================================
 // POST: Accept invitation and link employee to outlet
@@ -181,9 +182,14 @@ export async function POST(req) {
         // Determine redirect URL based on outlet type
         // CRITICAL: Add employee_of parameter so employee sees EMPLOYER's dashboard
         const ownerId = inviteData.ownerId;
-        let redirectTo = `/owner-dashboard/live-orders?employee_of=${ownerId}`;
+        const defaultOwnerPath = getDefaultOwnerDashboardPathForAccess({
+            role: inviteData.role,
+            customAllowedPages: inviteData.customAllowedPages,
+            businessType: inviteData.collectionName === 'shops' ? 'store' : 'restaurant',
+        });
+        let redirectTo = appendDashboardScope(defaultOwnerPath, { employeeOfOwnerId: ownerId });
         if (inviteData.collectionName === 'street_vendors') {
-            redirectTo = `/street-vendor-dashboard?employee_of=${ownerId}`;
+            redirectTo = appendDashboardScope('/street-vendor-dashboard', { employeeOfOwnerId: ownerId });
         }
 
         return NextResponse.json({
@@ -191,9 +197,14 @@ export async function POST(req) {
             employee: {
                 outletId: inviteData.outletId,
                 outletName: inviteData.outletName,
+                ownerId,
+                businessType: inviteData.collectionName === 'shops'
+                    ? 'store'
+                    : (inviteData.collectionName === 'street_vendors' ? 'street-vendor' : 'restaurant'),
                 role: inviteData.role,
                 roleDisplay: ROLE_DISPLAY_NAMES[inviteData.role],
                 permissions: linkedOutletEntry.permissions,
+                customAllowedPages: linkedOutletEntry.customAllowedPages || null,
             },
             redirectTo,
         }, { status: 200 });

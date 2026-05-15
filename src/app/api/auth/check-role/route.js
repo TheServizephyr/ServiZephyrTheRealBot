@@ -12,6 +12,7 @@ import {
 } from '@/lib/firebase-admin';
 import { logSecurityEvent, SECURITY_EVENT_TYPES } from '@/lib/security/security-events';
 import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
+import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
 
 const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
 
@@ -51,6 +52,39 @@ async function resolveBusinessType(firestore, uid, role, currentBusinessType) {
     }
 
     return null;
+}
+
+function getBusinessTypeFromCollectionName(collectionName) {
+    if (collectionName === 'shops') return 'store';
+    if (collectionName === 'street_vendors') return 'street-vendor';
+    return 'restaurant';
+}
+
+function serializeLinkedOutlet(outlet = {}) {
+    return {
+        outletId: outlet.outletId,
+        outletName: outlet.outletName,
+        employeeRole: outlet.employeeRole,
+        collectionName: outlet.collectionName,
+        ownerId: outlet.ownerId,
+        permissions: Array.isArray(outlet.permissions) ? outlet.permissions : [],
+        customAllowedPages: Array.isArray(outlet.customAllowedPages) ? outlet.customAllowedPages : null,
+    };
+}
+
+function buildEmployeeRedirect(outlet = {}) {
+    if (outlet.collectionName === 'street_vendors') {
+        return appendDashboardScope('/street-vendor-dashboard', { employeeOfOwnerId: outlet.ownerId });
+    }
+
+    const businessType = getBusinessTypeFromCollectionName(outlet.collectionName);
+    const defaultPath = getDefaultOwnerDashboardPathForAccess({
+        role: outlet.employeeRole,
+        customAllowedPages: outlet.customAllowedPages,
+        businessType,
+    });
+
+    return appendDashboardScope(defaultPath, { employeeOfOwnerId: outlet.ownerId });
 }
 
 export async function POST(req) {
@@ -124,13 +158,7 @@ export async function POST(req) {
                     role,
                     businessType,
                     hasMultipleRoles: true,
-                    linkedOutlets: linkedOutlets.filter(o => o.status === 'active').map(o => ({
-                        outletId: o.outletId,
-                        outletName: o.outletName,
-                        employeeRole: o.employeeRole,
-                        collectionName: o.collectionName,
-                        ownerId: o.ownerId, // Include ownerId for employee_of redirect
-                    })),
+                    linkedOutlets: linkedOutlets.filter(o => o.status === 'active').map(serializeLinkedOutlet),
                 }, 200, { outcome: 'resolved', role, hasMultipleRoles: true });
             }
 
@@ -142,16 +170,15 @@ export async function POST(req) {
 
                 if (outlet) {
                     console.log(`[DEBUG] /api/auth/check-role: User is employee only. Redirecting to outlet dashboard.`);
-                    const redirectTo = outlet.collectionName === 'street_vendors'
-                        ? '/street-vendor-dashboard'
-                        : '/owner-dashboard/live-orders';
+                    const redirectTo = buildEmployeeRedirect(outlet);
 
                     return finalize({
                         role: 'employee',
                         employeeRole: outlet.employeeRole,
-                        businessType: null,
+                        businessType: getBusinessTypeFromCollectionName(outlet.collectionName),
                         redirectTo,
                         outletName: outlet.outletName,
+                        outlet: serializeLinkedOutlet(outlet),
                     }, 200, { outcome: 'resolved', role: 'employee', redirectTo });
                 }
             }

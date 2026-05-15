@@ -1,5 +1,6 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
 
 const AUTH_ROLE_CACHE_KEY = 'servizephyr_auth_role_cache_v1';
 const AUTH_ROLE_LEGACY_KEY = 'servizephyr_auth_role_legacy_v1';
@@ -58,9 +59,17 @@ function writeLegacyRoleCache(payload) {
 
 function buildEmployeeRedirect(outlet = {}) {
   if (outlet.collectionName === 'street_vendors') {
-    return '/street-vendor-dashboard';
+    return appendDashboardScope('/street-vendor-dashboard', { employeeOfOwnerId: outlet.ownerId });
   }
-  return '/owner-dashboard/live-orders';
+
+  const businessType = outlet.collectionName === 'shops' ? 'store' : 'restaurant';
+  const defaultPath = getDefaultOwnerDashboardPathForAccess({
+    role: outlet.employeeRole,
+    customAllowedPages: outlet.customAllowedPages,
+    businessType,
+  });
+
+  return appendDashboardScope(defaultPath, { employeeOfOwnerId: outlet.ownerId });
 }
 
 function buildResolvedProfile(role, businessType = null, extra = {}) {

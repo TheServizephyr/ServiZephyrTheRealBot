@@ -16,7 +16,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import QRCode from 'qrcode.react';
 import { auth, db } from '@/lib/firebase';
-import { collection, query, where, orderBy, getDocs, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
@@ -30,10 +30,70 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived'];
+const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
+
+const parseStoredJsonArray = (key) => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = localStorage.getItem(key);
+        const parsed = raw ? JSON.parse(raw) : null;
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const getStoredEmployeeAccessSnapshot = (employeeOfOwnerId) => {
+    if (!employeeOfOwnerId || typeof window === 'undefined') {
+        return {
+            role: ROLES.OWNER,
+            permissions: getPermissionsForRole(ROLES.OWNER),
+            customAllowedPages: null,
+            isLoaded: true,
+        };
+    }
+
+    const role = localStorage.getItem('employeeRole') || null;
+    const customAllowedPages = parseStoredJsonArray('customAllowedPages');
+    const permissions = parseStoredJsonArray('employeePermissions');
+
+    return {
+        role,
+        permissions,
+        customAllowedPages,
+        isLoaded: false,
+    };
+};
+
+const canUseWaitlistForAccess = ({ role, permissions }) => {
+    if (role === ROLES.OWNER || role === ROLES.STREET_VENDOR) return true;
+    if (!role) return false;
+    const effectivePermissions = Array.isArray(permissions) ? permissions : getPermissionsForRole(role);
+    return WAITLIST_REQUIRED_PERMISSIONS.some((permission) => effectivePermissions.includes(permission));
+};
+
+const canUseBookingsForAccess = ({ role, permissions, customAllowedPages }) => {
+    if (role === ROLES.OWNER || role === ROLES.STREET_VENDOR) return true;
+    if (!role) return false;
+    const effectivePermissions = Array.isArray(permissions) ? permissions : getPermissionsForRole(role);
+    return (
+        effectivePermissions.includes(PERMISSIONS.VIEW_BOOKINGS) ||
+        effectivePermissions.includes(PERMISSIONS.MANAGE_BOOKINGS) ||
+        canAccessPage(role, 'bookings', customAllowedPages, 'restaurant')
+    );
+};
+
+const getInitialBookingsTab = (employeeOfOwnerId) => {
+    const access = getStoredEmployeeAccessSnapshot(employeeOfOwnerId);
+    if (!employeeOfOwnerId) return 'waitlist';
+    if (canUseWaitlistForAccess(access)) return 'waitlist';
+    return 'upcoming';
+};
 
 const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
 
@@ -691,7 +751,7 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
     );
 };
 
-const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics }) => {
+const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true }) => {
     const [historySearchQuery, setHistorySearchQuery] = useState('');
     const [historyRangeMode, setHistoryRangeMode] = useState('today');
     const [historyStartDate, setHistoryStartDate] = useState(() => getLocalDateKey());
@@ -708,6 +768,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         from: parseDateKey(historyDateRange.startDate),
         to: parseDateKey(historyDateRange.endDate),
     }), [historyDateRange.endDate, historyDateRange.startDate]);
+    const defaultHistoryTab = canUseWaitlist ? 'waitlist' : 'bookings';
     const applyQuickHistoryRange = useCallback((mode) => {
         const nextRange = getQuickDateRange(mode);
         setHistoryRangeMode(mode);
@@ -800,47 +861,56 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                     />
                 </div>
 
-                <Tabs defaultValue="waitlist" className="mt-4">
-                    <TabsList className="grid w-full grid-cols-2 bg-muted/50 p-1">
-                        <TabsTrigger value="waitlist">Waitlist</TabsTrigger>
-                        <TabsTrigger value="bookings">Bookings</TabsTrigger>
+                <Tabs defaultValue={defaultHistoryTab} className="mt-4">
+                    <TabsList className={cn(
+                        "grid w-full bg-muted/50 p-1",
+                        canUseWaitlist && canUseBookings ? "grid-cols-2" : "grid-cols-1"
+                    )}>
+                        {canUseWaitlist && <TabsTrigger value="waitlist">Waitlist</TabsTrigger>}
+                        {canUseBookings && <TabsTrigger value="bookings">Bookings</TabsTrigger>}
                     </TabsList>
 
-                    <TabsContent value="waitlist">
-                        <WaitlistHistory
-                            restaurant={restaurant}
-                            impersonatedOwnerId={impersonatedOwnerId}
-                            employeeOfOwnerId={employeeOfOwnerId}
-                            searchQuery={historySearchQuery}
-                            historyDateRange={historyDateRange}
-                        />
-                    </TabsContent>
-                    <TabsContent value="bookings" className="space-y-4 py-4">
-                        {filteredBookingsHistory.length === 0 ? (
-                            <p className="text-center text-muted-foreground py-10">No booking history found.</p>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {filteredBookingsHistory.map(b => (
-                                    <HistoryCard
-                                        key={b.id}
-                                        name={b.customerName}
-                                        phone={b.customerPhone}
-                                        pax={b.partySize}
-                                        time={b.bookingDateTime}
-                                        status={b.status}
-                                        type="booking"
-                                        token={b.waitlistToken}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                    </TabsContent>
+                    {canUseWaitlist && (
+                        <TabsContent value="waitlist">
+                            <WaitlistHistory
+                                restaurant={restaurant}
+                                impersonatedOwnerId={impersonatedOwnerId}
+                                employeeOfOwnerId={employeeOfOwnerId}
+                                searchQuery={historySearchQuery}
+                                historyDateRange={historyDateRange}
+                            />
+                        </TabsContent>
+                    )}
+                    {canUseBookings && (
+                        <TabsContent value="bookings" className="space-y-4 py-4">
+                            {filteredBookingsHistory.length === 0 ? (
+                                <p className="text-center text-muted-foreground py-10">No booking history found.</p>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {filteredBookingsHistory.map(b => (
+                                        <HistoryCard
+                                            key={b.id}
+                                            name={b.customerName}
+                                            phone={b.customerPhone}
+                                            pax={b.partySize}
+                                            time={b.bookingDateTime}
+                                            status={b.status}
+                                            type="booking"
+                                            token={b.waitlistToken}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </TabsContent>
+                    )}
                 </Tabs>
 
                 <DialogFooter className="mt-6 flex gap-2">
-                    <Button onClick={onOpenAnalytics} variant="outline" className="w-full md:w-auto">
-                        <BarChart3 size={15} className="mr-2" /> Analytics
-                    </Button>
+                    {canUseWaitlist && (
+                        <Button onClick={onOpenAnalytics} variant="outline" className="w-full md:w-auto">
+                            <BarChart3 size={15} className="mr-2" /> Analytics
+                        </Button>
+                    )}
                     <Button onClick={onClose} variant="outline" className="w-full md:w-auto">Close</Button>
                 </DialogFooter>
             </DialogContent>
@@ -1758,7 +1828,8 @@ function BookingsPageContent() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const employeeOfOwnerId = searchParams.get('employee_of');
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('waitlist');
+    const [employeeAccess, setEmployeeAccess] = useState(() => getStoredEmployeeAccessSnapshot(employeeOfOwnerId));
+    const [activeTab, setActiveTab] = useState(() => getInitialBookingsTab(employeeOfOwnerId));
     const [isWaitlistEnabled, setIsWaitlistEnabled] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
@@ -1777,6 +1848,99 @@ function BookingsPageContent() {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
         return `owner_bookings::${scope}`;
     }, [impersonatedOwnerId, employeeOfOwnerId]);
+    const canUseWaitlist = canUseWaitlistForAccess(employeeAccess);
+    const canUseBookings = canUseBookingsForAccess(employeeAccess);
+    const shouldRenderWaitlist = !employeeOfOwnerId || (employeeAccess.isLoaded && canUseWaitlist);
+    const shouldRenderBookings = !employeeOfOwnerId || !employeeAccess.isLoaded || canUseBookings;
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function resolveEmployeeAccess() {
+            if (!employeeOfOwnerId) {
+                setEmployeeAccess({
+                    role: ROLES.OWNER,
+                    permissions: getPermissionsForRole(ROLES.OWNER),
+                    customAllowedPages: null,
+                    isLoaded: true,
+                });
+                return;
+            }
+
+            const storedSnapshot = getStoredEmployeeAccessSnapshot(employeeOfOwnerId);
+            setEmployeeAccess(storedSnapshot);
+
+            const user = auth.currentUser;
+            if (!user) {
+                setEmployeeAccess((current) => ({ ...current, isLoaded: true }));
+                return;
+            }
+
+            try {
+                const userSnap = await getDoc(doc(db, 'users', user.uid));
+                if (cancelled) return;
+
+                const linkedOutlets = userSnap.exists() ? (userSnap.data()?.linkedOutlets || []) : [];
+                const outlet = linkedOutlets.find((entry) => (
+                    entry?.ownerId === employeeOfOwnerId && entry?.status === 'active'
+                ));
+
+                const nextAccess = {
+                    role: outlet?.employeeRole || storedSnapshot.role,
+                    permissions: Array.isArray(outlet?.permissions) ? outlet.permissions : storedSnapshot.permissions,
+                    customAllowedPages: Array.isArray(outlet?.customAllowedPages)
+                        ? outlet.customAllowedPages
+                        : storedSnapshot.customAllowedPages,
+                    isLoaded: true,
+                };
+
+                setEmployeeAccess(nextAccess);
+
+                try {
+                    if (nextAccess.role) localStorage.setItem('employeeRole', nextAccess.role);
+                    if (Array.isArray(nextAccess.permissions)) {
+                        localStorage.setItem('employeePermissions', JSON.stringify(nextAccess.permissions));
+                    }
+                    if (nextAccess.role === 'custom' && Array.isArray(nextAccess.customAllowedPages)) {
+                        localStorage.setItem('customAllowedPages', JSON.stringify(nextAccess.customAllowedPages));
+                    } else {
+                        localStorage.removeItem('customAllowedPages');
+                    }
+                } catch {
+                    // Ignore storage failures.
+                }
+            } catch (error) {
+                console.error('[Bookings] Failed to resolve employee access:', error);
+                if (!cancelled) {
+                    setEmployeeAccess((current) => ({ ...current, isLoaded: true }));
+                }
+            }
+        }
+
+        void resolveEmployeeAccess();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [employeeOfOwnerId]);
+
+    useEffect(() => {
+        if (activeTab === 'waitlist' && !shouldRenderWaitlist) {
+            setActiveTab('upcoming');
+            return;
+        }
+
+        if (activeTab === 'upcoming' && !shouldRenderBookings && shouldRenderWaitlist) {
+            setActiveTab('waitlist');
+        }
+    }, [activeTab, shouldRenderBookings, shouldRenderWaitlist]);
+
+    useEffect(() => {
+        if (canUseWaitlist) return;
+        setIsWaitlistSettingsOpen(false);
+        setIsWaitlistAnalyticsOpen(false);
+        setIsWaitlistQrOpen(false);
+    }, [canUseWaitlist]);
 
     const persistBookingsToCache = useCallback(async (nextBookings) => {
         const payload = { bookings: Array.isArray(nextBookings) ? nextBookings : [] };
@@ -1905,8 +2069,10 @@ function BookingsPageContent() {
 
     const handleRefreshAll = useCallback(() => {
         void fetchBookings(true);
-        setWaitlistRefreshSignal((value) => value + 1);
-    }, [fetchBookings]);
+        if (canUseWaitlist) {
+            setWaitlistRefreshSignal((value) => value + 1);
+        }
+    }, [canUseWaitlist, fetchBookings]);
 
     const handleBookingCreatedFromQuickAdd = useCallback(() => fetchBookings(true), [fetchBookings]);
 
@@ -2125,9 +2291,11 @@ function BookingsPageContent() {
                     <Button onClick={() => setIsHistoryOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2">
                         <History size={16} /> <span className="hidden md:inline">History</span>
                     </Button>
-                    <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2" disabled={!businessInfo}>
-                        <Settings size={16} /> <span className="hidden md:inline">Settings</span>
-                    </Button>
+                    {canUseWaitlist && (
+                        <Button onClick={() => setIsWaitlistSettingsOpen(true)} variant="outline" className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center md:gap-2" disabled={!businessInfo}>
+                            <Settings size={16} /> <span className="hidden md:inline">Settings</span>
+                        </Button>
+                    )}
                     <Button onClick={handleRefreshAll} variant="outline" disabled={loading} className="h-8 w-8 px-0 md:h-10 md:w-auto md:px-3 flex items-center justify-center">
                         <RefreshCw size={16} className={loading ? "animate-spin" : "md:mr-2"} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
@@ -2150,9 +2318,16 @@ function BookingsPageContent() {
 
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 mb-3 md:mb-6">
-                    <TabsList className="bg-muted/50 p-1 self-start w-full md:w-auto grid grid-cols-2 md:inline-flex h-10 md:h-11">
-                        <TabsTrigger value="waitlist" className="flex items-center gap-2 font-bold text-xs md:text-sm"><ListOrdered size={16} className="hidden md:block" /> Live Waitlist ({waitlistCount})</TabsTrigger>
-                        <TabsTrigger value="upcoming" className="flex items-center gap-2 font-bold text-xs md:text-sm"><CalendarClock size={16} className="hidden md:block" /> {upcoming ? `Upcoming (${upcoming.length})` : 'Upcoming'}</TabsTrigger>
+                    <TabsList className={cn(
+                        "bg-muted/50 p-1 self-start w-full md:w-auto grid md:inline-flex h-10 md:h-11",
+                        shouldRenderWaitlist && shouldRenderBookings ? "grid-cols-2" : "grid-cols-1"
+                    )}>
+                        {shouldRenderWaitlist && (
+                            <TabsTrigger value="waitlist" className="flex items-center gap-2 font-bold text-xs md:text-sm"><ListOrdered size={16} className="hidden md:block" /> Live Waitlist ({waitlistCount})</TabsTrigger>
+                        )}
+                        {shouldRenderBookings && (
+                            <TabsTrigger value="upcoming" className="flex items-center gap-2 font-bold text-xs md:text-sm"><CalendarClock size={16} className="hidden md:block" /> {upcoming ? `Upcoming (${upcoming.length})` : 'Upcoming'}</TabsTrigger>
+                        )}
                     </TabsList>
                     <div className="relative w-full max-w-sm">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
@@ -2160,36 +2335,40 @@ function BookingsPageContent() {
                     </div>
                 </div>
 
-                <TabsContent value="waitlist">
-                    <WaitlistManagement
-                        restaurant={businessInfo}
-                        impersonatedOwnerId={impersonatedOwnerId}
-                        employeeOfOwnerId={employeeOfOwnerId}
-                        waitlistSeatingMode={waitlistSeatingMode}
-                        onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
-                        onBookingCreated={handleBookingCreatedFromQuickAdd}
-                        refreshSignal={waitlistRefreshSignal}
-                    />
-                </TabsContent>
+                {shouldRenderWaitlist && (
+                    <TabsContent value="waitlist">
+                        <WaitlistManagement
+                            restaurant={businessInfo}
+                            impersonatedOwnerId={impersonatedOwnerId}
+                            employeeOfOwnerId={employeeOfOwnerId}
+                            waitlistSeatingMode={waitlistSeatingMode}
+                            onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
+                            onBookingCreated={handleBookingCreatedFromQuickAdd}
+                            refreshSignal={waitlistRefreshSignal}
+                        />
+                    </TabsContent>
+                )}
 
-                <TabsContent value="upcoming">
-                    <div className="space-y-3 md:space-y-6">
-                        {loading && upcoming.length === 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-40 bg-muted animate-pulse rounded-xl" />)}
-                            </div>
-                        ) : upcoming.length > 0 ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {upcoming.map(b => <BookingCard key={b.id} booking={b} onUpdateStatus={handleUpdateStatus} />)}
-                            </div>
-                        ) : (
-                            <Card className="border-dashed py-12 text-center bg-muted/10">
-                                <CalendarClock className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
-                                <p className="text-muted-foreground">No upcoming bookings found.</p>
-                            </Card>
-                        )}
-                    </div>
-                </TabsContent>
+                {shouldRenderBookings && (
+                    <TabsContent value="upcoming">
+                        <div className="space-y-3 md:space-y-6">
+                            {loading && upcoming.length === 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-40 bg-muted animate-pulse rounded-xl" />)}
+                                </div>
+                            ) : upcoming.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {upcoming.map(b => <BookingCard key={b.id} booking={b} onUpdateStatus={handleUpdateStatus} />)}
+                                </div>
+                            ) : (
+                                <Card className="border-dashed py-12 text-center bg-muted/10">
+                                    <CalendarClock className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
+                                    <p className="text-muted-foreground">No upcoming bookings found.</p>
+                                </Card>
+                            )}
+                        </div>
+                    </TabsContent>
+                )}
             </Tabs>
 
             <Dialog open={isWaitlistSettingsOpen} onOpenChange={setIsWaitlistSettingsOpen}>
@@ -2317,13 +2496,17 @@ function BookingsPageContent() {
                 impersonatedOwnerId={impersonatedOwnerId}
                 employeeOfOwnerId={employeeOfOwnerId}
                 onOpenAnalytics={() => setIsWaitlistAnalyticsOpen(true)}
+                canUseWaitlist={canUseWaitlist}
+                canUseBookings={canUseBookings}
             />
-            <WaitlistAnalyticsModal
-                isOpen={isWaitlistAnalyticsOpen}
-                onClose={() => setIsWaitlistAnalyticsOpen(false)}
-                impersonatedOwnerId={impersonatedOwnerId}
-                employeeOfOwnerId={employeeOfOwnerId}
-            />
+            {canUseWaitlist && (
+                <WaitlistAnalyticsModal
+                    isOpen={isWaitlistAnalyticsOpen}
+                    onClose={() => setIsWaitlistAnalyticsOpen(false)}
+                    impersonatedOwnerId={impersonatedOwnerId}
+                    employeeOfOwnerId={employeeOfOwnerId}
+                />
+            )}
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ ...infoDialog, isOpen: false })} title={infoDialog.title} message={infoDialog.message} />
         </motion.div>
     );

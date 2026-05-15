@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import { ROLE_DISPLAY_NAMES } from '@/lib/permissions';
 import { resolveAuthProfileFromClient } from '@/lib/authRoleCache';
+import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
 
 export default function SelectRolePage() {
     const router = useRouter();
@@ -107,6 +108,41 @@ export default function SelectRolePage() {
         }
     };
 
+    const clearEmployeeContext = () => {
+        localStorage.removeItem('activeOutletId');
+        localStorage.removeItem('activeOwnerId');
+        localStorage.removeItem('activeOutletName');
+        localStorage.removeItem('employeeRole');
+        localStorage.removeItem('employeePermissions');
+        localStorage.removeItem('customAllowedPages');
+    };
+
+    const getBusinessTypeForOutlet = (outlet = {}) => {
+        if (outlet.collectionName === 'shops') return 'store';
+        if (outlet.collectionName === 'street_vendors') return 'street-vendor';
+        return 'restaurant';
+    };
+
+    const persistEmployeeOutletContext = (outlet = {}) => {
+        localStorage.setItem('activeOutletId', outlet.outletId);
+        localStorage.setItem('activeOwnerId', outlet.ownerId);
+        localStorage.setItem('activeOutletName', outlet.outletName);
+        localStorage.setItem('employeeRole', outlet.employeeRole);
+        localStorage.setItem('businessType', getBusinessTypeForOutlet(outlet));
+
+        if (Array.isArray(outlet.permissions)) {
+            localStorage.setItem('employeePermissions', JSON.stringify(outlet.permissions));
+        } else {
+            localStorage.removeItem('employeePermissions');
+        }
+
+        if (outlet.employeeRole === 'custom' && Array.isArray(outlet.customAllowedPages)) {
+            localStorage.setItem('customAllowedPages', JSON.stringify(outlet.customAllowedPages));
+        } else {
+            localStorage.removeItem('customAllowedPages');
+        }
+    };
+
     const redirectToDashboard = (data) => {
         const { role, businessType, redirectTo } = data;
 
@@ -123,7 +159,10 @@ export default function SelectRolePage() {
                         : null);
 
         if (redirectTo) {
-            setRoleContext(data.role || 'employee', null);
+            if (data.role === 'employee' && data.outlet) {
+                persistEmployeeOutletContext(data.outlet);
+            }
+            setRoleContext(data.role || 'employee', resolvedBusinessType);
             router.push(redirectTo);
             return;
         }
@@ -155,10 +194,7 @@ export default function SelectRolePage() {
         if (roleType === 'owner') {
             const { businessType, role } = roleData;
             // Clear any employee context
-            localStorage.removeItem('activeOutletId');
-            localStorage.removeItem('activeOwnerId');
-            localStorage.removeItem('activeOutletName');
-            localStorage.removeItem('employeeRole');
+            clearEmployeeContext();
 
             if (role === 'street-vendor') {
                 setRoleContext('street-vendor', businessType || 'street-vendor');
@@ -174,37 +210,31 @@ export default function SelectRolePage() {
             }
         } else if (roleType === 'admin') {
             // Clear any employee context
-            localStorage.removeItem('activeOutletId');
-            localStorage.removeItem('activeOwnerId');
-            localStorage.removeItem('activeOutletName');
-            localStorage.removeItem('employeeRole');
+            clearEmployeeContext();
             setRoleContext('admin', null);
             router.push('/admin-dashboard');
         } else if (roleType === 'customer') {
             // Clear any employee context
-            localStorage.removeItem('activeOutletId');
-            localStorage.removeItem('activeOwnerId');
-            localStorage.removeItem('activeOutletName');
-            localStorage.removeItem('employeeRole');
+            clearEmployeeContext();
 
             setRoleContext('customer', null);
             router.push('/customer-dashboard');
         } else if (roleType === 'employee' && outlet) {
             // Store active outlet info in localStorage for API calls
-            localStorage.setItem('activeOutletId', outlet.outletId);
-            localStorage.setItem('activeOwnerId', outlet.ownerId);
-            localStorage.setItem('activeOutletName', outlet.outletName);
-            localStorage.setItem('employeeRole', outlet.employeeRole);
-            setRoleContext('employee', null);
+            persistEmployeeOutletContext(outlet);
+            setRoleContext('employee', getBusinessTypeForOutlet(outlet));
 
             // Redirect to outlet's dashboard with owner ID as query param
             // This allows APIs to fetch owner's data instead of employee's
             if (outlet.collectionName === 'street_vendors') {
                 router.push(`/street-vendor-dashboard?employee_of=${outlet.ownerId}`);
-            } else if (outlet.employeeRole === 'manager') {
-                router.push(`/owner-dashboard/live-orders?employee_of=${outlet.ownerId}`);
             } else {
-                router.push(`/owner-dashboard/live-orders?employee_of=${outlet.ownerId}`);
+                const defaultPath = getDefaultOwnerDashboardPathForAccess({
+                    role: outlet.employeeRole,
+                    customAllowedPages: outlet.customAllowedPages,
+                    businessType: getBusinessTypeForOutlet(outlet),
+                });
+                router.push(appendDashboardScope(defaultPath, { employeeOfOwnerId: outlet.ownerId }));
             }
         }
     };
