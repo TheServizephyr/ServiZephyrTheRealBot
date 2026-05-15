@@ -484,6 +484,125 @@ export async function GET(req) {
     }
 }
 
+export async function POST(req) {
+    try {
+        const context = await verifyOwnerWithAudit(
+            req,
+            'create_waitlist_entry',
+            {},
+            false,
+            PERMISSIONS.MANAGE_DINE_IN
+        );
+        assertRestaurantBusiness(context);
+
+        const { businessId, businessSnap, uid } = context;
+        const firestore = await getFirestore();
+        const businessRef = businessSnap.ref;
+        const businessData = businessSnap.data() || {};
+        const { name, phone, paxCount } = await req.json();
+
+        const normalizedName = String(name || '').trim();
+        if (!normalizedName) {
+            return NextResponse.json({ message: 'Guest name is required.' }, { status: 400 });
+        }
+
+        const normalizedPaxCount = Number.parseInt(String(paxCount), 10);
+        if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
+            return NextResponse.json({ message: 'Guests must be between 1 and 20.' }, { status: 400 });
+        }
+
+        const normalizedPhone = String(phone || '').replace(/\D/g, '');
+        if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
+            return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
+        }
+
+        let entryPayload = null;
+        const todayCounterDateKey = getDateKeyInTimeZone(new Date());
+
+        await firestore.runTransaction(async (transaction) => {
+            const businessSnapTx = await transaction.get(businessRef);
+            const businessDataTx = businessSnapTx.data() || {};
+            const lockRef = normalizedPhone
+                ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
+                : null;
+
+            if (lockRef) {
+                const lockSnap = await transaction.get(lockRef);
+                const existingEntryId = String(lockSnap.data()?.entryId || '').trim();
+                if (lockSnap.exists && existingEntryId) {
+                    const existingEntryRef = businessRef.collection('waitlist').doc(existingEntryId);
+                    const existingEntrySnap = await transaction.get(existingEntryRef);
+                    const existingStatus = String(existingEntrySnap.data()?.status || '').toLowerCase();
+                    if (existingEntrySnap.exists && ACTIVE_STATUSES.has(existingStatus)) {
+                        throw { message: 'Active waitlist entry already exists for this phone.', status: 409 };
+                    }
+                } else if (lockSnap.exists) {
+                    throw { message: 'Active waitlist entry already exists for this phone.', status: 409 };
+                }
+            }
+
+            const storedCounterDateKey = String(businessDataTx.waitlistTokenCounterDate || '').trim();
+            const shouldResetCounter = storedCounterDateKey !== todayCounterDateKey;
+            const currentCounter = shouldResetCounter
+                ? DEFAULT_WAITLIST_TOKEN_BASE
+                : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessDataTx.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
+            const nextCounter = currentCounter + 1;
+            const tokenNumber = currentCounter;
+            const waitlistToken = formatWaitlistToken(tokenNumber);
+            const arrivalCode = generateArrivalCode();
+            const entryRef = businessRef.collection('waitlist').doc();
+
+            entryPayload = {
+                id: entryRef.id,
+                name: normalizedName,
+                phone: normalizedPhone,
+                paxCount: normalizedPaxCount,
+                status: 'pending',
+                queueType: 'walk_in',
+                queuePriority: 2,
+                source: 'manual_quick_add',
+                createdBy: uid || null,
+                waitlistTokenNumber: tokenNumber,
+                waitlistToken,
+                arrivalCode,
+                createdAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+                restaurantId: businessId,
+                restaurantName: businessData.name || 'Restaurant',
+            };
+
+            transaction.set(entryRef, entryPayload);
+            transaction.set(businessRef, {
+                waitlistTokenCounter: nextCounter,
+                waitlistTokenCounterDate: todayCounterDateKey,
+                updatedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
+
+            if (lockRef) {
+                transaction.set(lockRef, {
+                    phone: normalizedPhone,
+                    entryId: entryRef.id,
+                    status: 'active',
+                    createdAt: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
+            }
+        });
+
+        return NextResponse.json({
+            message: 'Waitlist entry created.',
+            entry: entryPayload ? {
+                ...entryPayload,
+                createdAt: null,
+                updatedAt: null,
+            } : null,
+        }, { status: 201 });
+    } catch (error) {
+        console.error("POST OWNER WAITLIST ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
 export async function PATCH(req) {
     try {
         const context = await verifyOwnerWithAudit(

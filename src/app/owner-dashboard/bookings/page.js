@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3 } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -36,6 +36,27 @@ export const dynamic = 'force-dynamic';
 const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived'];
 
 const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
+
+const getInitialQuickAddForm = () => {
+    const nextSlot = new Date();
+    nextSlot.setMinutes(nextSlot.getMinutes() + 60);
+    const roundedMinutes = nextSlot.getMinutes() <= 30 ? 30 : 60;
+    if (roundedMinutes === 60) {
+        nextSlot.setHours(nextSlot.getHours() + 1);
+        nextSlot.setMinutes(0, 0, 0);
+    } else {
+        nextSlot.setMinutes(30, 0, 0);
+    }
+
+    return {
+        name: '',
+        phone: '',
+        paxCount: '2',
+        bookingDate: getLocalDateKey(nextSlot),
+        bookingTime: format(nextSlot, 'HH:mm'),
+        occasion: '',
+    };
+};
 
 const getYesterdayDateKey = () => {
     const date = new Date();
@@ -832,6 +853,7 @@ const WaitlistManagement = ({
     employeeOfOwnerId,
     waitlistSeatingMode,
     onWaitlistUpdate,
+    onBookingCreated,
     refreshSignal = 0,
 }) => {
     const { toast } = useToast();
@@ -848,6 +870,29 @@ const WaitlistManagement = ({
     const [isArrivalScannerOpen, setIsArrivalScannerOpen] = useState(false);
     const [scanSeatingEntry, setScanSeatingEntry] = useState(null);
     const [scanSelectedTableId, setScanSelectedTableId] = useState('');
+    const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+    const [quickAddMode, setQuickAddMode] = useState('waitlist');
+    const [quickAddForm, setQuickAddForm] = useState(getInitialQuickAddForm);
+    const [quickAddLoading, setQuickAddLoading] = useState(false);
+    const [quickAddPhoneTouched, setQuickAddPhoneTouched] = useState(false);
+
+    const openQuickAdd = useCallback((mode = 'waitlist') => {
+        setQuickAddMode(mode);
+        setQuickAddForm(getInitialQuickAddForm());
+        setQuickAddPhoneTouched(false);
+        setIsQuickAddOpen(true);
+    }, []);
+
+    const closeQuickAdd = useCallback(() => {
+        setIsQuickAddOpen(false);
+        setQuickAddLoading(false);
+        setQuickAddPhoneTouched(false);
+        setQuickAddForm(getInitialQuickAddForm());
+    }, []);
+
+    const updateQuickAddField = useCallback((field, value) => {
+        setQuickAddForm((current) => ({ ...current, [field]: value }));
+    }, []);
 
     const handleApiCall = useCallback(async (method, body, path) => {
         const user = auth.currentUser;
@@ -897,6 +942,76 @@ const WaitlistManagement = ({
             if (!silent) setLoading(false);
         }
     }, [handleApiCall, toast]);
+
+    const handleQuickAddSubmit = useCallback(async (event) => {
+        event.preventDefault();
+        const normalizedName = String(quickAddForm.name || '').trim();
+        const phoneDigits = String(quickAddForm.phone || '').replace(/\D/g, '');
+        const normalizedPaxCount = Number.parseInt(String(quickAddForm.paxCount), 10);
+        const phoneRequired = quickAddMode === 'booking';
+
+        if (!normalizedName) {
+            toast({ title: "Name Required", description: "Please enter the guest name.", variant: "destructive" });
+            return;
+        }
+
+        if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
+            toast({ title: "Invalid Guests", description: "Guests must be between 1 and 20.", variant: "destructive" });
+            return;
+        }
+
+        if ((phoneRequired || phoneDigits.length > 0) && phoneDigits.length !== 10) {
+            setQuickAddPhoneTouched(true);
+            toast({ title: "Invalid Phone", description: "Enter a valid 10-digit phone number.", variant: "destructive" });
+            return;
+        }
+
+        setQuickAddLoading(true);
+        try {
+            if (quickAddMode === 'booking') {
+                if (!restaurant?.id) throw new Error('Restaurant not loaded yet.');
+                if (!quickAddForm.bookingDate || !quickAddForm.bookingTime) {
+                    throw new Error('Booking date and time are required.');
+                }
+                const bookingDateTime = new Date(`${quickAddForm.bookingDate}T${quickAddForm.bookingTime}`);
+                if (Number.isNaN(bookingDateTime.getTime())) {
+                    throw new Error('Invalid booking date/time.');
+                }
+                if (bookingDateTime.getTime() <= Date.now()) {
+                    throw new Error('Booking time must be in the future.');
+                }
+
+                await handleApiCall('POST', {
+                    restaurantId: restaurant.id,
+                    name: normalizedName,
+                    phone: phoneDigits,
+                    guests: normalizedPaxCount,
+                    bookingDateTime: bookingDateTime.toISOString(),
+                    occasion: String(quickAddForm.occasion || '').trim(),
+                    source: 'manual_quick_add',
+                }, '/api/owner/bookings');
+                if (typeof onBookingCreated === 'function') {
+                    await onBookingCreated();
+                }
+                toast({ title: "Booking Added", description: `${normalizedName}'s booking was created.` });
+            } else {
+                const result = await handleApiCall('POST', {
+                    name: normalizedName,
+                    phone: phoneDigits,
+                    paxCount: normalizedPaxCount,
+                    source: 'manual_quick_add',
+                }, '/api/owner/waitlist');
+                const tokenText = result?.entry?.waitlistToken ? ` Token ${result.entry.waitlistToken}.` : '';
+                toast({ title: "Waitlist Added", description: `${normalizedName} added to live waitlist.${tokenText}` });
+                await fetchData(true);
+            }
+            closeQuickAdd();
+        } catch (err) {
+            toast({ title: "Quick Add Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setQuickAddLoading(false);
+        }
+    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, fetchData, closeQuickAdd, onBookingCreated, toast]);
 
     useEffect(() => {
         if (typeof onWaitlistUpdate === 'function') {
@@ -1013,10 +1128,15 @@ const WaitlistManagement = ({
     };
 
     const handleNotify = (entry) => {
+        const phoneDigits = String(entry?.phone || '').replace(/\D/g, '');
+        if (!/^\d{10}$/.test(phoneDigits)) {
+            toast({ title: "Phone Missing", description: "Add a valid phone number before sending WhatsApp.", variant: "destructive" });
+            return;
+        }
         const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
         const lapseMinutes = Number(waitlistMeta?.noShowTimeoutMinutes || 10);
         const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may lapse after ${lapseMinutes} minutes, so please arrive soon to avoid cancellation.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
-        window.open(`https://wa.me/91${entry.phone}?text=${encodeURIComponent(msg)}`, '_blank');
+        window.open(`https://wa.me/91${phoneDigits}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
     };
 
@@ -1119,6 +1239,14 @@ const WaitlistManagement = ({
         return recommendedIds;
     }, [entries, allTables]);
 
+    const quickAddPhoneDigits = String(quickAddForm.phone || '').replace(/\D/g, '');
+    const quickAddPhoneRequired = quickAddMode === 'booking';
+    const quickAddPhoneError = quickAddPhoneTouched
+        && (quickAddPhoneRequired || quickAddPhoneDigits.length > 0)
+        && quickAddPhoneDigits.length !== 10;
+    const scannedPhoneDigits = String(scannedWaitlistEntry?.phone || '').replace(/\D/g, '');
+    const hasScannedContactPhone = /^\d{10}$/.test(scannedPhoneDigits);
+
     return (
         <div className="space-y-6">
             <style jsx global>{`
@@ -1144,6 +1272,9 @@ const WaitlistManagement = ({
                     <p className="text-sm text-muted-foreground">Manage walk-ins.</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Button variant="default" size="sm" onClick={() => openQuickAdd('waitlist')} className="h-8 hidden md:inline-flex">
+                        <Plus size={14} className="mr-2" /> Quick Add
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setIsArrivalScannerOpen(true)} className="h-8 hidden md:inline-flex">
                         <ScanLine size={14} className="mr-2" /> Scan Token QR
                     </Button>
@@ -1190,6 +1321,8 @@ const WaitlistManagement = ({
                             ? Math.max(0, Math.min(1, remainingNoShowSeconds / totalNoShowSeconds))
                             : 0;
                         const progressDeg = Math.round(progressRatio * 360);
+                        const entryPhoneDigits = String(entry.phone || '').replace(/\D/g, '');
+                        const hasContactPhone = /^\d{10}$/.test(entryPhoneDigits);
 
                         return (
                             <Card key={entry.id} className={cn(
@@ -1225,7 +1358,7 @@ const WaitlistManagement = ({
                                                         <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md border border-green-500/20">Ready to Seat</span>
                                                     )}
                                                 </h4>
-                                                <p className="text-xs text-muted-foreground">+91 {entry.phone}</p>
+                                                <p className="text-xs text-muted-foreground">{hasContactPhone ? `+91 ${entryPhoneDigits}` : 'No phone added'}</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
@@ -1267,12 +1400,18 @@ const WaitlistManagement = ({
                                         </div>
                                     )}
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" size="sm" className="h-9 text-xs" onClick={() => handleNotify(entry)}>
+                                        <Button variant="outline" size="sm" className="h-9 text-xs" disabled={!hasContactPhone || actionLoading === entry.id} onClick={() => handleNotify(entry)}>
                                             <FaWhatsapp size={15} className="mr-1.5 text-green-500" /> Notify
                                         </Button>
-                                        <Button variant="outline" size="sm" className="h-9 text-xs" asChild>
-                                            <a href={`tel:+91${entry.phone}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
-                                        </Button>
+                                        {hasContactPhone ? (
+                                            <Button variant="outline" size="sm" className="h-9 text-xs" asChild>
+                                                <a href={`tel:+91${entryPhoneDigits}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
+                                            </Button>
+                                        ) : (
+                                            <Button variant="outline" size="sm" className="h-9 text-xs" disabled>
+                                                <PhoneCall size={14} className="mr-1.5" /> Call
+                                            </Button>
+                                        )}
                                     </div>
                                     <div className="flex gap-2">
                                         {isNotified && (
@@ -1310,6 +1449,130 @@ const WaitlistManagement = ({
                     </CardContent>
                 </Card>
             )}
+            <Dialog
+                open={isQuickAddOpen}
+                onOpenChange={(open) => {
+                    if (open) setIsQuickAddOpen(true);
+                    else closeQuickAdd();
+                }}
+            >
+                <DialogContent className="sm:max-w-lg">
+                    <form onSubmit={handleQuickAddSubmit} className="space-y-5">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Plus size={18} /> Quick Add
+                            </DialogTitle>
+                            <DialogDescription>
+                                Counter entry for live waitlist or future bookings.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <Tabs value={quickAddMode} onValueChange={(value) => setQuickAddMode(value)}>
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="waitlist">Waitlist</TabsTrigger>
+                                <TabsTrigger value="booking">Booking</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+
+                        <div className="grid gap-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="quick-add-name">Guest Name</Label>
+                                <input
+                                    id="quick-add-name"
+                                    value={quickAddForm.name}
+                                    onChange={(event) => updateQuickAddField('name', event.target.value)}
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary"
+                                    placeholder="Guest name"
+                                    autoComplete="name"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="quick-add-phone">
+                                        Phone {quickAddMode === 'waitlist' ? <span className="text-muted-foreground">(optional)</span> : null}
+                                    </Label>
+                                    <input
+                                        id="quick-add-phone"
+                                        value={quickAddForm.phone}
+                                        onBlur={() => setQuickAddPhoneTouched(true)}
+                                        onChange={(event) => updateQuickAddField('phone', event.target.value.replace(/\D/g, '').slice(0, 12))}
+                                        className={cn(
+                                            "h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary",
+                                            quickAddPhoneError && "border-destructive focus:border-destructive"
+                                        )}
+                                        placeholder="0000000000"
+                                        inputMode="numeric"
+                                        autoComplete="tel"
+                                    />
+                                    {quickAddPhoneError && (
+                                        <p className="text-xs font-medium text-destructive">Please enter a valid 10-digit phone number.</p>
+                                    )}
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="quick-add-guests">Guests</Label>
+                                    <input
+                                        id="quick-add-guests"
+                                        type="number"
+                                        min="1"
+                                        max="20"
+                                        value={quickAddForm.paxCount}
+                                        onChange={(event) => updateQuickAddField('paxCount', event.target.value)}
+                                        className="h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary"
+                                    />
+                                </div>
+                            </div>
+
+                            {quickAddMode === 'booking' && (
+                                <div className="grid gap-4">
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="quick-add-date">Date</Label>
+                                            <input
+                                                id="quick-add-date"
+                                                type="date"
+                                                value={quickAddForm.bookingDate}
+                                                onChange={(event) => updateQuickAddField('bookingDate', event.target.value)}
+                                                className="h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="quick-add-time">Time</Label>
+                                            <input
+                                                id="quick-add-time"
+                                                type="time"
+                                                value={quickAddForm.bookingTime}
+                                                onChange={(event) => updateQuickAddField('bookingTime', event.target.value)}
+                                                className="h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="quick-add-occasion">Occasion</Label>
+                                        <input
+                                            id="quick-add-occasion"
+                                            value={quickAddForm.occasion}
+                                            onChange={(event) => updateQuickAddField('occasion', event.target.value)}
+                                            className="h-10 rounded-md border border-input bg-background px-3 text-sm font-medium outline-none transition-colors focus:border-primary"
+                                            placeholder="Birthday, celebration, family dinner"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={closeQuickAdd} disabled={quickAddLoading}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={quickAddLoading}>
+                                {quickAddLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus size={16} className="mr-2" />}
+                                {quickAddMode === 'booking' ? 'Create Booking' : 'Create Token'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
             <AnimatePresence>
                 {isArrivalScannerOpen && (
                     <QrScanner
@@ -1341,7 +1604,7 @@ const WaitlistManagement = ({
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <h4 className="truncate text-lg font-black">{scannedWaitlistEntry.name}</h4>
-                                            <p className="text-sm text-muted-foreground">{scannedWaitlistEntry.phone}</p>
+                                            <p className="text-sm text-muted-foreground">{hasScannedContactPhone ? `+91 ${scannedPhoneDigits}` : 'No phone added'}</p>
                                         </div>
                                         <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
                                             {scannedWaitlistEntry.waitlistToken || 'TOKEN'}
@@ -1359,14 +1622,20 @@ const WaitlistManagement = ({
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            disabled={actionLoading === scannedWaitlistEntry.id}
+                                            disabled={!hasScannedContactPhone || actionLoading === scannedWaitlistEntry.id}
                                             onClick={() => handleNotify(scannedWaitlistEntry)}
                                         >
                                             <FaWhatsapp size={15} className="mr-1.5 text-green-500" /> Notify
                                         </Button>
-                                        <Button variant="outline" size="sm" asChild>
-                                            <a href={`tel:+91${scannedWaitlistEntry.phone}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
-                                        </Button>
+                                        {hasScannedContactPhone ? (
+                                            <Button variant="outline" size="sm" asChild>
+                                                <a href={`tel:+91${scannedPhoneDigits}`}><PhoneCall size={14} className="mr-1.5" /> Call</a>
+                                            </Button>
+                                        ) : (
+                                            <Button variant="outline" size="sm" disabled>
+                                                <PhoneCall size={14} className="mr-1.5" /> Call
+                                            </Button>
+                                        )}
                                     </div>
                                     <Button
                                         type="button"
@@ -1457,6 +1726,15 @@ const WaitlistManagement = ({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <Button
+                type="button"
+                onClick={() => openQuickAdd('waitlist')}
+                className="md:hidden fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full p-0 shadow-2xl"
+                aria-label="Quick add guest"
+                title="Quick add guest"
+            >
+                <Plus size={24} />
+            </Button>
             <Button
                 type="button"
                 onClick={() => setIsArrivalScannerOpen(true)}
@@ -1629,6 +1907,8 @@ function BookingsPageContent() {
         void fetchBookings(true);
         setWaitlistRefreshSignal((value) => value + 1);
     }, [fetchBookings]);
+
+    const handleBookingCreatedFromQuickAdd = useCallback(() => fetchBookings(true), [fetchBookings]);
 
     useEffect(() => {
         setCapacityDraft(String(waitlistManualCapacity || 40));
@@ -1887,6 +2167,7 @@ function BookingsPageContent() {
                         employeeOfOwnerId={employeeOfOwnerId}
                         waitlistSeatingMode={waitlistSeatingMode}
                         onWaitlistUpdate={(entries) => setWaitlistCount(entries.length)}
+                        onBookingCreated={handleBookingCreatedFromQuickAdd}
                         refreshSignal={waitlistRefreshSignal}
                     />
                 </TabsContent>

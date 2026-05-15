@@ -96,7 +96,7 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { restaurantId, name, phone, guests, bookingDateTime, occasion } = await req.json();
+        const { restaurantId, name, phone, guests, bookingDateTime, occasion, source } = await req.json();
 
         if (!restaurantId || !name || !phone || !guests || !bookingDateTime) {
             return NextResponse.json({ message: 'Missing required booking data.' }, { status: 400 });
@@ -155,6 +155,7 @@ export async function POST(req) {
             createdAt: FieldValue.serverTimestamp(),
             notes: String(occasion || '').trim(),
             occasion: String(occasion || '').trim(),
+            source: String(source || '').trim() === 'manual_quick_add' ? 'manual_quick_add' : 'public_booking',
         };
 
         await newBookingRef.set(newBookingData);
