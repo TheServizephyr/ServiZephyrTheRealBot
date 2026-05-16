@@ -188,10 +188,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         const { skipSystemNotification = false } = options;
         const soundPath = payload.sound;
         const isWhatsAppSound = typeof soundPath === 'string' && soundPath.includes('notification-whatsapp-message');
+        const shouldLoopSound = payload.loopSound !== false && !isWhatsAppSound;
         const disableAutoStop = payload.disableAutoStop === true;
         const alarmId = typeof payload.alarmId === 'string' ? payload.alarmId : null;
 
-        if (isWhatsAppSound) {
+        if (isWhatsAppSound || !shouldLoopSound) {
             triggerVibration();
         } else {
             startVibrationLoop();
@@ -209,11 +210,11 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         if (persistentAlarmRef.current && !disableAutoStop) return;
 
         stopAlarm();
-        if (!isWhatsAppSound) {
+        if (shouldLoopSound) {
             startVibrationLoop();
         }
 
-        const isPersistentAlarm = disableAutoStop && !isWhatsAppSound;
+        const isPersistentAlarm = disableAutoStop && shouldLoopSound;
         currentAlarmIdRef.current = isPersistentAlarm ? alarmId : null;
         persistentAlarmRef.current = isPersistentAlarm;
 
@@ -225,7 +226,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         };
 
         const playWithFallback = () => {
-            if (isWhatsAppSound) {
+            if (isWhatsAppSound || !shouldLoopSound) {
                 try {
                     const AudioCtx = window.AudioContext || window.webkitAudioContext;
                     if (AudioCtx) {
@@ -247,7 +248,7 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
                     // ignore
                 }
                 setIsAlarmPlaying(true);
-                scheduleStop(1500);
+                scheduleStop(isWhatsAppSound ? 1500 : 2500);
                 return;
             }
 
@@ -261,32 +262,32 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
             audioRef.current.load();
             audioRef.current.muted = false;
             audioRef.current.volume = 1;
-            audioRef.current.loop = !isWhatsAppSound;
+            audioRef.current.loop = shouldLoopSound;
             audioRef.current.play().then(() => {
                 setIsAlarmPlaying(true);
-                if (isWhatsAppSound) {
+                if (!shouldLoopSound) {
                     audioRef.current.onended = () => {
                         setIsAlarmPlaying(false);
                         audioRef.current.onended = null;
                     };
-                    scheduleStop(1500);
+                    scheduleStop(isWhatsAppSound ? 1500 : 2500);
                 } else {
                     scheduleStop(MAX_RING_MS);
                 }
             }).catch(() => {
                 try {
                     const fallbackAudio = new Audio(soundPath);
-                    fallbackAudio.loop = !isWhatsAppSound;
+                    fallbackAudio.loop = shouldLoopSound;
                     fallbackAudio.volume = 1;
                     fallbackAudioRef.current = fallbackAudio;
                     fallbackAudio.play().then(() => {
                         setIsAlarmPlaying(true);
-                        if (isWhatsAppSound) {
+                        if (!shouldLoopSound) {
                             fallbackAudio.onended = () => {
                                 setIsAlarmPlaying(false);
                                 fallbackAudio.onended = null;
                             };
-                            scheduleStop(1500);
+                            scheduleStop(isWhatsAppSound ? 1500 : 2500);
                         } else {
                             scheduleStop(MAX_RING_MS);
                         }
@@ -533,4 +534,3 @@ export default function AppNotificationCenter({ scope = 'owner' }) {
         </div>
     );
 }
-

@@ -60,6 +60,8 @@ const getCollectionsForBusinessType = (businessType = 'restaurant') => {
 
 const OWNED_BUSINESS_CACHE_TTL_MS = 5 * 60 * 1000;
 const ownedBusinessCache = new Map();
+const BOOKING_NOTIFICATION_SOUND = '/classy_notification.mp3';
+const BOOKING_NOTIFICATION_ACTIVE_STATUSES = ['pending', 'confirmed'];
 
 const resolveOwnedBusiness = async (uid, businessType = 'restaurant') => {
   const cacheKey = `${uid}:${normalizeBusinessType(businessType) || 'restaurant'}`;
@@ -510,6 +512,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const isOnLiveOrdersPage =
     pathname === '/owner-dashboard/live-orders' ||
     pathname === '/street-vendor-dashboard';
+  const bookingsNotificationHref = effectiveOwnerId
+    ? `/owner-dashboard/bookings?${paramName}=${effectiveOwnerId}`
+    : '/owner-dashboard/bookings';
+  const canReceiveBookingNotifications = !isRolePending &&
+    businessType === 'restaurant' &&
+    canAccessPage(effectiveRole, 'bookings', customAllowedPages, businessType) &&
+    !getIsDisabled('bookings');
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -617,6 +626,61 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       unsubscribe();
     };
   }, [businessType, isOnLiveOrdersPage, notificationBusinessTarget?.businessId]);
+
+  useEffect(() => {
+    const businessId = String(notificationBusinessTarget?.businessId || '').trim();
+    const collectionName = String(notificationBusinessTarget?.collectionName || '').trim();
+    if (!businessId || collectionName !== 'restaurants' || !canReceiveBookingNotifications) return undefined;
+
+    let bootstrapped = false;
+
+    const activeBookingsQuery = query(
+      collection(db, collectionName, businessId, 'bookings'),
+      where('status', 'in', BOOKING_NOTIFICATION_ACTIVE_STATUSES)
+    );
+
+    const unsubscribe = onSnapshot(
+      activeBookingsQuery,
+      (snapshot) => {
+        if (!bootstrapped) {
+          bootstrapped = true;
+          return;
+        }
+
+        const addedChanges = snapshot.docChanges().filter((change) => {
+          if (change.type !== 'added') return false;
+          const source = String(change.doc.data()?.source || '').trim();
+          return source !== 'manual_quick_add';
+        });
+        if (!addedChanges.length) return;
+
+        const addedIds = addedChanges.map((change) => change.doc.id).sort();
+        emitAppNotification({
+          scope: 'owner',
+          title: 'New Booking',
+          message: addedChanges.length === 1
+            ? '1 new booking request received.'
+            : `${addedChanges.length} new booking requests received.`,
+          dedupeKey: `sidebar_bookings_${addedIds.join('_')}`,
+          sound: BOOKING_NOTIFICATION_SOUND,
+          loopSound: false,
+          href: bookingsNotificationHref,
+        });
+      },
+      (error) => {
+        console.error('[Sidebar] Booking realtime listener failed:', error);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [
+    bookingsNotificationHref,
+    canReceiveBookingNotifications,
+    notificationBusinessTarget?.businessId,
+    notificationBusinessTarget?.collectionName,
+  ]);
 
   useEffect(() => {
     const count = pendingOrdersCount || 0;
