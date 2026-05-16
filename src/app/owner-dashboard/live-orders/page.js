@@ -181,6 +181,66 @@ const getItemLineTotal = (item = {}) => {
     return unitPrice * quantity;
 };
 
+const getItemAddOns = (item = {}) => {
+    const addons = Array.isArray(item?.addons) ? item.addons : [];
+    const selectedAddOns = Array.isArray(item?.selectedAddOns) ? item.selectedAddOns : [];
+    return addons.length > 0 ? addons : selectedAddOns;
+};
+
+const getAddOnDisplayText = (addon = {}, quantityMultiplier = 1) => {
+    const quantity = Math.max(1, parseInt(addon?.quantity, 10) || 1) * Math.max(1, parseInt(quantityMultiplier, 10) || 1);
+    const name = String(addon?.name || addon || 'Add-on').trim() || 'Add-on';
+    return `+ ${quantity} ${name}`;
+};
+
+const getAddOnLineTotal = (addon = {}) => {
+    const quantity = Math.max(1, parseInt(addon?.quantity, 10) || 1);
+    return toAmount(addon?.price, 0) * quantity;
+};
+
+const getAddOnsUnitTotal = (item = {}) =>
+    getItemAddOns(item).reduce((sum, addon) => sum + getAddOnLineTotal(addon), 0);
+
+const getItemUnitTotal = (item = {}) => {
+    const quantity = Math.max(1, parseInt(item?.quantity, 10) || 1);
+    const storedTotal = toAmount(item?.totalPrice, NaN);
+    const rawPrice = toAmount(item?.price, NaN);
+    const addOnsTotal = getAddOnsUnitTotal(item);
+
+    if (Number.isFinite(storedTotal)) {
+        if (
+            quantity > 1 &&
+            Number.isFinite(rawPrice) &&
+            Math.abs(storedTotal - ((rawPrice + addOnsTotal) * quantity)) < 0.01
+        ) {
+            return storedTotal / quantity;
+        }
+        return storedTotal;
+    }
+
+    return Number.isFinite(rawPrice) ? rawPrice + addOnsTotal : addOnsTotal;
+};
+
+const getItemBaseUnitPrice = (item = {}) => {
+    const portionPrice = toAmount(item?.selectedPortion?.price, toAmount(item?.portion?.price, NaN));
+    if (Number.isFinite(portionPrice) && portionPrice > 0) return portionPrice;
+
+    const originalUnitPrice = toAmount(item?.originalUnitPrice, NaN);
+    if (Number.isFinite(originalUnitPrice) && originalUnitPrice > 0) return originalUnitPrice;
+
+    const rawPrice = toAmount(item?.price, NaN);
+    if (Number.isFinite(rawPrice)) {
+        const unitTotal = getItemUnitTotal(item);
+        const addOnsTotal = getAddOnsUnitTotal(item);
+        if (addOnsTotal > 0 && Math.abs(rawPrice - unitTotal) < 0.01) {
+            return Math.max(0, rawPrice - addOnsTotal);
+        }
+        return rawPrice;
+    }
+
+    return Math.max(0, getItemUnitTotal(item) - getAddOnsUnitTotal(item));
+};
+
 
 const RejectOrderModal = ({
     order,
@@ -964,11 +1024,11 @@ const OrderDetailModal = ({ isOpen, onClose, data, userRole }) => {
                                                     {getItemVariantLabel(item)}
                                                 </span>
                                                 {/* Add-ons display */}
-                                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && (
+                                                {getItemAddOns(item).length > 0 && (
                                                     <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
-                                                        {(item.addons || item.selectedAddOns).map((addon, aIdx) => (
+                                                        {getItemAddOns(item).map((addon, aIdx) => (
                                                             <div key={aIdx} className="flex gap-1">
-                                                                <span>+ {addon.name}</span>
+                                                                <span>{getAddOnDisplayText(addon)}</span>
                                                                 <span>(₹{addon.price})</span>
                                                             </div>
                                                         ))}
@@ -1159,17 +1219,31 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             <div className="space-y-1.5 py-1">
                 {(order.items || []).slice(0, 3).map((item, idx) => {
                     const qty = parseInt(item.quantity) || 1;
-                    const lineTotal = getItemLineTotal(item);
+                    const addOns = getItemAddOns(item);
+                    const baseLineTotal = getItemBaseUnitPrice(item) * qty;
 
                     return (
-                        <div key={idx} className="flex justify-between items-start text-sm">
-                            <span className="text-foreground/90 leading-tight">
-                                <span className={cn("font-extrabold mr-2", ORDER_QUANTITY_TEXT_CLASSNAME)}>{qty}x</span>
-                                {item.name}
-                                {getItemVariantLabel(item)}
-                                {(item.addons || item.selectedAddOns) && (item.addons || item.selectedAddOns).length > 0 && <span className="text-xs text-muted-foreground"> +{(item.addons || item.selectedAddOns).length} adds</span>}
-                            </span>
-                            <span className="font-semibold text-muted-foreground">₹{lineTotal.toFixed(0)}</span>
+                        <div key={idx} className="flex justify-between items-start gap-2 text-sm">
+                            <div className="min-w-0 flex-1 text-foreground/90 leading-tight">
+                                <div className="flex items-start justify-between gap-2">
+                                    <span className="min-w-0">
+                                        <span className={cn("font-extrabold mr-2", ORDER_QUANTITY_TEXT_CLASSNAME)}>{qty}x</span>
+                                        {item.name}
+                                        {getItemVariantLabel(item)}
+                                    </span>
+                                    <span className="shrink-0 text-muted-foreground">₹{baseLineTotal.toFixed(0)}</span>
+                                </div>
+                                {addOns.length > 0 && (
+                                    <div className="mt-0.5 space-y-0.5 pl-6 text-xs leading-snug text-muted-foreground">
+                                        {addOns.map((addon, addonIdx) => (
+                                            <div key={addonIdx} className="flex items-start justify-between gap-2">
+                                                <span className="min-w-0 break-words">{getAddOnDisplayText(addon, qty)}</span>
+                                                <span className="shrink-0">₹{(getAddOnLineTotal(addon) * qty).toFixed(0)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )
                 })}
