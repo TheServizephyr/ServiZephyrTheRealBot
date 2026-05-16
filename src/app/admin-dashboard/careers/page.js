@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { auth } from '@/lib/firebase';
-import { BriefcaseBusiness, CalendarClock, Edit3, Eye, FilePlus2, GraduationCap, Loader2, Search, Users } from 'lucide-react';
+import { BriefcaseBusiness, CalendarClock, Edit3, Eye, FilePlus2, GraduationCap, Loader2, Search, Trash2, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,7 @@ const defaultJobForm = {
   requirements: '',
   benefits: '',
   compensation: '',
+  whyJoinServiZephyr: '',
   applicationInstructions: '',
 };
 
@@ -93,6 +94,7 @@ const normalizeJobForForm = (job) => ({
   requirements: job.requirements || '',
   benefits: job.benefits || '',
   compensation: job.compensation || '',
+  whyJoinServiZephyr: job.whyJoinServiZephyr || '',
   applicationInstructions: job.applicationInstructions || '',
 });
 
@@ -199,6 +201,26 @@ export default function AdminCareersPage() {
       setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteJob = async (job) => {
+    if (!job?.id) return;
+    const confirmed = window.confirm(`Delete "${job.title}"? This will remove it from the public career page.`);
+    if (!confirmed) return;
+
+    try {
+      const headers = await getAdminHeaders();
+      const response = await fetch(`/api/admin/career/jobs/${job.id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to delete job.');
+      setInfoDialog({ isOpen: true, title: 'Deleted', message: 'Job deleted and removed from the public career page.' });
+      await loadJobs();
+    } catch (error) {
+      setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
     }
   };
 
@@ -335,6 +357,10 @@ export default function AdminCareersPage() {
                           <Edit3 className="mr-2 h-4 w-4" />
                           Edit
                         </Button>
+                        <Button variant="destructive" size="sm" onClick={() => deleteJob(job)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -429,6 +455,16 @@ export default function AdminCareersPage() {
             <div>
               <Label htmlFor="compensation">Compensation</Label>
               <Textarea id="compensation" value={jobForm.compensation} onChange={(event) => updateJobForm('compensation', event.target.value)} rows={4} />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="whyJoinServiZephyr">Why Join ServiZephyr?</Label>
+              <Textarea
+                id="whyJoinServiZephyr"
+                value={jobForm.whyJoinServiZephyr}
+                onChange={(event) => updateJobForm('whyJoinServiZephyr', event.target.value)}
+                rows={4}
+                placeholder="Tell candidates why this role and ServiZephyr are worth joining."
+              />
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="applicationInstructions">Application Instructions</Label>

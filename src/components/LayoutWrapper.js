@@ -34,6 +34,7 @@ const HIDE_LAYOUT_PREFIXES = [
   '/pre-order',
   '/split-pay',
   '/public',
+  '/career/',
 ];
 
 const LayoutWrapper = ({ children }) => {

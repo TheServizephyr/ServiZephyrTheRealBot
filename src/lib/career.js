@@ -80,6 +80,7 @@ export const sanitizeJobPayload = (payload = {}) => {
     requirements: trimString(payload.requirements),
     benefits: trimString(payload.benefits),
     compensation: trimString(payload.compensation),
+    whyJoinServiZephyr: trimString(payload.whyJoinServiZephyr),
     applicationInstructions: trimString(payload.applicationInstructions),
   };
 };
@@ -113,6 +114,7 @@ export const serializeJob = (doc, { publicOnly = false, now = new Date() } = {})
     requirements: data.requirements || '',
     benefits: data.benefits || '',
     compensation: data.compensation || '',
+    whyJoinServiZephyr: data.whyJoinServiZephyr || '',
     applicationInstructions: data.applicationInstructions || '',
     createdAt: toIso(data.createdAt),
     updatedAt: toIso(data.updatedAt),
