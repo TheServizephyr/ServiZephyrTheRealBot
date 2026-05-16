@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { isCustomerImpersonating, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const SavedAddressCard = ({ address, onDelete, isAuth, index }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
@@ -71,12 +72,15 @@ const AddressesPageInternal = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isImpersonatingCustomer, setIsImpersonatingCustomer] = useState(false);
 
     const [addressToDelete, setAddressToDelete] = useState(null);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const fetchAddresses = useCallback(async () => {
         if (isUserLoading) return;
+        const impersonating = isCustomerImpersonating();
+        setIsImpersonatingCustomer(impersonating);
 
         setLoading(true);
         setError('');
@@ -89,7 +93,7 @@ const AddressesPageInternal = () => {
 
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', {
+            const res = await fetch(withCustomerImpersonation('/api/user/addresses'), {
                 headers: { Authorization: `Bearer ${idToken}` },
             });
             if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
@@ -123,7 +127,7 @@ const AddressesPageInternal = () => {
 
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', {
+            const res = await fetch(withCustomerImpersonation('/api/user/addresses'), {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
                 body: JSON.stringify({ addressId: addressToDelete }),
@@ -144,11 +148,13 @@ const AddressesPageInternal = () => {
 
     const handleAddNewAddress = () => {
         const currentUrl = window.location.href;
+        if (isImpersonatingCustomer) return;
         router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}`);
     };
 
     const handleUseCurrentLocation = () => {
         const currentUrl = window.location.href;
+        if (isImpersonatingCustomer) return;
         router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(currentUrl)}`);
     };
 
@@ -171,7 +177,7 @@ const AddressesPageInternal = () => {
 
             <header className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-card/80 to-emerald-500/10 p-5">
                 <div className="flex flex-wrap items-center gap-3">
-                    <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push('/customer-dashboard/profile')}>
+                    <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/profile'))}>
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
@@ -185,6 +191,7 @@ const AddressesPageInternal = () => {
                 </div>
             </header>
 
+            {isImpersonatingCustomer ? null : (
             <div className="grid gap-3 md:grid-cols-2">
                 <button
                     onClick={handleUseCurrentLocation}
@@ -215,6 +222,7 @@ const AddressesPageInternal = () => {
                     </div>
                 </button>
             </div>
+            )}
 
             <section className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -239,7 +247,7 @@ const AddressesPageInternal = () => {
                                 key={address.id}
                                 address={address}
                                 onDelete={promptDeleteAddress}
-                                isAuth={!!user}
+                                isAuth={!!user && !isImpersonatingCustomer}
                                 index={index}
                             />
                         ))}

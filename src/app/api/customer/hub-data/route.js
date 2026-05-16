@@ -1,7 +1,8 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
+import { resolveCustomerTarget } from '@/lib/customer-impersonation';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +42,7 @@ const getWeekStart = (date) => {
 
 export async function GET(req) {
     try {
-        const uid = await verifyAndGetUid(req); // Use central helper
+        const { targetUid: uid } = await resolveCustomerTarget(req);
         const firestore = await getFirestore();
 
         const [ordersByUserIdSnap, ordersByLegacyCustomerIdSnap] = await Promise.all([

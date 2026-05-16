@@ -15,6 +15,7 @@ import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import { Sora, Space_Grotesk } from 'next/font/google';
+import { withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -35,9 +36,10 @@ const bodyFont = Sora({
   weight: ['400', '500', '600'],
 });
 
-const NavLink = ({ href, icon: Icon, label }) => {
+const NavLink = ({ href, activeHref, icon: Icon, label }) => {
   const pathname = usePathname();
-  const isActive = pathname === href || (href !== '/customer-dashboard' && pathname.startsWith(href));
+  const baseHref = activeHref || href;
+  const isActive = pathname === baseHref || (baseHref !== '/customer-dashboard' && pathname.startsWith(baseHref));
 
   return (
     <Link
@@ -67,6 +69,7 @@ const CustomerDashboardContent = ({ children }) => {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, isUserLoading } = useUser();
+  const impersonateUserId = searchParams.get('impersonate_user_id');
 
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -90,7 +93,6 @@ const CustomerDashboardContent = ({ children }) => {
   }, [user, authChecked, router, pathname]);
 
   useEffect(() => {
-    const impersonateUserId = searchParams.get('impersonate_user_id');
     if (user && impersonateUserId) {
       user.getIdToken().then((idToken) => {
         fetch('/api/admin/log-impersonation', {
@@ -101,14 +103,13 @@ const CustomerDashboardContent = ({ children }) => {
           },
           body: JSON.stringify({
             targetUserId: impersonateUserId,
-            targetUserEmail: user.email,
             targetUserRole: 'Customer',
             action: 'start_impersonation_customer',
           }),
         }).catch((err) => console.error('Failed to log impersonation:', err));
       });
     }
-  }, [user, searchParams]);
+  }, [user, impersonateUserId]);
 
   if (isUserLoading || !authChecked) {
     return (
@@ -124,7 +125,7 @@ const CustomerDashboardContent = ({ children }) => {
 
   return (
     <>
-      <ImpersonationBanner vendorName={user?.displayName || user?.email || 'Customer'} />
+      <ImpersonationBanner vendorName={impersonateUserId ? `Customer ${impersonateUserId.slice(0, 8)}` : (user?.displayName || user?.email || 'Customer')} />
       <div className={cn(displayFont.variable, bodyFont.variable, 'relative min-h-screen overflow-x-hidden bg-background text-foreground')}>
         <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
           <div className="absolute -top-20 left-[-12rem] h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
@@ -167,8 +168,8 @@ const CustomerDashboardContent = ({ children }) => {
         <footer className="fixed bottom-3 left-1/2 z-50 w-[min(96%,760px)] -translate-x-1/2">
           <div className="rounded-[1.6rem] border border-border/60 bg-background/80 p-2 shadow-[0_28px_70px_-40px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
             <div className="grid grid-cols-4 gap-1">
-              {navItems.map((item) => (
-                <NavLink key={item.href} {...item} />
+            {navItems.map((item) => (
+                <NavLink key={item.href} {...item} activeHref={item.href} href={withCustomerImpersonation(item.href)} />
               ))}
             </div>
           </div>

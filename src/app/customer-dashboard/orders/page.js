@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import { useUser } from '@/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const parseOrderDate = (value) => {
     if (!value) return null;
@@ -122,77 +121,45 @@ export default function MyOrdersPage() {
         setLoading(true);
         setError(null);
 
-        const byUserIdQuery = query(
-            collection(db, 'orders'),
-            where('userId', '==', user.uid)
-        );
-        const byLegacyCustomerIdQuery = query(
-            collection(db, 'orders'),
-            where('customerId', '==', user.uid)
-        );
+        let ignore = false;
 
-        let userIdOrders = [];
-        let legacyOrders = [];
-        let userIdDone = false;
-        let legacyDone = false;
-        let userIdFailed = false;
-        let legacyFailed = false;
+        const fetchOrders = async () => {
+            try {
+                const idToken = await user.getIdToken();
+                const response = await fetch(withCustomerImpersonation('/api/customer/orders'), {
+                    headers: { Authorization: `Bearer ${idToken}` },
+                    cache: 'no-store',
+                });
+                const data = await response.json();
 
-        const syncMergedOrders = () => {
-            const mergedById = new Map();
-            [...userIdOrders, ...legacyOrders].forEach((order) => {
-                mergedById.set(order.id, order);
-            });
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to fetch orders. Please try again.');
+                }
 
-            const mergedOrders = Array.from(mergedById.values());
-            mergedOrders.sort((a, b) => {
-                const dateA = parseOrderDate(a.orderDate);
-                const dateB = parseOrderDate(b.orderDate);
-                return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
-            });
-
-            setOrders(mergedOrders);
-
-            if (userIdDone && legacyDone) {
-                setLoading(false);
-                if (userIdFailed && legacyFailed) {
-                    setError('Failed to fetch orders. Please try again.');
+                if (!ignore) {
+                    setOrders(data.orders || []);
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error('Error fetching customer orders:', err);
+                if (!ignore) {
+                    setError(err.message || 'Failed to fetch orders. Please try again.');
+                    setLoading(false);
                 }
             }
         };
 
-        const unsubscribeUserId = onSnapshot(byUserIdQuery, (querySnapshot) => {
-            userIdOrders = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            userIdDone = true;
-            syncMergedOrders();
-        }, (err) => {
-            console.error('Error fetching orders by userId:', err);
-            userIdFailed = true;
-            userIdDone = true;
-            syncMergedOrders();
-        });
-
-        const unsubscribeLegacy = onSnapshot(byLegacyCustomerIdQuery, (querySnapshot) => {
-            legacyOrders = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-            legacyDone = true;
-            syncMergedOrders();
-        }, (err) => {
-            console.error('Error fetching orders by legacy customerId:', err);
-            legacyFailed = true;
-            legacyDone = true;
-            syncMergedOrders();
-        });
+        fetchOrders();
 
         return () => {
-            unsubscribeUserId();
-            unsubscribeLegacy();
+            ignore = true;
         };
     }, [user, isUserLoading]);
 
     return (
         <div className="px-4 py-5 md:px-6 md:py-7 space-y-6">
             <header className="rounded-2xl border border-border/70 bg-card/65 p-4 md:p-5 flex items-center gap-3">
-                <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push('/customer-dashboard/profile')}>
+                <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/profile'))}>
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
                 <div className="min-w-0">

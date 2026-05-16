@@ -11,6 +11,7 @@ import { useImpersonationSession } from '@/hooks/useImpersonationSession';
 export default function ImpersonationBanner({ vendorName }) {
     const {
         isImpersonating,
+        impersonationType,
         showWarning,
         formatTimeRemaining,
         exitImpersonation
@@ -27,7 +28,8 @@ export default function ImpersonationBanner({ vendorName }) {
                         ⚠️ ADMIN MODE
                     </span>
                     <span className="text-xs sm:text-sm">
-                        Viewing as: <span className="font-semibold">{vendorName || 'Vendor'}</span>
+                        Viewing as {impersonationType === 'customer' ? 'customer' : 'owner'}:{' '}
+                        <span className="font-semibold">{vendorName || (impersonationType === 'customer' ? 'Customer' : 'Vendor')}</span>
                     </span>
                 </div>
             </div>

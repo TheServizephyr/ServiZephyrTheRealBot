@@ -37,6 +37,7 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import { getCustomerImpersonationCacheKey, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const ANALYTICS_CACHE_TTL_MS = 4 * 60 * 1000;
 
@@ -195,7 +196,7 @@ export default function CustomerAnalyticsPage() {
                 setLoading(true);
             }
 
-            const cacheKey = `customer_analytics_v2:${user.uid}`;
+            const cacheKey = getCustomerImpersonationCacheKey('customer_analytics_v2', user.uid);
             if (!forceRefresh) {
                 const cachedRaw = sessionStorage.getItem(cacheKey);
                 if (cachedRaw) {
@@ -211,7 +212,7 @@ export default function CustomerAnalyticsPage() {
             }
 
             const idToken = await user.getIdToken();
-            const response = await fetch('/api/customer/analytics', {
+            const response = await fetch(withCustomerImpersonation('/api/customer/analytics'), {
                 headers: { Authorization: `Bearer ${idToken}` },
                 cache: 'no-store',
             });

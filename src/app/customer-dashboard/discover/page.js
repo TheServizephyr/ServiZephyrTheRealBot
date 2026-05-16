@@ -21,6 +21,7 @@ import { useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { Button } from '@/components/ui/button';
+import { getCustomerImpersonationParams, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const DEFAULT_CENTER = { lat: 28.6139, lng: 77.2090 };
@@ -163,13 +164,14 @@ const RestaurantMapModal = ({ location, userCenter, onClose }) => {
 };
 
 export default function DiscoverPage() {
-    const { user } = useUser();
+    const { user, isUserLoading } = useUser();
     const router = useRouter();
 
     const [allLocations, setAllLocations] = useState([]);
     const [center, setCenter] = useState(DEFAULT_CENTER);
     const [hasExactLocation, setHasExactLocation] = useState(false);
     const [locationNotice, setLocationNotice] = useState('');
+    const [locationSource, setLocationSource] = useState('');
     const [locationsLoading, setLocationsLoading] = useState(true);
     const [isLocating, setIsLocating] = useState(true);
     const [fetchError, setFetchError] = useState('');
@@ -181,27 +183,54 @@ export default function DiscoverPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     useEffect(() => {
-        const fetchLocations = async () => {
-            try {
-                setLocationsLoading(true);
-                const res = await fetch('/api/public/locations', { cache: 'no-store' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Failed to fetch locations');
-                setAllLocations(Array.isArray(data.locations) ? data.locations : []);
-            } catch (err) {
-                setFetchError(err.message || 'Could not load nearby restaurants.');
-            } finally {
-                setLocationsLoading(false);
-            }
-        };
+        const impersonationParams = getCustomerImpersonationParams();
+        if (isUserLoading) return;
+        if (impersonationParams && !user) return;
 
-        fetchLocations();
-    }, []);
+        if (impersonationParams && user) {
+            const fetchImpersonatedCustomerLocation = async () => {
+                try {
+                    setIsLocating(true);
+                    setLocationNotice('');
+                    const idToken = await user.getIdToken();
+                    const res = await fetch(withCustomerImpersonation('/api/user/addresses'), {
+                        headers: { Authorization: `Bearer ${idToken}` },
+                        cache: 'no-store',
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || 'Could not load customer address.');
 
-    useEffect(() => {
+                    const address = (data.addresses || []).find((addr) => (
+                        isValidCoordinatePair(Number(addr?.latitude), Number(addr?.longitude))
+                    ));
+
+                    if (!address) {
+                        setHasExactLocation(false);
+                        setLocationSource('');
+                        setLocationNotice('This customer has no saved delivery address, so nearby restaurants cannot be filtered.');
+                        return;
+                    }
+
+                    setCenter({ lat: Number(address.latitude), lng: Number(address.longitude) });
+                    setHasExactLocation(true);
+                    setLocationSource('customer-address');
+                    setLocationNotice(`Showing restaurants that deliver to this customer's saved address.`);
+                } catch (error) {
+                    setHasExactLocation(false);
+                    setLocationSource('');
+                    setLocationNotice(error.message || 'Could not resolve this customer location.');
+                } finally {
+                    setIsLocating(false);
+                }
+            };
+
+            fetchImpersonatedCustomerLocation();
+            return;
+        }
+
         if (!navigator.geolocation) {
             setIsLocating(false);
-            setLocationNotice('Live location is not supported by this browser. Showing all restaurants.');
+            setLocationNotice('Live location is not supported by this browser. Add a saved address to see restaurants that deliver to your area.');
             return;
         }
 
@@ -213,12 +242,14 @@ export default function DiscoverPage() {
                 };
                 setCenter(currentCenter);
                 setHasExactLocation(true);
+                setLocationSource('browser');
                 setIsLocating(false);
             },
             () => {
                 setIsLocating(false);
                 setHasExactLocation(false);
-                setLocationNotice('Location permission denied. Showing all restaurants in your city list.');
+                setLocationSource('');
+                setLocationNotice('Location permission denied. Enable location to see restaurants that deliver to your area.');
             },
             {
                 enableHighAccuracy: true,
@@ -226,7 +257,37 @@ export default function DiscoverPage() {
                 maximumAge: 60000,
             }
         );
-    }, []);
+    }, [isUserLoading, user]);
+
+    useEffect(() => {
+        const fetchLocations = async () => {
+            if (isLocating) return;
+            if (!hasExactLocation || !isValidCoordinatePair(center.lat, center.lng)) {
+                setAllLocations([]);
+                setLocationsLoading(false);
+                return;
+            }
+
+            try {
+                setLocationsLoading(true);
+                setFetchError('');
+                const params = new URLSearchParams({
+                    lat: String(center.lat),
+                    lng: String(center.lng),
+                });
+                const res = await fetch(`/api/public/locations?${params.toString()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Failed to fetch locations');
+                setAllLocations(Array.isArray(data.locations) ? data.locations : []);
+            } catch (err) {
+                setFetchError(err.message || 'Could not load nearby restaurants.');
+            } finally {
+                setLocationsLoading(false);
+            }
+        };
+
+        fetchLocations();
+    }, [center, hasExactLocation, isLocating]);
 
     const restaurants = useMemo(() => {
         const filtered = allLocations
@@ -242,7 +303,10 @@ export default function DiscoverPage() {
                 const straightLineDistanceKm = (hasExactLocation && hasCoords)
                     ? haversineDistanceKm(center.lat, center.lng, lat, lng)
                     : null;
-                const distanceKm = Number.isFinite(straightLineDistanceKm)
+                const apiDistanceKm = Number(location.distanceKm);
+                const distanceKm = Number.isFinite(apiDistanceKm)
+                    ? apiDistanceKm
+                    : Number.isFinite(straightLineDistanceKm)
                     ? straightLineDistanceKm * APPROX_ROAD_DISTANCE_FACTOR
                     : null;
 
@@ -315,7 +379,7 @@ export default function DiscoverPage() {
             params.set('distance', restaurant.distanceLabel);
         }
         const query = params.toString();
-        router.push(`/customer-dashboard/discover/${restaurant.id}${query ? `?${query}` : ''}`);
+        router.push(withCustomerImpersonation(`/customer-dashboard/discover/${restaurant.id}${query ? `?${query}` : ''}`));
     };
 
     return (
@@ -355,20 +419,20 @@ export default function DiscoverPage() {
                     </h1>
                     <p className="mt-2 text-sm md:text-base text-muted-foreground max-w-2xl">
                         {hasExactLocation
-                            ? 'Nearby restaurants are ranked using estimated road distance from your location.'
-                            : 'Restaurants available in your area. Enable location for better sorting.'}
+                            ? 'Only restaurants that deliver to this location are shown.'
+                            : 'Enable location or add a saved address to see restaurants that deliver to your area.'}
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
                         {isLocating ? (
                             <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-muted-foreground">
                                 <LocateFixed className="h-3.5 w-3.5" />
-                                Detecting live location...
+                                {getCustomerImpersonationParams() ? 'Checking customer saved address...' : 'Detecting live location...'}
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-300">
                                 <Clock3 className="h-3.5 w-3.5" />
-                                Updated just now
+                                {locationSource === 'customer-address' ? 'Using customer saved address' : 'Updated just now'}
                             </span>
                         )}
                     </div>
@@ -394,8 +458,8 @@ export default function DiscoverPage() {
             ) : restaurants.length === 0 ? (
                 <div className="min-h-[44vh] flex flex-col items-center justify-center gap-2 text-center text-muted-foreground border border-dashed border-border rounded-3xl p-6 bg-card/30">
                     <Soup className="h-10 w-10" />
-                    <p className="font-semibold">No restaurants found in this area yet.</p>
-                    <p className="text-sm">Try again in a few minutes.</p>
+                    <p className="font-semibold">No restaurants deliver to this area yet.</p>
+                    <p className="text-sm">Only restaurants whose delivery radius includes this location are shown.</p>
                 </div>
             ) : (
                 <div className="space-y-3 pb-4">

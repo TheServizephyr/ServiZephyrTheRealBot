@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
+import { rejectCustomerImpersonationMutation, resolveCustomerTarget } from '@/lib/customer-impersonation';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ const buildProfilePayload = (userData = {}) => {
 
 export async function GET(req) {
     try {
-        const uid = await verifyAndGetUid(req);
+        const { targetUid: uid } = await resolveCustomerTarget(req);
         const firestore = await getFirestore();
 
         const userDoc = await firestore.collection('users').doc(uid).get();
@@ -52,7 +53,9 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const uid = await verifyAndGetUid(req);
+        const targetContext = await resolveCustomerTarget(req);
+        rejectCustomerImpersonationMutation(targetContext);
+        const uid = targetContext.targetUid;
         const firestore = await getFirestore();
         const body = await req.json();
 
@@ -107,4 +110,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-

@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, GeoPoint, verifyAndGetUid } from '@/lib/firebase-admin';
+import { rejectCustomerImpersonationMutation, resolveCustomerTarget } from '@/lib/customer-impersonation';
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
 import { findBusinessById } from '@/services/business/businessService';
 import { calculateDeliveryChargeForBusiness } from '@/services/delivery/deliveryCharge.service';
@@ -234,10 +235,7 @@ async function resolveProfileTargetRef(firestore, req, {
 export async function GET(req) {
     console.log("[API][user/addresses] GET request received.");
     try {
-        const uid = await getUserIdFromToken(req);
-        if (!uid) {
-            return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
-        }
+        const { targetUid: uid } = await resolveCustomerTarget(req);
 
         const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(uid);
@@ -265,6 +263,10 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API][user/addresses] POST request received.");
     try {
+        const hasImpersonationParam = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`)
+            .searchParams.has('impersonate_user_id');
+        const targetContext = hasImpersonationParam ? await resolveCustomerTarget(req) : null;
+        rejectCustomerImpersonationMutation(targetContext);
         const { address, phone, ref, guestId: explicitGuestId, activeOrderId } = await req.json(); // Expect phone number from the client
 
         const firestore = await getFirestore();
@@ -533,6 +535,10 @@ export async function POST(req) {
 export async function DELETE(req) {
     console.log("[API][user/addresses] DELETE request received.");
     try {
+        const hasImpersonationParam = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`)
+            .searchParams.has('impersonate_user_id');
+        const targetContext = hasImpersonationParam ? await resolveCustomerTarget(req) : null;
+        rejectCustomerImpersonationMutation(targetContext);
         const firestore = await getFirestore();
         const { addressId, phone, address, ref, guestId: explicitGuestId } = await req.json();
 

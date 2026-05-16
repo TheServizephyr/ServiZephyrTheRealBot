@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useEffect, useState } from 'react';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import { isCustomerImpersonating, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const SectionCard = ({ title, description, icon: Icon, children, footer, delay = 0 }) => (
     <motion.div
@@ -40,10 +41,12 @@ export default function CustomerSettingsPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isImpersonatingCustomer, setIsImpersonatingCustomer] = useState(false);
 
     useEffect(() => {
         const fetchSettings = async () => {
             if (isUserLoading) return;
+            setIsImpersonatingCustomer(isCustomerImpersonating());
             if (!user) {
                 setIsLoading(false);
                 return;
@@ -51,7 +54,7 @@ export default function CustomerSettingsPage() {
 
             try {
                 const idToken = await user.getIdToken();
-                const response = await fetch('/api/customer/profile', {
+                const response = await fetch(withCustomerImpersonation('/api/customer/profile'), {
                     headers: { Authorization: `Bearer ${idToken}` },
                 });
                 const data = await response.json();
@@ -90,11 +93,15 @@ export default function CustomerSettingsPage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Please log in again to continue.' });
             return;
         }
+        if (isImpersonatingCustomer) {
+            setInfoDialog({ isOpen: true, title: 'Read Only', message: 'Customer impersonation mode is read-only.' });
+            return;
+        }
 
         setIsSaving(true);
         try {
             const idToken = await user.getIdToken();
-            const response = await fetch('/api/customer/profile', {
+            const response = await fetch(withCustomerImpersonation('/api/customer/profile'), {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -127,7 +134,7 @@ export default function CustomerSettingsPage() {
 
             <header className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/15 via-card/80 to-cyan-500/10 p-5">
                 <div className="flex flex-wrap items-center gap-3">
-                    <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push('/customer-dashboard/profile')}>
+                    <Button variant="ghost" size="icon" className="rounded-full border border-border/70" onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/profile'))}>
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
@@ -151,7 +158,7 @@ export default function CustomerSettingsPage() {
                         <Button
                             className="rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
                             onClick={handleSaveChanges}
-                            disabled={isLoading || isSaving}
+                            disabled={isLoading || isSaving || isImpersonatingCustomer}
                         >
                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                             Save Changes
@@ -166,7 +173,7 @@ export default function CustomerSettingsPage() {
                         description="Real-time alerts for order confirmation, preparing, and delivery stages."
                         checked={notifications.orderUpdates}
                         onToggle={() => handleNotificationChange('orderUpdates')}
-                        disabled={isLoading || isSaving}
+                        disabled={isLoading || isSaving || isImpersonatingCustomer}
                     />
                     <NotificationRow
                         id="promotions"
@@ -174,7 +181,7 @@ export default function CustomerSettingsPage() {
                         description="Get special discounts and limited-time restaurant deals."
                         checked={notifications.promotions}
                         onToggle={() => handleNotificationChange('promotions')}
-                        disabled={isLoading || isSaving}
+                        disabled={isLoading || isSaving || isImpersonatingCustomer}
                     />
                     <NotificationRow
                         id="communityAlerts"
@@ -182,7 +189,7 @@ export default function CustomerSettingsPage() {
                         description="Receive important announcements from restaurants you follow."
                         checked={notifications.communityAlerts}
                         onToggle={() => handleNotificationChange('communityAlerts')}
-                        disabled={isLoading || isSaving}
+                        disabled={isLoading || isSaving || isImpersonatingCustomer}
                     />
                 </div>
             </SectionCard>

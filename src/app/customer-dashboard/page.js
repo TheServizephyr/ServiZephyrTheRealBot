@@ -22,6 +22,7 @@ import { useUser } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { getCustomerImpersonationCacheKey, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const CUSTOMER_DASH_CACHE_TTL_MS = 3 * 60 * 1000;
 
@@ -142,7 +143,7 @@ function CustomerHubContent() {
         const fetchHubData = async () => {
             if (user) {
                 try {
-                    const cacheKey = `customer_hub_v1:${user.uid}`;
+                    const cacheKey = getCustomerImpersonationCacheKey('customer_hub_v1', user.uid);
                     const cachedRaw = sessionStorage.getItem(cacheKey);
                     if (cachedRaw) {
                         const parsed = JSON.parse(cachedRaw);
@@ -155,7 +156,7 @@ function CustomerHubContent() {
 
                     setLoading(true);
                     const idToken = await user.getIdToken();
-                    const res = await fetch('/api/customer/hub-data', {
+                    const res = await fetch(withCustomerImpersonation('/api/customer/hub-data'), {
                         headers: { Authorization: `Bearer ${idToken}` },
                     });
                     if (!res.ok) throw new Error('Failed to fetch hub data');
@@ -373,7 +374,7 @@ function CustomerHubContent() {
                             <Button
                                 variant="outline"
                                 className="rounded-xl border-primary/30 text-primary hover:bg-primary/10"
-                                onClick={() => router.push('/customer-dashboard/analytics')}
+                                onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/analytics'))}
                             >
                                 <BarChart3 className="mr-2 h-4 w-4" />
                                 Full Analytics

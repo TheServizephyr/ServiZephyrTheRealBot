@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
+import { resolveCustomerTarget } from '@/lib/customer-impersonation';
 
 export const dynamic = 'force-dynamic';
 
@@ -161,7 +162,7 @@ const computeStreaks = (dateKeysSet) => {
 
 export async function GET(req) {
     try {
-        const uid = await verifyAndGetUid(req);
+        const { targetUid: uid } = await resolveCustomerTarget(req);
         const firestore = await getFirestore();
 
         const [

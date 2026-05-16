@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
 import { logoutClientSession } from '@/lib/client-session';
+import { isCustomerImpersonating, withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const ProfileOption = ({ icon, title, description, onClick }) => (
     <motion.button
@@ -39,13 +40,16 @@ export default function ProfilePage() {
     const [editedName, setEditedName] = useState('');
     const [editedPhone, setEditedPhone] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isImpersonatingCustomer, setIsImpersonatingCustomer] = useState(false);
 
     useEffect(() => {
+        setIsImpersonatingCustomer(isCustomerImpersonating());
+
         const fetchProfileData = async () => {
             if (authUser) {
                 try {
                     const idToken = await authUser.getIdToken();
-                    const response = await fetch('/api/customer/profile', {
+                    const response = await fetch(withCustomerImpersonation('/api/customer/profile'), {
                         headers: { Authorization: `Bearer ${idToken}` },
                     });
                     if (!response.ok) throw new Error('Failed to fetch profile data.');
@@ -85,7 +89,7 @@ export default function ProfilePage() {
 
         try {
             const idToken = await authUser.getIdToken();
-            const response = await fetch('/api/customer/profile', {
+            const response = await fetch(withCustomerImpersonation('/api/customer/profile'), {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
                 body: JSON.stringify({ name: editedName, phone: editedPhone }),
@@ -148,7 +152,7 @@ export default function ProfilePage() {
                                     <Save size={16} className="mr-2" /> Save
                                 </Button>
                             </div>
-                        ) : (
+                        ) : isImpersonatingCustomer ? null : (
                             <Button variant="outline" className="rounded-xl" onClick={() => setIsEditing(true)}>
                                 <Edit size={16} className="mr-2" /> Edit Profile
                             </Button>
@@ -208,32 +212,34 @@ export default function ProfilePage() {
                         icon={<BarChart3 size={20} />}
                         title="My Analytics"
                         description="Track spend, loyalty points, and food patterns"
-                        onClick={() => router.push('/customer-dashboard/analytics')}
+                        onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/analytics'))}
                     />
                     <ProfileOption
                         icon={<ShoppingBag size={20} />}
                         title="My Orders"
                         description="View your complete order history"
-                        onClick={() => router.push('/customer-dashboard/orders')}
+                        onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/orders'))}
                     />
                     <ProfileOption
                         icon={<MapPin size={20} />}
                         title="My Addresses"
                         description="Manage saved delivery locations"
-                        onClick={() => router.push('/customer-dashboard/addresses')}
+                        onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/addresses'))}
                     />
                     <ProfileOption
                         icon={<Settings size={20} />}
                         title="Account Settings"
                         description="Notifications, security, and preferences"
-                        onClick={() => router.push('/customer-dashboard/settings')}
+                        onClick={() => router.push(withCustomerImpersonation('/customer-dashboard/settings'))}
                     />
                 </motion.div>
 
                 <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-                    <Button onClick={handleLogout} variant="destructive" className="w-full rounded-xl md:w-auto">
-                        <LogOut className="mr-2 h-4 w-4" /> Logout
-                    </Button>
+                    {isImpersonatingCustomer ? null : (
+                        <Button onClick={handleLogout} variant="destructive" className="w-full rounded-xl md:w-auto">
+                            <LogOut className="mr-2 h-4 w-4" /> Logout
+                        </Button>
+                    )}
                 </motion.div>
             </div>
         </>

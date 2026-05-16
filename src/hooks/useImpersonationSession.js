@@ -15,10 +15,13 @@ export function useImpersonationSession() {
     const [showWarning, setShowWarning] = useState(false);
 
     const impersonateOwnerId = searchParams.get('impersonate_owner_id');
+    const impersonateUserId = searchParams.get('impersonate_user_id');
+    const impersonationTargetId = impersonateOwnerId || impersonateUserId;
+    const impersonationType = impersonateUserId ? 'customer' : (impersonateOwnerId ? 'owner' : null);
     const sessionExpiryParam = searchParams.get('session_expiry');
 
     useEffect(() => {
-        if (!impersonateOwnerId || !sessionExpiryParam) {
+        if (!impersonationTargetId || !sessionExpiryParam) {
             setSessionExpiry(null);
             setTimeRemaining(null);
             return;
@@ -49,7 +52,7 @@ export function useImpersonationSession() {
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [impersonateOwnerId, sessionExpiryParam, router, showWarning]);
+    }, [impersonationTargetId, sessionExpiryParam, router, showWarning]);
 
     const formatTimeRemaining = () => {
         if (!timeRemaining) return '';
@@ -72,8 +75,11 @@ export function useImpersonationSession() {
     };
 
     return {
-        isImpersonating: !!impersonateOwnerId,
+        isImpersonating: !!impersonationTargetId,
         impersonateOwnerId,
+        impersonateUserId,
+        impersonationTargetId,
+        impersonationType,
         sessionExpiry,
         timeRemaining,
         showWarning,
