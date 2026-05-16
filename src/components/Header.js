@@ -11,6 +11,18 @@ const Header = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const pathname = usePathname();
   const loginHref = pathname && pathname !== '/' ? `/login?redirect=${encodeURIComponent(pathname)}` : '/login';
+  const getSectionHref = (sectionId) => (pathname === '/' ? `#${sectionId}` : `/#${sectionId}`);
+
+  const navLinks = [
+    { href: getSectionHref('product'), label: 'Product' },
+    { href: getSectionHref('features'), label: 'Features' },
+    { href: getSectionHref('pricing'), label: 'Pricing' },
+    { href: '/career', label: 'Career' },
+    { href: getSectionHref('faq'), label: 'FAQ' },
+    { href: getSectionHref('contact'), label: 'Contact' },
+  ];
+
+  const mobileQuickLinks = navLinks.filter((link) => ['Product', 'Career', 'Pricing', 'Contact'].includes(link.label));
 
   useEffect(() => {
     const handleScroll = () => {
@@ -41,30 +53,12 @@ const Header = () => {
             <Image src="/logo.png" alt="ServiZephyr Logo" width={180} height={45} className="h-12 w-auto" priority />
           </Link>
           <nav className="hidden items-center justify-evenly flex-1 md:flex">
-            <Link href="#product" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              Product
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
-            <Link href="#features" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              Features
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
-            <Link href="#pricing" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              Pricing
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
-            <Link href="/career" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              Career
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
-            <Link href="#faq" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              FAQ
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
-            <Link href="#contact" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-              Contact
-              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
-            </Link>
+            {navLinks.map((link) => (
+              <Link key={link.label} href={link.href} className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
+                {link.label}
+                <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
+              </Link>
+            ))}
           </nav>
           <Link
             href={loginHref}
@@ -73,6 +67,19 @@ const Header = () => {
             Get Started
           </Link>
         </div>
+        <nav className="border-t border-amber-100 bg-white/90 md:hidden">
+          <div className="container mx-auto flex items-center gap-2 overflow-x-auto px-4 py-2">
+            {mobileQuickLinks.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        </nav>
       </motion.header>
     </>
   )
