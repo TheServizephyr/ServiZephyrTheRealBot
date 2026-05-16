@@ -13,6 +13,12 @@ import QRCode from 'qrcode.react';
 
 const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
 
+const normalizeExpectedWaitMinutes = (value, fallback = 0) => {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(60, Math.max(0, parsed));
+};
+
 export default function PublicWaitlistPage({ params }) {
     const { restaurantId } = params;
     const [name, setName] = useState('');
@@ -295,6 +301,10 @@ export default function PublicWaitlistPage({ params }) {
         ? 'Please enter a valid phone number.'
         : '';
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
+    const expectedWaitMinutes = normalizeExpectedWaitMinutes(restaurantData?.waitlistExpectedWaitMinutes, 0);
+    const waitlistExpectedWaitMessage = expectedWaitMinutes > 0
+        ? `Your expected waiting time is ${expectedWaitMinutes} minutes, but it may vary. We will notify you on WhatsApp and call before ${expectedWaitMinutes} minutes.`
+        : 'We will notify you on WhatsApp and call when your table is ready.';
     const arrivalUrl = (mode !== 'booking' && entryId && arrivalCode && typeof window !== 'undefined')
         ? `${window.location.origin}/public/waitlist-arrive?rid=${encodeURIComponent(restaurantId)}&eid=${encodeURIComponent(entryId)}&c=${encodeURIComponent(arrivalCode)}`
         : '';
@@ -529,6 +539,12 @@ export default function PublicWaitlistPage({ params }) {
                                         Book for Later
                                     </Button>
                                 </div>
+
+                                {mode === 'waitlist' ? (
+                                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs font-semibold leading-relaxed text-muted-foreground">
+                                        {waitlistExpectedWaitMessage}
+                                    </div>
+                                ) : null}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-primary">Your Name</Label>

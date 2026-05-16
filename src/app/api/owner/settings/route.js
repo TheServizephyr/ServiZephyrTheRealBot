@@ -15,6 +15,7 @@ import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 import { invalidateSharedCache } from '@/lib/server/sharedCache';
 import { bumpBusinessRuntimeVersions } from '@/lib/server/businessRuntime';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
+import { invalidatePublicRestaurantOverview } from '@/services/business/publicRestaurantOverview.service';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -124,6 +125,12 @@ function normalizeNoShowTimeoutMinutes(value, fallback = 10) {
     return Math.min(120, Math.max(1, parsed));
 }
 
+function normalizeExpectedWaitMinutes(value, fallback = 0) {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(60, Math.max(0, parsed));
+}
+
 function normalizePhone(phone) {
     if (!phone) return '';
     const digits = String(phone).replace(/\D/g, '');
@@ -176,6 +183,7 @@ function shouldBumpPublicMenuVersion({
         'waitlistSeatingMode',
         'waitlistManualCapacity',
         'waitlistNoShowTimeoutMinutes',
+        'waitlistExpectedWaitMinutes',
     ]);
 
     return Object.keys(businessUpdateData).some((key) => publicFacingFields.has(key));
@@ -453,6 +461,7 @@ export async function GET(req) {
             waitlistSeatingMode: normalizeWaitlistSeatingMode(businessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(businessData?.waitlistManualCapacity || 40)),
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData?.waitlistNoShowTimeoutMinutes, 10),
+            waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(businessData?.waitlistExpectedWaitMinutes, 0),
             waitlistTokenCounter: Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessData?.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE)),
             waitlistTokenCounterDate: String(businessData?.waitlistTokenCounterDate || ''),
         };
@@ -645,6 +654,10 @@ export async function PATCH(req) {
             }
             businessUpdateData.waitlistNoShowTimeoutMinutes = normalizedTimeout;
         }
+        if (updates.waitlistExpectedWaitMinutes !== undefined) {
+            const normalizedExpectedWait = normalizeExpectedWaitMinutes(updates.waitlistExpectedWaitMinutes, 0);
+            businessUpdateData.waitlistExpectedWaitMinutes = normalizedExpectedWait;
+        }
         if (updates.resetWaitlistTokenCounter === true) {
             businessUpdateData.waitlistTokenCounter = DEFAULT_WAITLIST_TOKEN_BASE;
             businessUpdateData.waitlistTokenCounterDate = getDateKeyInTimeZone();
@@ -720,6 +733,7 @@ export async function PATCH(req) {
             invalidateSharedCache(`menu-snapshot:${businessId}`, { prefixMatch: true });
             invalidateSharedCache(`business-runtime:${businessId}`, { prefixMatch: true });
         }
+        invalidatePublicRestaurantOverview(businessId);
 
         // Fetch fresh delivery config
         const deliveryConfigSnap = await businessRef.collection('delivery_settings').doc('config').get();
@@ -803,6 +817,7 @@ export async function PATCH(req) {
             waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(finalBusinessData?.waitlistNoShowTimeoutMinutes, 10),
+            waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(finalBusinessData?.waitlistExpectedWaitMinutes, 0),
             waitlistTokenCounter: Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(finalBusinessData?.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE)),
             waitlistTokenCounterDate: String(finalBusinessData?.waitlistTokenCounterDate || ''),
         };

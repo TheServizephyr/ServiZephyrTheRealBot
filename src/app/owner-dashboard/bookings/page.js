@@ -38,6 +38,13 @@ const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arr
 const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_BOOKINGS, PERMISSIONS.MANAGE_BOOKINGS, PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
 const DINE_IN_TABLE_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN, PERMISSIONS.VIEW_TABLES, PERMISSIONS.ASSIGN_TABLE];
 const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
+const WAITLIST_EXPECTED_WAIT_OPTIONS = [0, 10, 20, 30, 40, 50, 60];
+
+const normalizeExpectedWaitMinutes = (value, fallback = 0) => {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return WAITLIST_EXPECTED_WAIT_OPTIONS.includes(parsed) ? parsed : fallback;
+};
 
 const parseStoredJsonArray = (key) => {
     if (typeof window === 'undefined') return null;
@@ -2041,6 +2048,7 @@ function BookingsPageContent() {
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
     const [waitlistManualCapacity, setWaitlistManualCapacity] = useState(40);
     const [waitlistNoShowTimeoutMinutes, setWaitlistNoShowTimeoutMinutes] = useState(10);
+    const [waitlistExpectedWaitMinutes, setWaitlistExpectedWaitMinutes] = useState(0);
     const [waitlistConfigLoading, setWaitlistConfigLoading] = useState(false);
     const [isWaitlistQrOpen, setIsWaitlistQrOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -2233,6 +2241,7 @@ function BookingsPageContent() {
                         );
                         setWaitlistManualCapacity(Math.max(1, Number(bData.waitlistManualCapacity || 40)));
                         setWaitlistNoShowTimeoutMinutes(Math.max(1, Number(bData.waitlistNoShowTimeoutMinutes || 10)));
+                        setWaitlistExpectedWaitMinutes(normalizeExpectedWaitMinutes(bData.waitlistExpectedWaitMinutes, 0));
                         break;
                     }
                 }
@@ -2431,6 +2440,40 @@ function BookingsPageContent() {
         }
     };
 
+    const handleWaitlistExpectedWaitChange = async (waitRaw) => {
+        const parsedWait = Number.parseInt(String(waitRaw), 10);
+        if (!WAITLIST_EXPECTED_WAIT_OPTIONS.includes(parsedWait)) {
+            toast({ title: "Invalid Time", description: "Select 0 or 10 to 60 minutes.", variant: "destructive" });
+            return;
+        }
+
+        setWaitlistConfigLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch(getSettingsApiUrl(), {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ waitlistExpectedWaitMinutes: parsedWait })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to update expected wait time');
+            setWaitlistExpectedWaitMinutes(parsedWait);
+            setBusinessInfo((prev) => prev ? { ...prev, waitlistExpectedWaitMinutes: parsedWait } : prev);
+            toast({
+                title: "Saved",
+                description: parsedWait > 0
+                    ? `Expected wait time set to ${parsedWait} minutes.`
+                    : "Expected wait time hidden from public form.",
+            });
+        } catch (err) {
+            toast({ title: "Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setWaitlistConfigLoading(false);
+        }
+    };
+
     const handleResetDailyWaitlistCounter = async () => {
         setWaitlistConfigLoading(true);
         try {
@@ -2551,9 +2594,24 @@ function BookingsPageContent() {
                             <TabsTrigger value="upcoming" className="flex items-center gap-2 font-bold text-xs md:text-sm"><CalendarClock size={16} className="hidden md:block" /> {upcoming ? `Upcoming (${upcoming.length})` : 'Upcoming'}</TabsTrigger>
                         )}
                     </TabsList>
-                    <div className="relative w-full max-w-sm">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
-                        <input type="text" placeholder="Search by name or phone..." className="w-full bg-muted/30 border border-border rounded-xl pl-9 md:pl-10 pr-4 py-1.5 md:py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all h-9 md:h-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    <div className="flex w-full max-w-sm items-center gap-2">
+                        <div className="relative min-w-0 flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
+                            <input type="text" placeholder="Search by name or phone..." className="w-full bg-muted/30 border border-border rounded-xl pl-9 md:pl-10 pr-4 py-1.5 md:py-2 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all h-9 md:h-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                        </div>
+                        {shouldRenderWaitlist && (
+                            <select
+                                aria-label="Expected wait time"
+                                className="h-9 md:h-10 w-[84px] shrink-0 rounded-xl border border-border bg-muted/30 px-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+                                value={waitlistExpectedWaitMinutes}
+                                disabled={waitlistConfigLoading}
+                                onChange={(e) => handleWaitlistExpectedWaitChange(e.target.value)}
+                            >
+                                {WAITLIST_EXPECTED_WAIT_OPTIONS.map((minutes) => (
+                                    <option key={minutes} value={minutes}>{minutes} min</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                 </div>
 

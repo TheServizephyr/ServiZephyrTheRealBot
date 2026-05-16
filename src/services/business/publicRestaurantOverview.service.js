@@ -62,6 +62,12 @@ const normalizeNoShowTimeoutMinutes = (value, fallback = 10) => {
     return Math.min(120, Math.max(1, parsed));
 };
 
+const normalizeExpectedWaitMinutes = (value, fallback = 0) => {
+    const parsed = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(parsed)) return fallback;
+    return Math.min(60, Math.max(0, parsed));
+};
+
 const toDate = (value) => {
     if (!value) return null;
     if (typeof value?.toDate === 'function') return value.toDate();
@@ -281,6 +287,7 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
                 waitlist: businessData.isWaitlistEnabled === true,
             },
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes, 10),
+            waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(businessData.waitlistExpectedWaitMinutes, 0),
             coordinates: getCoordinates(businessData),
             rating: {
                 value: Number(ratingValue.toFixed(1)),
@@ -312,4 +319,10 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
 
     writeOverviewCache(safeRestaurantId, response);
     return response;
+}
+
+export function invalidatePublicRestaurantOverview(restaurantId) {
+    const safeRestaurantId = String(restaurantId || '').trim();
+    if (!safeRestaurantId) return;
+    getOverviewCacheStore().delete(safeRestaurantId);
 }
