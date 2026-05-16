@@ -847,7 +847,7 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
     );
 };
 
-const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true }) => {
+const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true, canUseOwnerActions = true }) => {
     const { toast } = useToast();
     const [historySearchQuery, setHistorySearchQuery] = useState('');
     const [historyRangeMode, setHistoryRangeMode] = useState('today');
@@ -1011,17 +1011,19 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                                     />
                                 </PopoverContent>
                             </Popover>
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="gap-2"
-                                disabled={isExportingHistory}
-                                onClick={handleExportHistory}
-                            >
-                                {isExportingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                                Export
-                            </Button>
+                            {canUseOwnerActions && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-2"
+                                    disabled={isExportingHistory}
+                                    onClick={handleExportHistory}
+                                >
+                                    {isExportingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                    Export
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </DialogHeader>
@@ -1082,7 +1084,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                 </Tabs>
 
                 <DialogFooter className="mt-6 flex gap-2">
-                    {canUseWaitlist && (
+                    {canUseOwnerActions && canUseWaitlist && (
                         <Button onClick={onOpenAnalytics} variant="outline" className="w-full md:w-auto">
                             <BarChart3 size={15} className="mr-2" /> Analytics
                         </Button>
@@ -2066,6 +2068,7 @@ function BookingsPageContent() {
     const canUseWaitlist = canUseWaitlistForAccess(employeeAccess) && !isWaitlistLockedForBusiness(businessInfo);
     const canUseBookings = canUseBookingsForAccess(employeeAccess);
     const canUseDineInTables = canUseDineInTablesForAccess(employeeAccess) && !isFeatureLockedForBusiness(businessInfo, 'dine-in');
+    const canUseOwnerHistoryActions = !employeeOfOwnerId;
     const shouldRenderWaitlist = canUseWaitlist && (!employeeOfOwnerId || employeeAccess.isLoaded);
     const shouldRenderBookings = !employeeOfOwnerId || !employeeAccess.isLoaded || canUseBookings;
     const canMountWaitlistManagement = shouldRenderWaitlist && Boolean(businessInfo?.id && businessInfo?.collection);
@@ -2168,9 +2171,13 @@ function BookingsPageContent() {
     useEffect(() => {
         if (canUseWaitlist) return;
         setIsWaitlistSettingsOpen(false);
-        setIsWaitlistAnalyticsOpen(false);
         setIsWaitlistQrOpen(false);
     }, [canUseWaitlist]);
+
+    useEffect(() => {
+        if (canUseOwnerHistoryActions && canUseWaitlist) return;
+        setIsWaitlistAnalyticsOpen(false);
+    }, [canUseOwnerHistoryActions, canUseWaitlist]);
 
     const persistBookingsToCache = useCallback(async (nextBookings) => {
         const payload = { bookings: Array.isArray(nextBookings) ? nextBookings : [] };
@@ -2786,8 +2793,9 @@ function BookingsPageContent() {
                 onOpenAnalytics={() => setIsWaitlistAnalyticsOpen(true)}
                 canUseWaitlist={canUseWaitlist}
                 canUseBookings={canUseBookings}
+                canUseOwnerActions={canUseOwnerHistoryActions}
             />
-            {canUseWaitlist && (
+            {canUseOwnerHistoryActions && canUseWaitlist && (
                 <WaitlistAnalyticsModal
                     isOpen={isWaitlistAnalyticsOpen}
                     onClose={() => setIsWaitlistAnalyticsOpen(false)}
