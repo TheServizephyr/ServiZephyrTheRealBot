@@ -154,7 +154,7 @@ function AdminLayoutContent({ children }) {
         title={infoDialog.title}
         message={infoDialog.message}
       />
-      <div className="flex h-screen bg-background text-foreground">
+      <div className="flex h-dvh overflow-hidden bg-background text-foreground">
         {/* Sidebar */}
         <AnimatePresence>
           {(isSidebarOpen || !isMobile) && (
@@ -164,7 +164,7 @@ function AdminLayoutContent({ children }) {
               animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
               exit={isMobile ? { x: '-100%' } : { width: '80px' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className={`fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col ${isMobile && !isSidebarOpen ? 'hidden' : ''
+              className={`fixed inset-y-0 left-0 md:sticky md:top-0 h-dvh max-h-dvh z-50 bg-card border-r border-border flex flex-col overflow-hidden ${isMobile && !isSidebarOpen ? 'hidden' : ''
                 }`}
             >
               <div
@@ -176,7 +176,7 @@ function AdminLayoutContent({ children }) {
                   <ChevronLeft className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
                 </Button>
               </div>
-              <nav className="flex-grow p-4 space-y-2">
+              <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4">
                 <SidebarLink href="/admin-dashboard" icon={LayoutDashboard} isCollapsed={isCollapsed}>
                   Dashboard
                 </SidebarLink>
@@ -237,7 +237,7 @@ function AdminLayoutContent({ children }) {
         )}
 
 
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Top Bar */}
           <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-card border-b border-border shrink-0">
             <div className="flex items-center gap-2 md:gap-4">
@@ -291,7 +291,7 @@ function AdminLayoutContent({ children }) {
           </header>
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
         </div>
       </div>
     </>

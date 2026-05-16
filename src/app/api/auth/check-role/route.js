@@ -13,8 +13,10 @@ import {
 import { logSecurityEvent, SECURITY_EVENT_TYPES } from '@/lib/security/security-events';
 import { hashAuditValue, logRequestAudit } from '@/lib/security/request-audit';
 import { appendDashboardScope, getDefaultOwnerDashboardPathForAccess } from '@/lib/ownerDashboardAccess';
+import { SALES_PARTNERS_COLLECTION } from '@/lib/sales-operations';
 
 const OWNER_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
+const normalizePhoneForLookup = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 
 function getBusinessTypeFromRole(role) {
     if (role === 'shop-owner') return 'store';
@@ -70,6 +72,36 @@ function serializeLinkedOutlet(outlet = {}) {
         permissions: Array.isArray(outlet.permissions) ? outlet.permissions : [],
         customAllowedPages: Array.isArray(outlet.customAllowedPages) ? outlet.customAllowedPages : null,
     };
+}
+
+async function findUnlinkedSalesPartnerForAuth(firestore, uid) {
+    try {
+        const auth = await getAuth();
+        const authUser = await auth.getUser(uid);
+        const email = String(authUser?.email || '').trim().toLowerCase();
+        const phone = normalizePhoneForLookup(authUser?.phoneNumber);
+        const partnersRef = firestore.collection(SALES_PARTNERS_COLLECTION);
+
+        let partnerDoc = null;
+        if (email) {
+            const byEmail = await partnersRef.where('email', '==', email).limit(1).get();
+            if (!byEmail.empty) partnerDoc = byEmail.docs[0];
+        }
+
+        if (!partnerDoc && phone) {
+            const byPhone = await partnersRef.where('phone', '==', phone).limit(1).get();
+            if (!byPhone.empty) partnerDoc = byPhone.docs[0];
+        }
+
+        if (!partnerDoc) return null;
+        const partner = partnerDoc.data() || {};
+        if (partner.status === 'inactive') return null;
+        if (partner.userId && partner.userId !== uid) return null;
+        return partnerDoc;
+    } catch (error) {
+        console.warn('[DEBUG] /api/auth/check-role: Sales partner lookup skipped:', error?.message || error);
+        return null;
+    }
 }
 
 function buildEmployeeRedirect(outlet = {}) {
@@ -202,6 +234,17 @@ export async function POST(req) {
                 }
                 return finalize({ role, businessType }, 200, { outcome: 'resolved', role });
             }
+        }
+
+        const unlinkedSalesPartner = await findUnlinkedSalesPartnerForAuth(firestore, uid);
+        if (unlinkedSalesPartner) {
+            console.log(`[DEBUG] /api/auth/check-role: Unlinked sales partner found for UID ${uid}. Redirecting to activation.`);
+            return finalize({
+                role: 'sales-partner',
+                businessType: null,
+                redirectTo: '/sales-dashboard',
+                activationRequired: true,
+            }, 200, { outcome: 'sales_activation_required', role: 'sales-partner' });
         }
 
         console.log(`[DEBUG] /api/auth/check-role: User not in 'users' or has no role. Checking 'drivers' collection.`);

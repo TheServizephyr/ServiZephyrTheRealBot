@@ -61,7 +61,9 @@ export async function GET(req) {
         activePartners: partners.filter((partner) => partner.status === 'active').length,
         trainingPartners: partners.filter((partner) => partner.status === 'training').length,
         totalPitches: pitches.length,
-        onboarded: pitches.filter((pitch) => pitch.pitchStatus === 'onboarded' || pitch.onboardingStatus === 'verified').length,
+        onboarded: pitches.filter((pitch) => pitch.pitchStatus === 'onboarded').length,
+        paidOnboarded: pitches.filter((pitch) => pitch.commissionEligible).length,
+        monthlyCommission: pitches.reduce((sum, pitch) => sum + Number(pitch.monthlyCommissionAmount || 0), 0),
       },
     }, { status: 200 });
   } catch (error) {

@@ -5,7 +5,9 @@ export const SALES_EMPLOYEE_ID_PREFIX = 'SZSP';
 export const SALES_PARTNER_STATUSES = ['training', 'active', 'inactive'];
 export const SALES_TRAINING_STATUSES = ['not_started', 'in_progress', 'certified'];
 export const PITCH_STATUSES = ['interested', 'follow_up', 'demo_scheduled', 'rejected', 'onboarded', 'not_available'];
-export const ONBOARDING_STATUSES = ['not_started', 'in_progress', 'verified'];
+export const ONBOARDING_STATUSES = ['in_progress', 'verified'];
+export const PAYMENT_STATUSES = ['pending', 'paid'];
+export const SALES_COMMISSION_RATE = 0.3;
 
 const trimString = (value, fallback = '') => {
   if (typeof value !== 'string') return fallback;
@@ -22,7 +24,25 @@ const normalizeOption = (value, options, fallback) => {
   return options.includes(normalized) ? normalized : fallback;
 };
 
+const normalizeMoney = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.max(0, Math.round(amount));
+};
+
 export const normalizePhone = (value) => String(value || '').replace(/\D/g, '').slice(0, 10);
+
+export const deriveOnboardingStatus = (pitchStatus) => (
+  pitchStatus === 'onboarded' ? 'verified' : 'in_progress'
+);
+
+export const calculateMonthlyCommission = (pitch = {}) => {
+  const pitchStatus = normalizeOption(pitch.pitchStatus, PITCH_STATUSES, 'follow_up');
+  const paymentStatus = normalizeOption(pitch.paymentStatus, PAYMENT_STATUSES, 'pending');
+  const monthlySubscriptionAmount = normalizeMoney(pitch.monthlySubscriptionAmount);
+  if (pitchStatus !== 'onboarded' || paymentStatus !== 'paid') return 0;
+  return Math.round(monthlySubscriptionAmount * SALES_COMMISSION_RATE);
+};
 
 export const normalizeEmployeeId = (value) => (
   String(value || '').trim().toUpperCase().replace(/\s+/g, '')
@@ -86,14 +106,19 @@ export const serializePartner = (doc) => {
 export const sanitizePitchPayload = (payload = {}) => {
   const pitchDateText = trimString(payload.pitchDate);
   const parsedPitchDate = pitchDateText ? new Date(pitchDateText) : null;
+  const pitchStatus = normalizeOption(payload.pitchStatus, PITCH_STATUSES, 'follow_up');
+  const paymentStatus = normalizeOption(payload.paymentStatus, PAYMENT_STATUSES, 'pending');
+  const monthlySubscriptionAmount = normalizeMoney(payload.monthlySubscriptionAmount);
   return {
     restaurantName: trimString(payload.restaurantName).slice(0, 180),
     ownerName: trimString(payload.ownerName).slice(0, 140),
     ownerPhone: normalizePhone(payload.ownerPhone),
     location: trimString(payload.location).slice(0, 300),
     pitchDate: parsedPitchDate && !Number.isNaN(parsedPitchDate.getTime()) ? parsedPitchDate : new Date(),
-    pitchStatus: normalizeOption(payload.pitchStatus, PITCH_STATUSES, 'follow_up'),
-    onboardingStatus: normalizeOption(payload.onboardingStatus, ONBOARDING_STATUSES, 'not_started'),
+    pitchStatus,
+    onboardingStatus: deriveOnboardingStatus(pitchStatus),
+    monthlySubscriptionAmount: pitchStatus === 'onboarded' ? monthlySubscriptionAmount : 0,
+    paymentStatus: pitchStatus === 'onboarded' ? paymentStatus : 'pending',
     notes: trimString(payload.notes).slice(0, 2000),
     followUpAt: trimString(payload.followUpAt).slice(0, 40),
   };
@@ -104,11 +129,22 @@ export const validatePitchPayload = (payload = {}) => {
   if (!payload.restaurantName) errors.push('Restaurant name is required.');
   if (!/^\d{10}$/.test(payload.ownerPhone || '')) errors.push('Owner phone must be exactly 10 digits.');
   if (!payload.location) errors.push('Location is required.');
+  if (payload.pitchStatus === 'onboarded' && Number(payload.monthlySubscriptionAmount || 0) <= 0) {
+    errors.push('Monthly subscription amount is required after onboarding.');
+  }
   return errors;
 };
 
 export const serializePitch = (doc) => {
   const data = doc.data ? doc.data() : doc;
+  const pitchStatus = normalizeOption(data.pitchStatus, PITCH_STATUSES, 'follow_up');
+  const paymentStatus = normalizeOption(data.paymentStatus, PAYMENT_STATUSES, 'pending');
+  const monthlySubscriptionAmount = pitchStatus === 'onboarded' ? normalizeMoney(data.monthlySubscriptionAmount) : 0;
+  const monthlyCommissionAmount = calculateMonthlyCommission({
+    pitchStatus,
+    paymentStatus,
+    monthlySubscriptionAmount,
+  });
   return {
     id: doc.id || data.id,
     partnerId: data.partnerId || '',
@@ -118,8 +154,12 @@ export const serializePitch = (doc) => {
     ownerPhone: data.ownerPhone || '',
     location: data.location || '',
     pitchDate: toIso(data.pitchDate),
-    pitchStatus: normalizeOption(data.pitchStatus, PITCH_STATUSES, 'follow_up'),
-    onboardingStatus: normalizeOption(data.onboardingStatus, ONBOARDING_STATUSES, 'not_started'),
+    pitchStatus,
+    onboardingStatus: deriveOnboardingStatus(pitchStatus),
+    monthlySubscriptionAmount,
+    paymentStatus: pitchStatus === 'onboarded' ? paymentStatus : 'pending',
+    monthlyCommissionAmount,
+    commissionEligible: monthlyCommissionAmount > 0,
     notes: data.notes || '',
     followUpAt: data.followUpAt || '',
     createdAt: toIso(data.createdAt),

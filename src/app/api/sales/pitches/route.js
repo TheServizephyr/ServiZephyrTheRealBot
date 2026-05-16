@@ -40,7 +40,7 @@ export async function POST(req) {
 
     const firestore = await getFirestore();
     const pitchRef = firestore.collection(SALES_PITCHES_COLLECTION).doc();
-    const isOnboarded = payload.pitchStatus === 'onboarded' || payload.onboardingStatus === 'verified';
+    const isOnboarded = payload.pitchStatus === 'onboarded';
     await firestore.runTransaction(async (transaction) => {
       transaction.set(pitchRef, {
         ...payload,

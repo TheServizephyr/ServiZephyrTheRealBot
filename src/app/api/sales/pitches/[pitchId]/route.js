@@ -10,7 +10,7 @@ import { verifySalesPartner } from '@/lib/verify-sales-partner';
 
 export const dynamic = 'force-dynamic';
 
-const isOnboardedPitch = (pitch) => pitch.pitchStatus === 'onboarded' || pitch.onboardingStatus === 'verified';
+const isOnboardedPitch = (pitch) => pitch.pitchStatus === 'onboarded';
 
 export async function PATCH(req, { params }) {
   try {

@@ -283,6 +283,12 @@ function LoginPageContent() {
             }
 
             if (res.status === 404) {
+                if (redirectTo?.startsWith("/sales-dashboard")) {
+                    console.log("[Login] New user came from sales dashboard, continuing to activation.");
+                    window.location.href = redirectTo;
+                    return;
+                }
+
                 if (desktopRuntime) {
                     const fallbackRedirect = await resolveBestEffortAuthRedirect(user);
                     if (fallbackRedirect) {

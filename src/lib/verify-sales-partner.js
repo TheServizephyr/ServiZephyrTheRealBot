@@ -1,13 +1,16 @@
-import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getDecodedAuthContext, getFirestore } from '@/lib/firebase-admin';
 import { SALES_PARTNERS_COLLECTION, serializePartner } from '@/lib/sales-operations';
 
+const normalizePhoneForLookup = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+
 export async function verifySalesPartner(req) {
-  const uid = await verifyAndGetUid(req);
+  const decodedToken = await getDecodedAuthContext(req, { checkRevoked: true, allowSessionCookie: true });
+  const uid = decodedToken.uid;
   const firestore = await getFirestore();
   const userDoc = await firestore.collection('users').doc(uid).get();
   const userData = userDoc.exists ? userDoc.data() || {} : {};
-  const email = String(userData.email || '').trim().toLowerCase();
-  const phone = String(userData.phone || userData.phoneNumber || '').replace(/\D/g, '').slice(0, 10);
+  const email = String(userData.email || decodedToken.email || '').trim().toLowerCase();
+  const phone = normalizePhoneForLookup(userData.phone || userData.phoneNumber || decodedToken.phone_number);
 
   let partnerDoc = null;
 
@@ -43,6 +46,14 @@ export async function verifySalesPartner(req) {
     if (matchedPartner.userId && matchedPartner.userId !== uid) {
       throw { message: 'This employee ID is already linked to another login account.', status: 409 };
     }
+    throw {
+      message: 'Enter your employee ID to activate your sales dashboard.',
+      status: 428,
+      code: 'EMPLOYEE_ID_REQUIRED',
+    };
+  }
+
+  if (!partnerDoc && !userDoc.exists) {
     throw {
       message: 'Enter your employee ID to activate your sales dashboard.',
       status: 428,

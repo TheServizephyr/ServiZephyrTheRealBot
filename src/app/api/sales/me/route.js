@@ -23,7 +23,9 @@ export async function GET(req) {
         totalPitches: pitches.length,
         followUps: pitches.filter((pitch) => pitch.pitchStatus === 'follow_up').length,
         demos: pitches.filter((pitch) => pitch.pitchStatus === 'demo_scheduled').length,
-        onboarded: pitches.filter((pitch) => pitch.pitchStatus === 'onboarded' || pitch.onboardingStatus === 'verified').length,
+        onboarded: pitches.filter((pitch) => pitch.pitchStatus === 'onboarded').length,
+        paidOnboarded: pitches.filter((pitch) => pitch.commissionEligible).length,
+        monthlyCommission: pitches.reduce((sum, pitch) => sum + Number(pitch.monthlyCommissionAmount || 0), 0),
       },
       recentPitches: pitches.slice(0, 8),
     }, { status: 200 });
