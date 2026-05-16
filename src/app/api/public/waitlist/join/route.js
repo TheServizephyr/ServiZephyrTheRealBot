@@ -6,6 +6,9 @@ import crypto from 'crypto';
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
+const READY_TO_NOTIFY_STATUS = 'ready_to_notify';
+const ACTIVE_WAITLIST_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived', 'no_show']);
+const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 function randomUpperAlpha(length = 2) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -23,6 +26,40 @@ function formatWaitlistToken(numberValue) {
 
 function generateArrivalCode() {
     return crypto.randomBytes(5).toString('hex').toUpperCase();
+}
+
+function toDate(value) {
+    if (!value) return null;
+    if (typeof value?.toDate === 'function') return value.toDate();
+    if (typeof value?._seconds === 'number') return new Date(value._seconds * 1000);
+    if (typeof value?.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function toMillis(value) {
+    const date = toDate(value);
+    return date ? date.getTime() : null;
+}
+
+function getNoShowLapsedMillis(entry = {}) {
+    const noShowAtMs = toMillis(entry.noShowAt);
+    const deadlineMs = toMillis(entry.noShowDeadlineAt);
+    if (noShowAtMs && deadlineMs) return Math.min(noShowAtMs, deadlineMs);
+    return noShowAtMs
+        || deadlineMs
+        || toMillis(entry.updatedAt)
+        || toMillis(entry.createdAt)
+        || 0;
+}
+
+function isLiveActiveWaitlistRecord(entry = {}, nowMs = Date.now()) {
+    const status = String(entry?.status || '').toLowerCase();
+    if (!ACTIVE_WAITLIST_STATUSES.has(status)) return false;
+    if (status !== 'no_show') return true;
+
+    const noShowLapsedMs = getNoShowLapsedMillis(entry);
+    return noShowLapsedMs > 0 && (nowMs - noShowLapsedMs) < NO_SHOW_LIVE_WINDOW_MS;
 }
 
 function getDateKeyInTimeZone(date = new Date()) {
@@ -98,8 +135,7 @@ export async function POST(req) {
                 if (existingEntryId) {
                     const existingEntryRef = waitlistRef.doc(existingEntryId);
                     const existingEntrySnap = await transaction.get(existingEntryRef);
-                    const existingStatus = String(existingEntrySnap.data()?.status || '').toLowerCase();
-                    if (existingEntrySnap.exists && ['pending', 'notified', 'arrived'].includes(existingStatus)) {
+                    if (existingEntrySnap.exists && isLiveActiveWaitlistRecord(existingEntrySnap.data())) {
                         throw Object.assign(new Error('ALREADY_ON_WAITLIST'), { code: 'ALREADY_ON_WAITLIST' });
                     }
                 } else {
