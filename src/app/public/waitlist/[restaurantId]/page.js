@@ -303,7 +303,7 @@ export default function PublicWaitlistPage({ params }) {
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const expectedWaitMinutes = normalizeExpectedWaitMinutes(restaurantData?.waitlistExpectedWaitMinutes, 0);
     const waitlistExpectedWaitMessage = expectedWaitMinutes > 0
-        ? `Your expected waiting time is ${expectedWaitMinutes} minutes, but it may vary. We will notify you on WhatsApp and call. Please respond within ${noShowTimeoutMinutes} minutes.`
+        ? `Your expected waiting time is ${expectedWaitMinutes} minutes, but it may vary. We will notify you on WhatsApp or call before ${noShowTimeoutMinutes} minutes.`
         : 'We will notify you on WhatsApp and call when your table is ready.';
     const arrivalUrl = (mode !== 'booking' && entryId && arrivalCode && typeof window !== 'undefined')
         ? `${window.location.origin}/public/waitlist-arrive?rid=${encodeURIComponent(restaurantId)}&eid=${encodeURIComponent(entryId)}&c=${encodeURIComponent(arrivalCode)}`
