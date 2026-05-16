@@ -197,6 +197,9 @@ export async function POST(req) {
 
             if (role) {
                 console.log(`[DEBUG] /api/auth/check-role: Role found in 'users': '${role}'. Returning 200.`);
+                if (role === 'sales-partner' || role === 'growth-partner') {
+                    return finalize({ role: 'sales-partner', businessType: null, redirectTo: '/sales-dashboard' }, 200, { outcome: 'resolved', role: 'sales-partner' });
+                }
                 return finalize({ role, businessType }, 200, { outcome: 'resolved', role });
             }
         }

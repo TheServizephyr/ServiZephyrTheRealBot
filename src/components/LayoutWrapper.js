@@ -18,6 +18,7 @@ const HIDE_LAYOUT_EXACT_PATHS = new Set([
   '/customer-form',
   '/about',
   '/contact',
+  '/career',
 ]);
 
 const HIDE_LAYOUT_PREFIXES = [
@@ -25,6 +26,7 @@ const HIDE_LAYOUT_PREFIXES = [
   '/admin-dashboard',
   '/customer-dashboard',
   '/rider-dashboard',
+  '/sales-dashboard',
   '/order',
   '/track',
   '/bill',

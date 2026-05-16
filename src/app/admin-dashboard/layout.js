@@ -21,6 +21,8 @@ import {
   Hash, // Import Hash for Check IDs
   ShieldAlert,
   UserCog,
+  BriefcaseBusiness,
+  Handshake,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -186,6 +188,12 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/employees" icon={UserCog} isCollapsed={isCollapsed}>
                   Employees
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/careers" icon={BriefcaseBusiness} isCollapsed={isCollapsed}>
+                  Career
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/sales" icon={Handshake} isCollapsed={isCollapsed}>
+                  Sales Ops
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/check-ids" icon={Hash} isCollapsed={isCollapsed}>
                   Check IDs

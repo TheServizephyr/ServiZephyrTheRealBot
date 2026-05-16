@@ -12,6 +12,7 @@ function resolveDashboardPath(payload) {
   if (payload?.redirectTo) return payload.redirectTo;
   if (payload?.hasMultipleRoles) return "/select-role";
   if (payload?.role === "admin") return "/admin-dashboard";
+  if (payload?.role === "sales-partner" || payload?.role === "growth-partner") return "/sales-dashboard";
   if (payload?.role === "rider" || payload?.role === "delivery-boy") return "/rider-dashboard";
   if (payload?.role === "street-vendor") return "/street-vendor-dashboard";
   if (payload?.role === "employee") return "/employee-dashboard";

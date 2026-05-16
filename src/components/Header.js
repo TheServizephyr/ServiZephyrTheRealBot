@@ -53,6 +53,10 @@ const Header = () => {
               Pricing
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
+            <Link href="/career" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
+              Career
+              <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
+            </Link>
             <Link href="#faq" className="group relative text-sm font-medium text-slate-600 transition-colors hover:text-primary">
               FAQ
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>

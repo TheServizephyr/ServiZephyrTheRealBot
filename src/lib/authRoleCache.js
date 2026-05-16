@@ -130,6 +130,7 @@ export function resolveRedirectForAuthData(data = {}) {
   if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') return '/owner-dashboard';
   if (role === 'street-vendor') return '/street-vendor-dashboard';
   if (role === 'admin') return '/admin-dashboard';
+  if (role === 'sales-partner' || role === 'growth-partner') return '/sales-dashboard';
   if (role === 'rider' || role === 'delivery-boy') return '/rider-dashboard';
   if (role === 'employee') return '/employee-dashboard';
   if (role === 'customer') return '/customer-dashboard';
