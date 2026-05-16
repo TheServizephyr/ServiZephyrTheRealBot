@@ -99,9 +99,24 @@ function normalizeNoShowTimeoutMinutes(value, fallback = DEFAULT_NO_SHOW_TIMEOUT
 }
 
 function getHistoryMillis(entry = {}) {
+    const status = String(entry.status || '').toLowerCase();
+    if (status === 'no_show') {
+        return getNoShowLapsedMillis(entry);
+    }
     return toMillis(entry.noShowAt)
         || toMillis(entry.seatedAt)
         || toMillis(entry.cancelledAt)
+        || toMillis(entry.updatedAt)
+        || toMillis(entry.createdAt)
+        || 0;
+}
+
+function getNoShowLapsedMillis(entry = {}) {
+    const noShowAtMs = toMillis(entry.noShowAt);
+    const deadlineMs = toMillis(entry.noShowDeadlineAt);
+    if (noShowAtMs && deadlineMs) return Math.min(noShowAtMs, deadlineMs);
+    return noShowAtMs
+        || deadlineMs
         || toMillis(entry.updatedAt)
         || toMillis(entry.createdAt)
         || 0;
@@ -112,8 +127,8 @@ function isLiveActiveWaitlistRecord(entry = {}, nowMs = Date.now()) {
     if (!ACTIVE_STATUSES.has(status)) return false;
     if (status !== 'no_show') return true;
 
-    const noShowAtMs = toMillis(entry.noShowAt) || toMillis(entry.updatedAt) || toMillis(entry.createdAt) || 0;
-    return noShowAtMs > 0 && (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+    const noShowLapsedMs = getNoShowLapsedMillis(entry);
+    return noShowLapsedMs > 0 && (nowMs - noShowLapsedMs) < NO_SHOW_LIVE_WINDOW_MS;
 }
 
 function isValidDateKey(value) {
@@ -150,7 +165,7 @@ function getHistoryDateRange(url) {
 }
 
 async function fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange }) {
-    const historyFields = ['noShowAt', 'seatedAt', 'cancelledAt', 'updatedAt', 'createdAt'];
+    const historyFields = ['noShowAt', 'noShowDeadlineAt', 'seatedAt', 'cancelledAt', 'updatedAt', 'createdAt'];
     const historySnaps = await Promise.all(historyFields.map((fieldName) => (
         businessRef.collection('waitlist')
             .where(fieldName, '>=', historyDateRange.start)
@@ -164,7 +179,13 @@ async function fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange 
     return historySnaps.flatMap((snap) => snap.docs).filter((doc) => {
         if (seenDocIds.has(doc.id)) return false;
         seenDocIds.add(doc.id);
-        return HISTORY_STATUSES.has(String(doc.data()?.status || '').toLowerCase());
+        const data = doc.data() || {};
+        const historyMs = getHistoryMillis(data);
+        return (
+            HISTORY_STATUSES.has(String(data.status || '').toLowerCase()) &&
+            historyMs >= historyDateRange.start.getTime() &&
+            historyMs < historyDateRange.end.getTime()
+        );
     });
 }
 
@@ -306,11 +327,18 @@ async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
 
     for (const entryDoc of expiredEntries) {
         const entryData = entryDoc.data() || {};
-        batch.set(entryDoc.ref, {
+        const deadlineMs = toMillis(entryData.noShowDeadlineAt) || 0;
+        const notifiedAtMs = toMillis(entryData.notifiedAt) || toMillis(entryData.updatedAt) || 0;
+        const lapsedAtMs = deadlineMs || (notifiedAtMs ? notifiedAtMs + noShowTimeoutMs : 0);
+        const updatePayload = {
             status: 'no_show',
-            noShowAt: FieldValue.serverTimestamp(),
+            noShowAt: lapsedAtMs ? new Date(lapsedAtMs) : FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        if (!deadlineMs && lapsedAtMs) {
+            updatePayload.noShowDeadlineAt = new Date(lapsedAtMs);
+        }
+        batch.set(entryDoc.ref, updatePayload, { merge: true });
 
         const normalizedPhone = String(entryData.phone || '').trim();
         if (!normalizedPhone) continue;

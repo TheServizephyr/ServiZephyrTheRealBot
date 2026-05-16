@@ -224,8 +224,30 @@ const getTimestampMs = (value) => {
     return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 };
 
+const getNoShowLapsedMs = (entry = {}) => {
+    const noShowAtMs = getTimestampMs(entry?.noShowAt);
+    const deadlineMs = getTimestampMs(entry?.noShowDeadlineAt);
+    if (noShowAtMs && deadlineMs) return Math.min(noShowAtMs, deadlineMs);
+    return noShowAtMs
+        || deadlineMs
+        || getTimestampMs(entry?.updatedAt)
+        || getTimestampMs(entry?.createdAt)
+        || 0;
+};
+
+const getNoShowHistoryTime = (entry = {}) => {
+    const noShowAtMs = getTimestampMs(entry?.noShowAt);
+    const deadlineMs = getTimestampMs(entry?.noShowDeadlineAt);
+    if (noShowAtMs && deadlineMs) {
+        return noShowAtMs <= deadlineMs ? entry?.noShowAt : entry?.noShowDeadlineAt;
+    }
+    return entry?.noShowAt || entry?.noShowDeadlineAt || entry?.updatedAt || entry?.createdAt;
+};
+
 const getWaitlistHistoryMs = (entry) => (
-    getTimestampMs(entry?.noShowAt)
+    String(entry?.status || '').toLowerCase() === 'no_show'
+        ? getNoShowLapsedMs(entry)
+        : getTimestampMs(entry?.noShowAt)
     || getTimestampMs(entry?.seatedAt)
     || getTimestampMs(entry?.cancelledAt)
     || getTimestampMs(entry?.updatedAt)
@@ -233,14 +255,16 @@ const getWaitlistHistoryMs = (entry) => (
 );
 
 const getWaitlistHistoryTime = (entry) => (
-    entry?.noShowAt || entry?.seatedAt || entry?.cancelledAt || entry?.createdAt || entry?.updatedAt
+    String(entry?.status || '').toLowerCase() === 'no_show'
+        ? getNoShowHistoryTime(entry)
+        : (entry?.noShowAt || entry?.seatedAt || entry?.cancelledAt || entry?.createdAt || entry?.updatedAt)
 );
 
 const isLiveActiveWaitlistEntry = (entry = {}, nowMs = Date.now()) => {
     const status = String(entry?.status || '').toLowerCase();
     if (status !== 'no_show') return true;
-    const noShowAtMs = getTimestampMs(entry?.noShowAt) || getTimestampMs(entry?.updatedAt) || getTimestampMs(entry?.createdAt);
-    return noShowAtMs > 0 && (nowMs - noShowAtMs) < NO_SHOW_LIVE_WINDOW_MS;
+    const noShowLapsedMs = getNoShowLapsedMs(entry);
+    return noShowLapsedMs > 0 && (nowMs - noShowLapsedMs) < NO_SHOW_LIVE_WINDOW_MS;
 };
 
 const filterWaitlistHistoryEntries = (entries = [], searchQuery = '') => {
