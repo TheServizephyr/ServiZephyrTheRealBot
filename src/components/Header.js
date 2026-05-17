@@ -22,8 +22,6 @@ const Header = () => {
     { href: getSectionHref('contact'), label: 'Contact' },
   ];
 
-  const mobileQuickLinks = navLinks.filter((link) => ['Product', 'Career', 'Pricing', 'Contact'].includes(link.label));
-
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 10) {
@@ -67,19 +65,6 @@ const Header = () => {
             Get Started
           </Link>
         </div>
-        <nav className="border-t border-amber-100 bg-white/90 md:hidden">
-          <div className="container mx-auto flex items-center gap-2 overflow-x-auto px-4 py-2">
-            {mobileQuickLinks.map((link) => (
-              <Link
-                key={link.label}
-                href={link.href}
-                className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </div>
-        </nav>
       </motion.header>
     </>
   )

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft, CalendarClock, CheckCircle2, Copy, GraduationCap, MapPin, Send, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -40,21 +39,6 @@ export default function JobDetailClient({ job }) {
 
   return (
     <main className="min-h-screen bg-background">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex flex-col gap-4 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="ServiZephyr" width={44} height={44} className="h-11 w-11 rounded-md object-contain" priority />
-            <div>
-              <p className="text-lg font-bold leading-tight">ServiZephyr Careers</p>
-              <p className="text-sm text-muted-foreground">Join the team building restaurant technology.</p>
-            </div>
-          </Link>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Serving local restaurants through smart technology solutions focused on ordering, billing, customer communication, and operational efficiency.
-          </p>
-        </div>
-      </header>
-
       <section className="border-b bg-muted/30">
         <div className="container mx-auto px-4 py-10 md:px-6 md:py-14">
           <Button asChild variant="ghost" className="-ml-3 mb-6">
@@ -93,6 +77,9 @@ export default function JobDetailClient({ job }) {
                   </span>
                 ) : null}
               </div>
+              <p className="mt-5 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Serving local restaurants through smart technology solutions focused on ordering, billing, customer communication, and operational efficiency.
+              </p>
             </div>
 
             <Card className="rounded-lg">

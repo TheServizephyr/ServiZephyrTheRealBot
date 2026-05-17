@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BriefcaseBusiness, CalendarClock, Filter, GraduationCap, MapPin, Search } from 'lucide-react';
@@ -85,21 +84,6 @@ export default function CareerPage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <header className="border-b bg-background">
-        <div className="container mx-auto flex flex-col gap-4 px-4 py-5 md:flex-row md:items-center md:justify-between md:px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.png" alt="ServiZephyr" width={44} height={44} className="h-11 w-11 rounded-md object-contain" priority />
-            <div>
-              <p className="text-lg font-bold leading-tight">ServiZephyr Careers</p>
-              <p className="text-sm text-muted-foreground">Join the team building restaurant technology.</p>
-            </div>
-          </Link>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Serving local restaurants through smart technology solutions focused on ordering, billing, customer communication, and operational efficiency.
-          </p>
-        </div>
-      </header>
-
       <section className="border-b bg-muted/30">
         <div className="container mx-auto px-4 py-14 md:px-6 md:py-20">
           <div className="max-w-4xl">
@@ -110,6 +94,9 @@ export default function CareerPage() {
             <h1 className="text-4xl font-bold tracking-tight text-foreground md:text-6xl">Build ServiZephyr with us.</h1>
             <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
               Explore current openings across sales, technology, operations, and growth roles.
+            </p>
+            <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Serving local restaurants through smart technology solutions focused on ordering, billing, customer communication, and operational efficiency.
             </p>
           </div>
         </div>
