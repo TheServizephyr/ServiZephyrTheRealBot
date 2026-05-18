@@ -20,6 +20,7 @@ import { collection, query, where, orderBy, getDocs, limit, onSnapshot, doc, get
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
+import ConfirmationDialog from '@/components/ConfirmationDialog';
 import QrScanner from '@/components/QrScanner';
 import { cn } from '@/lib/utils';
 import { useReactToPrint } from 'react-to-print';
@@ -1143,6 +1144,7 @@ const WaitlistManagement = ({
     const [isArrivalScannerOpen, setIsArrivalScannerOpen] = useState(false);
     const [scanSeatingEntry, setScanSeatingEntry] = useState(null);
     const [scanSelectedTableId, setScanSelectedTableId] = useState('');
+    const [waitlistEntryToCancel, setWaitlistEntryToCancel] = useState(null);
     const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
     const [quickAddMode, setQuickAddMode] = useState('waitlist');
     const [quickAddForm, setQuickAddForm] = useState(getInitialQuickAddForm);
@@ -1547,9 +1549,9 @@ const WaitlistManagement = ({
                     100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
                 }
                 @keyframes pulse-yellow {
-                    0% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.4); }
-                    70% { box-shadow: 0 0 0 10px rgba(234, 179, 8, 0); }
-                    100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+                    0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(249, 115, 22, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
                 }
                 .animate-pulse-green { animation: pulse-green 2s infinite; }
                 .animate-pulse-yellow { animation: pulse-yellow 2s infinite; }
@@ -1597,6 +1599,39 @@ const WaitlistManagement = ({
                         const isReadyToNotify = entry.status === 'ready_to_notify';
                         const isArrived = entry.status === 'arrived';
                         const isNoShow = entry.status === 'no_show';
+                        const cardStatusClass = isNoShow
+                            ? "border-l-red-400 bg-red-400/10 border-red-400/40"
+                            : isNotified
+                                ? "border-l-orange-500 bg-orange-500/5"
+                                : isArrived
+                                    ? "border-l-purple-500 bg-purple-500/5"
+                                    : isReadyToNotify
+                                        ? "border-l-sky-500 bg-sky-500/5"
+                                        : isRecommended
+                                            ? "border-l-green-500 shadow-lg scale-[1.02]"
+                                            : "border-l-yellow-400 bg-yellow-400/5";
+                        const statusDotClass = isNoShow
+                            ? "bg-red-400"
+                            : isNotified
+                                ? "bg-orange-500"
+                                : isArrived
+                                    ? "bg-purple-500"
+                                    : isReadyToNotify
+                                        ? "bg-sky-500"
+                                        : isRecommended
+                                            ? "bg-green-500"
+                                            : "bg-yellow-400";
+                        const statusBadgeClass = isNoShow
+                            ? "border-red-400/25 bg-red-400/15 text-red-700 dark:text-red-300"
+                            : isNotified
+                                ? "border-orange-500/25 bg-orange-500/15 text-orange-700 dark:text-orange-300"
+                                : isArrived
+                                    ? "border-purple-500/25 bg-purple-500/15 text-purple-700 dark:text-purple-300"
+                                    : isReadyToNotify
+                                        ? "border-sky-500/25 bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                                        : isRecommended
+                                            ? "border-green-500/25 bg-green-500/15 text-green-700 dark:text-green-300"
+                                            : "border-yellow-400/25 bg-yellow-400/15 text-yellow-700 dark:text-yellow-300";
                         const notifiedAtMs = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
                         const computedDeadlineMs = notifiedAtMs
                             ? (notifiedAtMs + Math.max(1, Number(waitlistMeta?.noShowTimeoutMinutes || 10)) * 60 * 1000)
@@ -1621,10 +1656,10 @@ const WaitlistManagement = ({
                         return (
                             <Card key={entry.id} className={cn(
                                 "border-l-4 transition-all duration-300",
-                                isNoShow ? "border-l-red-500 bg-red-500/5" : isNotified ? "border-l-amber-500" : isReadyToNotify ? "border-l-sky-500" : isArrived ? "border-l-purple-500" : isRecommended ? "border-l-green-500 shadow-lg scale-[1.02]" : "border-l-primary",
+                                cardStatusClass,
                                 isRecommended && !isNotified && "animate-pulse-green border-green-500/50",
-                                isNotified && "animate-pulse-yellow border-amber-500/50",
-                                isNoShow && "border-red-500/50"
+                                isNotified && "animate-pulse-yellow border-orange-500/50",
+                                isNoShow && "border-red-400/50"
                             )}>
                                 <CardContent className="p-4 space-y-4">
                                     <div className="flex justify-between items-start">
@@ -1632,23 +1667,14 @@ const WaitlistManagement = ({
                                             {isRecommended && !isNotified && (
                                                 <div className="mt-1.5 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                                             )}
-                                            {isReadyToNotify && (
-                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
-                                            )}
-                                            {isNotified && (
-                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                                            )}
-                                            {isArrived && (
-                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
-                                            )}
-                                            {isNoShow && (
-                                                <div className="mt-1.5 h-2 w-2 rounded-full bg-red-500" />
+                                            {(!isRecommended || isNotified) && (
+                                                <div className={cn("mt-1.5 h-2 w-2 rounded-full", statusDotClass, !isNoShow && "animate-pulse")} />
                                             )}
                                             <div>
                                                 <h4 className="font-bold flex items-center gap-2">
                                                     {entry.name}
                                                     {entry.waitlistToken && (
-                                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-md border border-primary/20">
+                                                        <span className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-md border border-green-500/20 font-large leading-none">
                                                             {entry.waitlistToken}
                                                         </span>
                                                     )}
@@ -1660,18 +1686,18 @@ const WaitlistManagement = ({
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
-                                            <div className={cn("px-2 py-0.5 rounded-full text-[10px] uppercase font-bold", isNoShow ? "bg-red-500/10 text-red-600" : isNotified ? "bg-amber-500/10 text-amber-500" : isReadyToNotify ? "bg-sky-500/10 text-sky-500" : isArrived ? "bg-purple-500/10 text-purple-500" : isRecommended ? "bg-green-500/10 text-green-500" : "bg-primary/10 text-primary")}>
+                                            <div className={cn("px-2 py-0.5 rounded-full border text-[10px] uppercase font-bold", statusBadgeClass)}>
                                                 {isNoShow ? 'No Show' : isNotified ? 'Notified' : isReadyToNotify ? 'Ready to Notify' : isArrived ? 'Arrived' : isRecommended ? 'Recommended' : 'Waiting'}
                                             </div>
                                             {isNotified && remainingNoShowMinutes !== null && (
-                                                <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
+                                                <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5">
                                                     <span
-                                                        className="h-4 w-4 rounded-full border border-amber-500/60"
+                                                        className="h-4 w-4 rounded-full border border-orange-500/60"
                                                         style={{
-                                                            background: `conic-gradient(#f59e0b ${progressDeg}deg, rgba(245, 158, 11, 0.15) ${progressDeg}deg 360deg)`
+                                                            background: `conic-gradient(#f97316 ${progressDeg}deg, rgba(249, 115, 22, 0.15) ${progressDeg}deg 360deg)`
                                                         }}
                                                     />
-                                                    <span className="text-[10px] font-semibold text-amber-600">
+                                                    <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">
                                                         {formatCountdown(remainingNoShowSeconds)}
                                                     </span>
                                                 </div>
@@ -1735,7 +1761,7 @@ const WaitlistManagement = ({
                                         >
                                             {actionLoading === entry.id ? <Loader2 className="animate-spin" size={16} /> : 'Seat Customer'}
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive hover:bg-destructive/10" onClick={() => handleUpdateStatus(entry.id, 'cancelled')}>
+                                        <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive hover:bg-destructive/10" onClick={() => setWaitlistEntryToCancel(entry)}>
                                             <Trash2 size={18} />
                                         </Button>
                                     </div>
@@ -1745,6 +1771,24 @@ const WaitlistManagement = ({
                     })}
                 </div>
             )}
+
+            <ConfirmationDialog
+                isOpen={Boolean(waitlistEntryToCancel)}
+                onClose={() => setWaitlistEntryToCancel(null)}
+                onConfirm={() => {
+                    if (waitlistEntryToCancel?.id) {
+                        handleUpdateStatus(waitlistEntryToCancel.id, 'cancelled');
+                    }
+                }}
+                title="Cancel Waitlist Entry?"
+                description={waitlistEntryToCancel?.name
+                    ? `This will cancel ${waitlistEntryToCancel.name}'s waitlist entry.`
+                    : 'This will cancel this waitlist entry.'}
+                confirmText="Yes, Cancel"
+                cancelText="Keep"
+                variant="destructive"
+                icon={Trash2}
+            />
 
             {effectiveWaitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
                 <Card className="border-amber-500/30 bg-amber-500/5">
