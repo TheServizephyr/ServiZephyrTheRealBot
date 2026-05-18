@@ -68,7 +68,7 @@
     "date-fns": "^3.6.0",
     "dotenv": "^16.4.5",
     "electron-updater": "^6.8.3",
-    "firebase": "^10.12.3",
+    "firebase": "^11.10.0",
     "flowbite": "^3.1.2",
     "framer-motion": "^11.3.19",
     "genkit": "^1.0.0",

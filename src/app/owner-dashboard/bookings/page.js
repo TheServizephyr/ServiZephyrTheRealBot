@@ -1611,7 +1611,7 @@ const WaitlistManagement = ({
                                             ? "border-l-green-500 shadow-lg scale-[1.02]"
                                             : "border-l-yellow-400 bg-yellow-400/[0.03]";
                         const statusDotClass = isNoShow
-                            ? "bg-red-400"
+                            ? "bg-red-600"
                             : isNotified
                                 ? "bg-orange-500"
                                 : isArrived
@@ -1622,7 +1622,7 @@ const WaitlistManagement = ({
                                             ? "bg-green-500"
                                             : "bg-yellow-400";
                         const statusBadgeClass = isNoShow
-                            ? "border-red-400/25 bg-red-400/15 text-red-700 dark:text-red-300"
+                            ? "border-red-600/25 bg-red-600/15 text-red-700 dark:text-red-300"
                             : isNotified
                                 ? "border-orange-500/25 bg-orange-500/15 text-orange-700 dark:text-orange-300"
                                 : isArrived
