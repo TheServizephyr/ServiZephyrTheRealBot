@@ -1360,9 +1360,6 @@ const WaitlistManagement = ({
             const result = await handleApiCall('PATCH', { entryId, status }, '/api/owner/waitlist');
             await fetchData();
             toast({ title: "Updated", description: `Customer marked as ${status}.` });
-            if (result?.warning) {
-                toast({ title: "Capacity Alert", description: result.warning, variant: "destructive" });
-            }
             if (result?.promotedEntryId) {
                 toast({ title: "Next Guest Notified", description: "Auto-promoted next pending guest." });
             }
@@ -1389,9 +1386,6 @@ const WaitlistManagement = ({
                     ? `${entry.name} marked as seated (manual seating).`
                     : `${entry.name} seated at Table ${tableId}.${source === 'scan' ? ' (via token scan)' : ''}`
             });
-            if (result?.warning) {
-                toast({ title: "Capacity Alert", description: result.warning, variant: "destructive" });
-            }
             await fetchData();
         } catch (err) {
             toast({ title: "Seating Error", description: err.message, variant: "destructive" });
@@ -1790,13 +1784,6 @@ const WaitlistManagement = ({
                 icon={Trash2}
             />
 
-            {effectiveWaitlistSeatingMode === 'manual_seat' && waitlistMeta?.capacity?.softAlert && (
-                <Card className="border-amber-500/30 bg-amber-500/5">
-                    <CardContent className="p-3 text-sm text-amber-700">
-                        Capacity Alert: {waitlistMeta?.capacity?.message}
-                    </CardContent>
-                </Card>
-            )}
             <Dialog
                 open={isQuickAddOpen}
                 onOpenChange={(open) => {
@@ -2116,7 +2103,6 @@ function BookingsPageContent() {
     const [isWaitlistEnabled, setIsWaitlistEnabled] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
-    const [waitlistManualCapacity, setWaitlistManualCapacity] = useState(40);
     const [waitlistNoShowTimeoutMinutes, setWaitlistNoShowTimeoutMinutes] = useState(10);
     const [waitlistExpectedWaitMinutes, setWaitlistExpectedWaitMinutes] = useState(0);
     const [waitlistConfigLoading, setWaitlistConfigLoading] = useState(false);
@@ -2124,7 +2110,6 @@ function BookingsPageContent() {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [isWaitlistAnalyticsOpen, setIsWaitlistAnalyticsOpen] = useState(false);
     const [isWaitlistSettingsOpen, setIsWaitlistSettingsOpen] = useState(false);
-    const [capacityDraft, setCapacityDraft] = useState('40');
     const [noShowTimeoutDraft, setNoShowTimeoutDraft] = useState('10');
     const [waitlistRefreshSignal, setWaitlistRefreshSignal] = useState(0);
     const hasAppliedEmployeeDefaultTabRef = useRef(false);
@@ -2314,7 +2299,6 @@ function BookingsPageContent() {
                         setWaitlistSeatingMode(
                             bData.waitlistSeatingMode === 'manual_seat' ? 'manual_seat' : 'table_assign'
                         );
-                        setWaitlistManualCapacity(Math.max(1, Number(bData.waitlistManualCapacity || 40)));
                         setWaitlistNoShowTimeoutMinutes(Math.max(1, Number(bData.waitlistNoShowTimeoutMinutes || 10)));
                         setWaitlistExpectedWaitMinutes(normalizeExpectedWaitMinutes(bData.waitlistExpectedWaitMinutes, 0));
                         break;
@@ -2383,10 +2367,6 @@ function BookingsPageContent() {
     const handleBookingCreatedFromQuickAdd = useCallback(() => fetchBookings(true), [fetchBookings]);
 
     useEffect(() => {
-        setCapacityDraft(String(waitlistManualCapacity || 40));
-    }, [waitlistManualCapacity, isWaitlistSettingsOpen]);
-
-    useEffect(() => {
         setNoShowTimeoutDraft(String(waitlistNoShowTimeoutMinutes || 10));
     }, [waitlistNoShowTimeoutMinutes, isWaitlistSettingsOpen]);
 
@@ -2450,35 +2430,6 @@ function BookingsPageContent() {
             setWaitlistSeatingMode(nextMode);
             setBusinessInfo((prev) => prev ? { ...prev, waitlistSeatingMode: nextMode } : prev);
             toast({ title: "Saved", description: `Waitlist seating mode set to ${nextMode === 'manual_seat' ? 'Manual' : 'Table Assignment'}.` });
-        } catch (err) {
-            toast({ title: "Failed", description: err.message, variant: "destructive" });
-        } finally {
-            setWaitlistConfigLoading(false);
-        }
-    };
-
-    const handleWaitlistManualCapacitySave = async (capacityRaw) => {
-        const parsedCapacity = Number.parseInt(String(capacityRaw), 10);
-        if (!Number.isInteger(parsedCapacity) || parsedCapacity < 1 || parsedCapacity > 500) {
-            toast({ title: "Invalid Capacity", description: "Enter a capacity between 1 and 500.", variant: "destructive" });
-            return;
-        }
-
-        setWaitlistConfigLoading(true);
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            const res = await fetch(getSettingsApiUrl(), {
-                method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ waitlistManualCapacity: parsedCapacity })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to update manual capacity');
-            setWaitlistManualCapacity(parsedCapacity);
-            setBusinessInfo((prev) => prev ? { ...prev, waitlistManualCapacity: parsedCapacity } : prev);
-            toast({ title: "Saved", description: `Manual seating capacity updated to ${parsedCapacity}.` });
         } catch (err) {
             toast({ title: "Failed", description: err.message, variant: "destructive" });
         } finally {
@@ -2776,29 +2727,6 @@ function BookingsPageContent() {
                                     Manual
                                 </Button>
                             </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label className="font-semibold">Manual Capacity</Label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={500}
-                                    className="w-28 bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                    value={capacityDraft}
-                                    onChange={(e) => setCapacityDraft(e.target.value)}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    disabled={waitlistConfigLoading}
-                                    onClick={() => handleWaitlistManualCapacitySave(capacityDraft)}
-                                >
-                                    <Save size={14} className="mr-2" /> Save
-                                </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Used for manual mode soft capacity alerts.</p>
                         </div>
 
                         <div className="space-y-2">

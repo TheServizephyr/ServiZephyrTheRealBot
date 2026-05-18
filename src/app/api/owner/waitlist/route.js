@@ -14,7 +14,6 @@ const DEFAULT_NO_SHOW_TIMEOUT_MINUTES = 10;
 const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
-const ACTIVE_SEATED_WINDOW_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 const WAITLIST_VIEW_PERMISSIONS = [
@@ -394,32 +393,16 @@ async function autoPromoteNextPending({ firestore, businessRef }) {
     return nextEntry.id;
 }
 
-async function getManualCapacityMetrics({ businessRef, manualCapacity }) {
-    const seatedSnap = await businessRef.collection('waitlist')
-        .where('status', '==', 'seated')
-        .limit(300)
-        .get();
-
-    const cutoffMs = Date.now() - ACTIVE_SEATED_WINDOW_MS;
-    const activeSeatedPax = seatedSnap.docs.reduce((sum, doc) => {
-        const data = doc.data() || {};
-        const seatedAtMs = toMillis(data.seatedAt) || toMillis(data.updatedAt) || 0;
-        if (!seatedAtMs || seatedAtMs < cutoffMs) return sum;
-        return sum + Math.max(1, Number(data.paxCount || 1));
-    }, 0);
-
+function getManualCapacityMetrics({ manualCapacity }) {
     const capacityLimit = Math.max(1, Number(manualCapacity || DEFAULT_WAITLIST_MANUAL_CAPACITY));
-    const occupancyPercent = Math.round((activeSeatedPax / capacityLimit) * 100);
-    const softAlert = occupancyPercent >= 90;
 
     return {
-        activeSeatedPax,
+        activeSeatedPax: 0,
         capacityLimit,
-        occupancyPercent,
-        softAlert,
-        message: softAlert
-            ? `Manual seating load is high (${activeSeatedPax}/${capacityLimit}).`
-            : null,
+        occupancyPercent: 0,
+        softAlert: false,
+        trackingEnabled: false,
+        message: null,
     };
 }
 
@@ -509,8 +492,7 @@ export async function GET(req) {
             });
         }
 
-        const capacity = await getManualCapacityMetrics({
-            businessRef,
+        const capacity = getManualCapacityMetrics({
             manualCapacity: waitlistManualCapacity,
         });
 
@@ -676,7 +658,6 @@ export async function PATCH(req) {
 
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data() || {};
-        const waitlistSeatingMode = normalizeWaitlistSeatingMode(businessData.waitlistSeatingMode);
         const waitlistManualCapacity = Math.max(1, Number(businessData.waitlistManualCapacity || DEFAULT_WAITLIST_MANUAL_CAPACITY));
         const noShowTimeoutMinutes = normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes);
         const noShowTimeoutMs = toNoShowTimeoutMs(noShowTimeoutMinutes);
@@ -751,18 +732,14 @@ export async function PATCH(req) {
         const promotedEntryId = shouldPromoteNext
             ? await autoPromoteNextPending({ firestore, businessRef })
             : null;
-        const capacity = await getManualCapacityMetrics({
-            businessRef,
+        const capacity = getManualCapacityMetrics({
             manualCapacity: waitlistManualCapacity,
         });
-        const warning = (status === 'seated' && waitlistSeatingMode === 'manual_seat' && capacity.softAlert)
-            ? capacity.message
-            : null;
 
         return NextResponse.json({
             message: `Status updated to ${status}`,
             promotedEntryId,
-            warning,
+            warning: null,
             capacity,
         }, { status: 200 });
 
