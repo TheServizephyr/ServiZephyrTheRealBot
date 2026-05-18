@@ -1600,16 +1600,16 @@ const WaitlistManagement = ({
                         const isArrived = entry.status === 'arrived';
                         const isNoShow = entry.status === 'no_show';
                         const cardStatusClass = isNoShow
-                            ? "border-l-red-400 bg-red-400/10 border-red-400/40"
+                            ? "border-l-red-400 bg-red-400/[0.04] border-red-400/40"
                             : isNotified
-                                ? "border-l-orange-500 bg-orange-500/5"
+                                ? "border-l-orange-500 bg-orange-500/[0.03]"
                                 : isArrived
-                                    ? "border-l-purple-500 bg-purple-500/5"
+                                    ? "border-l-purple-500 bg-purple-500/[0.04]"
                                     : isReadyToNotify
-                                        ? "border-l-sky-500 bg-sky-500/5"
+                                        ? "border-l-sky-500 bg-sky-500/[0.03]"
                                         : isRecommended
                                             ? "border-l-green-500 shadow-lg scale-[1.02]"
-                                            : "border-l-yellow-400 bg-yellow-400/5";
+                                            : "border-l-yellow-400 bg-yellow-400/[0.03]";
                         const statusDotClass = isNoShow
                             ? "bg-red-400"
                             : isNotified
