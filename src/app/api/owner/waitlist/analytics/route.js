@@ -11,6 +11,17 @@ const WAITLIST_ANALYTICS_PERMISSIONS = [
     PERMISSIONS.VIEW_DINE_IN_ORDERS,
     PERMISSIONS.MANAGE_DINE_IN,
 ];
+const VALID_PHONE_RE = /^\d{10}$/;
+const STATUS_LABELS = {
+    pending: 'Pending',
+    ready_to_notify: 'Ready to Notify',
+    notified: 'Notified',
+    arrived: 'Arrived',
+    seated: 'Seated',
+    cancelled: 'Cancelled',
+    no_show: 'No-show',
+    other: 'Other',
+};
 
 function toDate(value) {
     if (!value) return null;
@@ -53,12 +64,51 @@ function getHourInTimeZone(date) {
         hour: '2-digit',
         hour12: false,
     }).format(date);
-    return Number.parseInt(hour, 10);
+    const parsedHour = Number.parseInt(hour, 10);
+    return parsedHour === 24 ? 0 : parsedHour;
 }
 
 function normalizePhone(value) {
     const digits = String(value || '').replace(/\D/g, '');
     return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function getPaxCount(entry = {}) {
+    const parsed = Number(entry.paxCount);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function roundMetric(value, decimals = 1) {
+    if (!Number.isFinite(value)) return 0;
+    const factor = 10 ** decimals;
+    return Math.round(value * factor) / factor;
+}
+
+function getPercent(part, total) {
+    if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return 0;
+    return roundMetric((part / total) * 100, 1);
+}
+
+function getMedian(values = []) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2) return sorted[mid];
+    return roundMetric((sorted[mid - 1] + sorted[mid]) / 2, 1);
+}
+
+function getWaitMinutes(entry = {}) {
+    const createdAtMs = entry.createdAtDate?.getTime?.();
+    const seatedAtMs = entry.seatedAtDate?.getTime?.();
+    if (!Number.isFinite(createdAtMs) || !Number.isFinite(seatedAtMs) || seatedAtMs < createdAtMs) return null;
+    return roundMetric((seatedAtMs - createdAtMs) / 60000, 1);
+}
+
+function getStatusLabel(status) {
+    return STATUS_LABELS[status] || String(status || 'other')
+        .split('_')
+        .map((part) => part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : '')
+        .join(' ');
 }
 
 export async function GET(req) {
@@ -97,6 +147,11 @@ export async function GET(req) {
                 ...data,
                 createdAtDate: toDate(data.createdAt),
                 updatedAtDate: toDate(data.updatedAt),
+                notifiedAtDate: toDate(data.notifiedAt),
+                arrivedAtDate: toDate(data.arrivedAt),
+                seatedAtDate: toDate(data.seatedAt),
+                cancelledAtDate: toDate(data.cancelledAt),
+                noShowAtDate: toDate(data.noShowAt),
             };
         });
 
@@ -104,9 +159,13 @@ export async function GET(req) {
             hour,
             label: `${String(hour).padStart(2, '0')}:00`,
             count: 0,
+            covers: 0,
             seated: 0,
             cancellations: 0,
             noShow: 0,
+            waitMinutesTotal: 0,
+            waitSamples: 0,
+            averageWaitMinutes: 0,
         }));
 
         const statusCounts = {
@@ -120,15 +179,23 @@ export async function GET(req) {
             other: 0,
         };
 
-        const phonesInRange = new Set();
         const uniquePhones = new Set();
+        const waitDurations = [];
+        let totalCovers = 0;
+        let seatedCovers = 0;
+        let lostCovers = 0;
+        let notifiedEntries = 0;
+        let arrivedEntries = 0;
 
         entries.forEach((entry) => {
             const status = String(entry.status || '').toLowerCase();
             const hour = entry.createdAtDate ? getHourInTimeZone(entry.createdAtDate) : null;
+            const paxCount = getPaxCount(entry);
+            totalCovers += paxCount;
 
             if (Number.isInteger(hour) && hourlyMap[hour]) {
                 hourlyMap[hour].count += 1;
+                hourlyMap[hour].covers += paxCount;
                 if (status === 'seated') hourlyMap[hour].seated += 1;
                 if (status === 'cancelled') hourlyMap[hour].cancellations += 1;
                 if (status === 'no_show') hourlyMap[hour].noShow += 1;
@@ -138,62 +205,166 @@ export async function GET(req) {
             else statusCounts.other += 1;
 
             const phone = normalizePhone(entry.phone);
-            if (phone && /^\d{10}$/.test(phone)) {
-                phonesInRange.add(phone);
+            if (phone && VALID_PHONE_RE.test(phone)) {
                 uniquePhones.add(phone);
+            }
+
+            if (entry.notifiedAtDate) notifiedEntries += 1;
+            if (entry.arrivedAtDate) arrivedEntries += 1;
+            if (status === 'seated') seatedCovers += paxCount;
+            if (status === 'cancelled' || status === 'no_show') lostCovers += paxCount;
+
+            const waitMinutes = getWaitMinutes(entry);
+            if (waitMinutes !== null) {
+                waitDurations.push(waitMinutes);
+                if (Number.isInteger(hour) && hourlyMap[hour]) {
+                    hourlyMap[hour].waitMinutesTotal += waitMinutes;
+                    hourlyMap[hour].waitSamples += 1;
+                }
             }
         });
 
-        const repeatPhoneSet = new Set();
-        await Promise.all(Array.from(uniquePhones).map(async (phone) => {
+        const phoneHistoryPairs = await Promise.all(Array.from(uniquePhones).map(async (phone) => {
             // Keep this query index-friendly by filtering only on phone.
             const phoneEntriesSnap = await businessRef.collection('waitlist')
                 .where('phone', '==', phone)
                 .get();
-            const hasEarlierVisit = phoneEntriesSnap.docs.some((doc) => {
-                const createdAtDate = toDate(doc.data()?.createdAt);
-                return createdAtDate && createdAtDate.getTime() < range.start.getTime();
-            });
-            if (hasEarlierVisit) {
-                repeatPhoneSet.add(phone);
-            }
+            const timestamps = phoneEntriesSnap.docs
+                .map((doc) => toDate(doc.data()?.createdAt)?.getTime())
+                .filter((time) => Number.isFinite(time))
+                .sort((a, b) => a - b);
+            return [phone, timestamps];
         }));
+        const phoneHistoryMap = new Map(phoneHistoryPairs);
 
-        const repeatCustomers = repeatPhoneSet.size;
-        const newCustomers = Math.max(0, phonesInRange.size - repeatCustomers);
+        let newCustomerVisits = 0;
+        let repeatCustomerVisits = 0;
+        let unidentifiedVisits = 0;
+
+        entries.forEach((entry) => {
+            const phone = normalizePhone(entry.phone);
+            if (!phone || !VALID_PHONE_RE.test(phone)) {
+                unidentifiedVisits += 1;
+                return;
+            }
+
+            const entryMs = entry.createdAtDate?.getTime?.();
+            const phoneHistory = phoneHistoryMap.get(phone) || [];
+            const hasEarlierVisit = Number.isFinite(entryMs) && phoneHistory.some((time) => time < entryMs);
+            if (hasEarlierVisit) repeatCustomerVisits += 1;
+            else newCustomerVisits += 1;
+        });
+
+        const uniqueRepeatCustomers = Array.from(uniquePhones).filter((phone) => (
+            (phoneHistoryMap.get(phone) || []).some((time) => time < range.start.getTime())
+        )).length;
+        const uniqueNewCustomers = Math.max(0, uniquePhones.size - uniqueRepeatCustomers);
+
         const cancellationCount = statusCounts.cancelled;
         const noShowCount = statusCounts.no_show;
+        const totalEntries = entries.length;
+        const knownCustomerVisits = newCustomerVisits + repeatCustomerVisits;
+        const averageWaitMinutes = waitDurations.length
+            ? roundMetric(waitDurations.reduce((sum, value) => sum + value, 0) / waitDurations.length, 1)
+            : 0;
+        const medianWaitMinutes = getMedian(waitDurations);
+        const averagePartySize = totalEntries ? roundMetric(totalCovers / totalEntries, 1) : 0;
 
         const statusBreakdown = Object.entries(statusCounts)
             .filter(([, count]) => count > 0)
-            .map(([status, count]) => ({ status, count }));
+            .map(([status, count]) => ({ status, label: getStatusLabel(status), count }));
+
+        hourlyMap.forEach((item) => {
+            item.averageWaitMinutes = item.waitSamples
+                ? roundMetric(item.waitMinutesTotal / item.waitSamples, 1)
+                : 0;
+            delete item.waitMinutesTotal;
+            delete item.waitSamples;
+        });
 
         const peakHours = [...hourlyMap]
             .filter((item) => item.count > 0)
-            .sort((a, b) => b.count - a.count)
+            .sort((a, b) => (b.count - a.count) || (b.covers - a.covers))
             .slice(0, 5);
+        const peakHour = peakHours[0] || null;
+        const seatingRate = getPercent(statusCounts.seated, totalEntries);
+        const cancellationRate = getPercent(cancellationCount, totalEntries);
+        const noShowRate = getPercent(noShowCount, totalEntries);
+        const unidentifiedRate = getPercent(unidentifiedVisits, totalEntries);
+        const duplicateKnownVisits = Math.max(0, knownCustomerVisits - uniquePhones.size);
+
+        const insights = [];
+        if (totalEntries === 0) {
+            insights.push('No waitlist activity was recorded in this date range.');
+        } else {
+            if (peakHour) {
+                insights.push(`Peak demand was ${peakHour.label} with ${peakHour.count} entries and ${peakHour.covers} covers (guests).`);
+            }
+            insights.push(`${seatingRate}% of entries were seated in this range.`);
+            if (averageWaitMinutes > 0) {
+                insights.push(`Average seating wait was ${averageWaitMinutes} minutes; median wait was ${medianWaitMinutes} minutes.`);
+            }
+            if (unidentifiedVisits > 0) {
+                insights.push(`${unidentifiedVisits} entries are missing a valid phone number, which limits repeat-customer tracking.`);
+            }
+            if (lostCovers > 0) {
+                insights.push(`${lostCovers} covers (guests) were lost through cancellations or no-shows.`);
+            }
+        }
 
         return NextResponse.json({
             startDate: startDateKey,
             endDate: endDateKey,
             timezone: ANALYTICS_TIMEZONE,
             summary: {
-                totalEntries: entries.length,
-                uniqueCustomers: phonesInRange.size,
-                newCustomers,
-                repeatCustomers,
+                totalEntries,
+                totalCovers,
+                uniqueCustomers: uniquePhones.size,
+                uniqueNewCustomers,
+                uniqueRepeatCustomers,
+                knownCustomerVisits,
+                newCustomers: newCustomerVisits,
+                repeatCustomers: repeatCustomerVisits,
+                newCustomerVisits,
+                repeatCustomerVisits,
+                unidentifiedVisits,
+                unidentifiedRate,
+                duplicateKnownVisits,
                 cancellations: cancellationCount,
                 noShow: noShowCount,
                 seated: statusCounts.seated,
-                active: statusCounts.pending + statusCounts.notified + statusCounts.arrived,
+                active: statusCounts.pending + statusCounts.ready_to_notify + statusCounts.notified + statusCounts.arrived,
+                seatingRate,
+                cancellationRate,
+                noShowRate,
+                averageWaitMinutes,
+                medianWaitMinutes,
+                averagePartySize,
+                seatedCovers,
+                lostCovers,
+                notifiedEntries,
+                arrivedEntries,
+                peakHour: peakHour?.hour ?? null,
+                peakHourLabel: peakHour?.label || null,
+                peakHourEntries: peakHour?.count || 0,
+                peakHourCovers: peakHour?.covers || 0,
             },
             customerMix: [
-                { label: 'New Customers', count: newCustomers },
-                { label: 'Repeat Customers', count: repeatCustomers },
+                { label: 'New Visits', count: newCustomerVisits },
+                { label: 'Repeat Visits', count: repeatCustomerVisits },
+                { label: 'Unidentified', count: unidentifiedVisits },
+            ],
+            funnel: [
+                { key: 'joined', label: 'Joined', count: totalEntries },
+                { key: 'notified', label: 'Notified', count: notifiedEntries },
+                { key: 'arrived', label: 'Arrived', count: arrivedEntries },
+                { key: 'seated', label: 'Seated', count: statusCounts.seated },
+                { key: 'lost', label: 'Cancelled / No-show', count: cancellationCount + noShowCount },
             ],
             statusBreakdown,
             hourly: hourlyMap,
             peakHours,
+            insights,
         }, { status: 200 });
     } catch (error) {
         console.error('GET WAITLIST ANALYTICS ERROR:', error);

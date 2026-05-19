@@ -27,7 +27,7 @@ import { useReactToPrint } from 'react-to-print';
 import { toPng } from 'html-to-image';
 import { Printer } from 'lucide-react';
 import { FaWhatsapp } from 'react-icons/fa';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, Legend } from 'recharts';
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
@@ -717,6 +717,22 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
 
 const CHART_COLORS = ['#FACC15', '#22C55E', '#EF4444', '#3B82F6', '#A855F7', '#14B8A6'];
 
+const formatAnalyticsNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed.toLocaleString('en-IN') : '0';
+};
+
+const formatAnalyticsPercent = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? `${parsed.toFixed(parsed % 1 === 0 ? 0 : 1)}%` : '0%';
+};
+
+const formatAnalyticsMinutes = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return '0 min';
+    return `${parsed.toFixed(parsed % 1 === 0 ? 0 : 1)} min`;
+};
+
 const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId }) => {
     const { toast } = useToast();
     const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
@@ -755,15 +771,67 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
         if (isOpen) void fetchAnalytics();
     }, [isOpen, fetchAnalytics]);
 
+    const summaryCards = useMemo(() => {
+        if (!analytics?.summary) return [];
+        const summary = analytics.summary;
+        return [
+            {
+                label: 'Total Entries',
+                value: formatAnalyticsNumber(summary.totalEntries),
+                detail: `${formatAnalyticsNumber(summary.totalCovers)} covers (guests)`,
+            },
+            {
+                label: 'Seating Rate',
+                value: formatAnalyticsPercent(summary.seatingRate),
+                detail: `${formatAnalyticsNumber(summary.seated)} seated`,
+                className: 'text-primary',
+            },
+            {
+                label: 'Average Wait',
+                value: formatAnalyticsMinutes(summary.averageWaitMinutes),
+                detail: `Median ${formatAnalyticsMinutes(summary.medianWaitMinutes)}`,
+            },
+            {
+                label: 'Average Party',
+                value: formatAnalyticsNumber(summary.averagePartySize),
+                detail: 'covers (guests) per entry',
+            },
+            {
+                label: 'New Visits',
+                value: formatAnalyticsNumber(summary.newCustomerVisits),
+                detail: `${formatAnalyticsNumber(summary.uniqueNewCustomers)} unique`,
+                className: 'text-green-500',
+            },
+            {
+                label: 'Repeat Visits',
+                value: formatAnalyticsNumber(summary.repeatCustomerVisits),
+                detail: `${formatAnalyticsNumber(summary.uniqueRepeatCustomers)} returning`,
+                className: 'text-blue-500',
+            },
+            {
+                label: 'Lost Covers (Guests)',
+                value: formatAnalyticsNumber(summary.lostCovers),
+                detail: `${formatAnalyticsPercent(summary.cancellationRate)} cancelled / ${formatAnalyticsPercent(summary.noShowRate)} no-show`,
+                className: 'text-red-500',
+            },
+            {
+                label: 'Unidentified',
+                value: formatAnalyticsNumber(summary.unidentifiedVisits),
+                detail: `${formatAnalyticsPercent(summary.unidentifiedRate)} without valid phone`,
+                className: Number(summary.unidentifiedVisits || 0) > 0 ? 'text-amber-500' : 'text-muted-foreground',
+            },
+        ];
+    }, [analytics]);
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <BarChart3 size={18} /> Waitlist Analytics
                     </DialogTitle>
                     <DialogDescription>
-                        Customer mix, peak hours, cancellations and no-show trends for selected range.
+                        Customer mix, peak hours, conversion, wait time and data quality for the selected range.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
@@ -794,29 +862,36 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
                         <div className="h-64 rounded-xl bg-muted/20 animate-pulse" />
                     ) : analytics ? (
                         <>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Total</p><p className="text-2xl font-bold">{analytics?.summary?.totalEntries || 0}</p></CardContent></Card>
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">New</p><p className="text-2xl font-bold text-green-500">{analytics?.summary?.newCustomers || 0}</p></CardContent></Card>
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Repeat</p><p className="text-2xl font-bold text-blue-500">{analytics?.summary?.repeatCustomers || 0}</p></CardContent></Card>
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Cancellations</p><p className="text-2xl font-bold text-red-500">{analytics?.summary?.cancellations || 0}</p></CardContent></Card>
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">No-show</p><p className="text-2xl font-bold text-amber-500">{analytics?.summary?.noShow || 0}</p></CardContent></Card>
-                                <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">Seated</p><p className="text-2xl font-bold text-primary">{analytics?.summary?.seated || 0}</p></CardContent></Card>
+                            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+                                {summaryCards.map((card) => (
+                                    <Card key={card.label} className="min-h-[96px]">
+                                        <CardContent className="p-3">
+                                            <p className="text-xs text-muted-foreground">{card.label}</p>
+                                            <p className={cn("mt-1 text-2xl font-bold leading-tight", card.className)}>
+                                                {card.value}
+                                            </p>
+                                            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{card.detail}</p>
+                                        </CardContent>
+                                    </Card>
+                                ))}
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 <Card>
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-base">Peak Hours Heatmap</CardTitle>
-                                        <CardDescription>Entries by hour ({analytics?.timezone || 'IST'})</CardDescription>
+                                        <CardDescription>Entries and covers (guests) by hour ({analytics?.timezone || 'IST'})</CardDescription>
                                     </CardHeader>
-                                    <CardContent className="h-72">
+                                    <CardContent className="h-80">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <BarChart data={analytics?.hourly || []}>
                                                 <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
                                                 <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={2} />
                                                 <YAxis allowDecimals={false} />
                                                 <Tooltip />
-                                                <Bar dataKey="count" fill="#FACC15" radius={[6, 6, 0, 0]} />
+                                                <Legend />
+                                                <Bar dataKey="count" name="Entries" fill="#FACC15" radius={[6, 6, 0, 0]} />
+                                                <Bar dataKey="covers" name="Covers (Guests)" fill="#38BDF8" radius={[6, 6, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </CardContent>
@@ -825,9 +900,9 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
                                 <Card>
                                     <CardHeader className="pb-2">
                                         <CardTitle className="text-base">Customer Mix</CardTitle>
-                                        <CardDescription>New vs repeat customers</CardDescription>
+                                        <CardDescription>New, repeat and unidentified visits</CardDescription>
                                     </CardHeader>
-                                    <CardContent className="h-72">
+                                    <CardContent className="h-80">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
                                                 <Pie data={analytics?.customerMix || []} dataKey="count" nameKey="label" outerRadius={110} label>
@@ -836,29 +911,95 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
                                                     ))}
                                                 </Pie>
                                                 <Tooltip />
+                                                <Legend />
                                             </PieChart>
                                         </ResponsiveContainer>
                                     </CardContent>
                                 </Card>
                             </div>
 
-                            <Card>
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="text-base">Status Breakdown</CardTitle>
-                                    <CardDescription>Pending, notified, seated, cancelled, no-show</CardDescription>
-                                </CardHeader>
-                                <CardContent className="h-72">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={analytics?.statusBreakdown || []}>
-                                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
-                                            <XAxis dataKey="status" />
-                                            <YAxis allowDecimals={false} />
-                                            <Tooltip />
-                                            <Bar dataKey="count" fill="#22C55E" radius={[6, 6, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </CardContent>
-                            </Card>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Service Milestones</CardTitle>
+                                        <CardDescription>Event counts, including direct seating</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={analytics?.funnel || []}>
+                                                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                                                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} />
+                                                <YAxis allowDecimals={false} />
+                                                <Tooltip />
+                                                <Bar dataKey="count" name="Entries" fill="#3B82F6" radius={[6, 6, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Status Breakdown</CardTitle>
+                                        <CardDescription>Current final status distribution</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={analytics?.statusBreakdown || []}>
+                                                <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.2} />
+                                                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} />
+                                                <YAxis allowDecimals={false} />
+                                                <Tooltip />
+                                                <Bar dataKey="count" name="Entries" fill="#22C55E" radius={[6, 6, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </CardContent>
+                                </Card>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Operational Insights</CardTitle>
+                                        <CardDescription>Automatically generated observations for this range</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-2">
+                                        {(analytics?.insights || []).map((insight, index) => (
+                                            <div key={`${insight}-${index}`} className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                                                {insight}
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-base">Top Rush Hours</CardTitle>
+                                        <CardDescription>Highest demand windows by entries and covers (guests)</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-2">
+                                        {(analytics?.peakHours || []).length > 0 ? (
+                                            (analytics?.peakHours || []).map((hour) => (
+                                                <div key={hour.label} className="grid grid-cols-[64px_1fr] items-center gap-x-3 gap-y-1 rounded-md border border-border/70 px-3 py-2 text-sm sm:grid-cols-[72px_1fr_auto]">
+                                                    <span className="font-semibold">{hour.label}</span>
+                                                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                                                        <div
+                                                            className="h-full rounded-full bg-primary"
+                                                            style={{
+                                                                width: `${Math.min(100, Math.max(8, ((hour.count || 0) / Math.max(1, analytics?.summary?.peakHourEntries || 1)) * 100))}%`
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <span className="col-span-2 text-xs text-muted-foreground sm:col-span-1 sm:text-right">
+                                                        {formatAnalyticsNumber(hour.count)} entries / {formatAnalyticsNumber(hour.covers)} covers (guests)
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No rush-hour data is available for this range.</p>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </>
                     ) : (
                         <p className="text-sm text-muted-foreground">No analytics data available.</p>
