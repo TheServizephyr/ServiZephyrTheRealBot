@@ -24,6 +24,7 @@ const ANALYTICS_TAG_KEYS = new Set([
 const getWishlistStorageKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_wishlist_${restaurantId}_${entryId}`;
 const getCredentialStorageKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
 const getCategorySectionId = (categoryKey) => `waitlist-menu-category-${encodeURIComponent(String(categoryKey || 'all'))}`;
+const WISHLIST_LOCAL_TTL_MS = 12 * 60 * 60 * 1000;
 
 const SORT_OPTIONS = [
     { value: 'default', label: 'Sort' },
@@ -108,6 +109,26 @@ function applyWishlistSummaryToMenuData(menuData = {}, wishlist = {}) {
     });
 
     return { ...menuData, menu };
+}
+
+function parseSavedItemsPayload(raw) {
+    const now = Date.now();
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) {
+        return {
+            itemIds: parsed.map(String).filter(Boolean),
+            expiresAt: now + WISHLIST_LOCAL_TTL_MS,
+        };
+    }
+
+    if (!parsed || typeof parsed !== 'object') return { itemIds: [], expiresAt: 0 };
+    const expiresAt = Number(parsed.expiresAt || 0);
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) return { itemIds: [], expiresAt: 0 };
+    const rawItems = Array.isArray(parsed.itemIds) ? parsed.itemIds : [];
+    return {
+        itemIds: rawItems.map(String).filter(Boolean),
+        expiresAt,
+    };
 }
 
 function WaitlistMenuItem({ item, isSaved, onOpenDetails, onToggleSaved }) {
@@ -380,7 +401,9 @@ export default function WaitlistMenuExplorePage({ params }) {
     const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [savedItemIds, setSavedItemIds] = useState(() => new Set());
+    const [savedExpiresAt, setSavedExpiresAt] = useState(0);
     const [savedItemsHydrated, setSavedItemsHydrated] = useState(false);
+    const [hydratedStorageKey, setHydratedStorageKey] = useState('');
     const [selectedItem, setSelectedItem] = useState(null);
     const [credentials, setCredentials] = useState({ entryId: queryEntryId, arrivalCode: queryArrivalCode, ready: false });
 
@@ -422,26 +445,44 @@ export default function WaitlistMenuExplorePage({ params }) {
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        setSavedItemsHydrated(false);
         try {
             const raw = window.localStorage.getItem(storageKey);
-            const parsed = raw ? JSON.parse(raw) : [];
-            setSavedItemIds(new Set(Array.isArray(parsed) ? parsed.map(String) : []));
+            const parsed = parseSavedItemsPayload(raw);
+            if (parsed.itemIds.length === 0) {
+                window.localStorage.removeItem(storageKey);
+            }
+            setSavedItemIds(new Set(parsed.itemIds));
+            setSavedExpiresAt(parsed.expiresAt);
         } catch {
             setSavedItemIds(new Set());
+            setSavedExpiresAt(0);
         } finally {
+            setHydratedStorageKey(storageKey);
             setSavedItemsHydrated(true);
         }
     }, [storageKey]);
 
     useEffect(() => {
-        if (!savedItemsHydrated) return;
+        if (!savedItemsHydrated || hydratedStorageKey !== storageKey) return;
         if (typeof window === 'undefined') return;
         try {
-            window.localStorage.setItem(storageKey, JSON.stringify(Array.from(savedItemIds)));
+            if (savedItemIds.size === 0) {
+                window.localStorage.removeItem(storageKey);
+                return;
+            }
+            const expiresAt = savedExpiresAt > Date.now()
+                ? savedExpiresAt
+                : Date.now() + WISHLIST_LOCAL_TTL_MS;
+            window.localStorage.setItem(storageKey, JSON.stringify({
+                version: 1,
+                expiresAt,
+                itemIds: Array.from(savedItemIds),
+            }));
         } catch {
             // Ignore storage quota or private-mode failures.
         }
-    }, [savedItemIds, savedItemsHydrated, storageKey]);
+    }, [hydratedStorageKey, savedExpiresAt, savedItemIds, savedItemsHydrated, storageKey]);
 
     useEffect(() => {
         let cancelled = false;
@@ -582,6 +623,7 @@ export default function WaitlistMenuExplorePage({ params }) {
         const safeItemId = String(itemId || '').trim();
         if (!safeItemId) return;
         const shouldSave = !savedItemIds.has(safeItemId);
+        setSavedExpiresAt(Date.now() + WISHLIST_LOCAL_TTL_MS);
         setSavedItemIds((current) => {
             const next = new Set(current);
             if (next.has(safeItemId)) next.delete(safeItemId);
