@@ -8,7 +8,7 @@
  * - manager: Almost everything except payment settings
  * - chef: Kitchen operations only
  * - waiter: Dine-in and table management
- * - bookings_manager: Dine-in, menu, and bookings/waitlist management
+ * - bookings_manager: Dine-in, menu updates, and bookings/waitlist management
  * - cashier: Billing and payment processing
  * - order_taker: Create orders only
  */
@@ -148,7 +148,7 @@ export function normalizeBusinessType(type) {
 
 export const ROLE_DISPLAY_NAMES = {
     [ROLES.MANAGER]: 'Manager (All except Payouts)',
-    [ROLES.BOOKINGS_MANAGER]: 'Bookings Manager (Menu, Dine-in & Bookings)',
+    [ROLES.BOOKINGS_MANAGER]: 'Bookings Manager (Menu Updates, Dine-in & Bookings)',
     [ROLES.CHEF]: 'Chef (Kitchen & Orders only)',
     [ROLES.WAITER]: 'Waiter (Orders, Dine-in, Bookings)',
     [ROLES.CASHIER]: 'Cashier (Orders & Billing)',
@@ -276,7 +276,7 @@ export function getLockableSidebarFeaturesForBusinessType(businessType = 'restau
 const ROLE_HELPER_TEXT = {
     restaurant: {
         [ROLES.MANAGER]: 'Best for supervisors who need broad dashboard access across orders, menu, staff, and operations.',
-        [ROLES.BOOKINGS_MANAGER]: 'Best for staff who manage table bookings, waitlist, menu checks, and dine-in seating.',
+        [ROLES.BOOKINGS_MANAGER]: 'Best for staff who manage table bookings, waitlist, menu updates, and dine-in seating.',
         [ROLES.CHEF]: 'Best for kitchen staff focused on preparing and marking orders ready.',
         [ROLES.WAITER]: 'Best for dine-in staff handling tables, tabs, and guest service.',
         [ROLES.CASHIER]: 'Best for billing counter staff handling payments and walk-in orders.',
@@ -454,7 +454,7 @@ export const ROLE_PERMISSIONS = {
         P.MANAGE_BOOKINGS,
     ],
 
-    // BOOKINGS MANAGER - Menu visibility plus dine-in and bookings/waitlist management
+    // BOOKINGS MANAGER - Menu updates plus dine-in and bookings/waitlist management
     [ROLES.BOOKINGS_MANAGER]: [
         P.VIEW_ORDERS,
         P.VIEW_DINE_IN_ORDERS,
@@ -467,6 +467,9 @@ export const ROLE_PERMISSIONS = {
         P.CLOSE_TAB,
         P.GENERATE_BILL,
         P.VIEW_MENU,
+        P.EDIT_MENU,
+        P.ADD_MENU_ITEM,
+        P.TOGGLE_ITEM_STOCK,
         P.VIEW_BOOKINGS,
         P.MANAGE_BOOKINGS,
     ],

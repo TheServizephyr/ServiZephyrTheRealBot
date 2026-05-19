@@ -18,8 +18,9 @@ import { markMenuSnapshotStale } from '@/lib/server/menuSnapshot';
 // (Logic moved inside methods below)
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const OWNER_LIKE_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'street-vendor']);
-const MENU_MANAGER_ROLES = new Set([...OWNER_LIKE_ROLES, 'manager']);
+const MENU_MANAGER_ROLES = new Set([...OWNER_LIKE_ROLES, 'manager', 'bookings_manager']);
 const MENU_AVAILABILITY_ROLES = new Set([...MENU_MANAGER_ROLES, 'chef']);
+const PRICE_LIMITED_MENU_MANAGER_ROLES = new Set(['manager', 'bookings_manager']);
 
 function isGeneratedPlaceholderMenuImageUrl(value = '') {
     const imageUrl = String(value || '').trim();
@@ -361,7 +362,7 @@ export async function POST(req) {
                     }
 
                     // 🔐 Manager Specific: Block >50% increase (1.5x)
-                    if (userRole === 'manager') {
+                    if (PRICE_LIMITED_MENU_MANAGER_ROLES.has(userRole)) {
                         for (let i = 0; i < finalItem.portions.length; i++) {
                             const newP = finalItem.portions[i];
                             const oldP = (oldItem.portions || []).find(p => p.name === newP.name);
@@ -369,7 +370,7 @@ export async function POST(req) {
                                 const ratio = newP.price / oldP.price;
                                 if (ratio > 1.5) {
                                     return NextResponse.json({
-                                        message: `Price increase too large for manager (${Math.round((ratio - 1) * 100)}%). Increases over 50% require owner approval.`
+                                        message: `Price increase too large for this role (${Math.round((ratio - 1) * 100)}%). Increases over 50% require owner approval.`
                                     }, { status: 403 });
                                 }
                             }

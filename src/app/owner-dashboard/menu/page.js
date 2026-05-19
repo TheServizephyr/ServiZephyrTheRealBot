@@ -1258,14 +1258,18 @@ export default function MenuPage() {
 
     // 🔐 RBAC: Get user role for access control
     const { user: authUser, isLoading: isUserLoading } = useUser();
-    const userRole = authUser?.role || 'owner'; // Default to owner if not set
+    const storedEmployeeRole = employeeOfOwnerId && typeof window !== 'undefined'
+        ? localStorage.getItem('employeeRole')
+        : null;
+    const userRole = storedEmployeeRole || authUser?.role || 'owner'; // Default to owner if not set
 
     // 🔐 RBAC: Menu access permissions
-    const canEdit = userRole === 'owner' || userRole === 'manager';
+    const canManageMenu = userRole === 'owner' || userRole === 'manager' || userRole === 'bookings_manager';
+    const canEdit = canManageMenu;
     const canDelete = userRole === 'owner';
-    const canAdd = userRole === 'owner' || userRole === 'manager';
-    const canBulkEdit = userRole === 'owner' || userRole === 'manager';
-    const canToggleAvailability = userRole === 'owner' || userRole === 'manager' || userRole === 'chef';
+    const canAdd = canManageMenu;
+    const canBulkEdit = canManageMenu;
+    const canToggleAvailability = canManageMenu || userRole === 'chef';
     const isReadOnly = !canEdit && !canDelete;
 
     const cacheKey = useMemo(() => {
