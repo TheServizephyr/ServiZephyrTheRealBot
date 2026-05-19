@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, ArrowLeft, ArrowUpDown, BookOpen, BookmarkCheck, Drumstick, Heart, Leaf, Loader2, Search, SlidersHorizontal, Trophy, Utensils, X } from 'lucide-react';
 
@@ -27,7 +27,7 @@ const getCategorySectionId = (categoryKey) => `waitlist-menu-category-${encodeUR
 const WISHLIST_LOCAL_TTL_MS = 12 * 60 * 60 * 1000;
 
 const SORT_OPTIONS = [
-    { value: 'default', label: 'Sort' },
+    { value: 'default', label: 'Sort', menuLabel: 'Default order' },
     { value: 'price_asc', label: 'Low price' },
     { value: 'price_desc', label: 'High price' },
     { value: 'wishlisted', label: 'Wishlisted' },
@@ -401,21 +401,24 @@ function WaitlistMenuItemDetail({ item, isSaved, savePulseKey = 0, onClose, onTo
 
 export default function WaitlistMenuExplorePage({ params }) {
     const { restaurantId } = params;
+    const router = useRouter();
     const searchParams = useSearchParams();
     const queryEntryId = String(searchParams.get('entryId') || '').trim();
     const queryArrivalCode = String(searchParams.get('arrivalCode') || '').trim();
+    const queryView = String(searchParams.get('view') || '').trim().toLowerCase();
 
     const [payload, setPayload] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
+    const [viewMode, setViewMode] = useState(() => queryView === 'saved' ? 'saved' : 'menu');
     const [activeCategory, setActiveCategory] = useState('all');
     const [dietFilter, setDietFilter] = useState('all');
-    const [showSavedOnly, setShowSavedOnly] = useState(false);
     const [showMostWishlistedOnly, setShowMostWishlistedOnly] = useState(false);
     const [sortMode, setSortMode] = useState('default');
     const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+    const [isSortMenuOpen, setIsSortMenuOpen] = useState(false);
     const [savedItemIds, setSavedItemIds] = useState(() => new Set());
     const [saveFeedback, setSaveFeedback] = useState({ itemId: '', tick: 0 });
     const [savedExpiresAt, setSavedExpiresAt] = useState(0);
@@ -426,8 +429,25 @@ export default function WaitlistMenuExplorePage({ params }) {
 
     const entryId = credentials.entryId;
     const arrivalCode = credentials.arrivalCode;
+    const filterMenuRef = useRef(null);
+    const sortMenuRef = useRef(null);
+    const showSavedOnly = viewMode === 'saved';
 
     const storageKey = useMemo(() => getWishlistStorageKey(restaurantId, entryId || 'guest'), [restaurantId, entryId]);
+
+    useEffect(() => {
+        setViewMode(queryView === 'saved' ? 'saved' : 'menu');
+    }, [queryView]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const syncViewFromUrl = () => {
+            const currentView = new URL(window.location.href).searchParams.get('view');
+            setViewMode(currentView === 'saved' ? 'saved' : 'menu');
+        };
+        window.addEventListener('popstate', syncViewFromUrl);
+        return () => window.removeEventListener('popstate', syncViewFromUrl);
+    }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -452,13 +472,14 @@ export default function WaitlistMenuExplorePage({ params }) {
             }
 
             if (safeArrivalCode) {
-                const safeUrl = `/public/waitlist/${encodeURIComponent(restaurantId)}/menu?entryId=${encodeURIComponent(safeEntryId)}`;
+                const safeViewParam = queryView === 'saved' ? '&view=saved' : '';
+                const safeUrl = `/public/waitlist/${encodeURIComponent(restaurantId)}/menu?entryId=${encodeURIComponent(safeEntryId)}${safeViewParam}`;
                 window.history.replaceState(null, '', safeUrl);
             }
         }
 
         setCredentials({ entryId: safeEntryId, arrivalCode: nextArrivalCode, ready: true });
-    }, [queryArrivalCode, queryEntryId, restaurantId]);
+    }, [queryArrivalCode, queryEntryId, queryView, restaurantId]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -620,6 +641,34 @@ export default function WaitlistMenuExplorePage({ params }) {
     }, [hasFeaturedWishlistedItems, showMostWishlistedOnly, sortMode]);
 
     useEffect(() => {
+        if (!isFilterMenuOpen && !isSortMenuOpen) return undefined;
+        if (typeof document === 'undefined') return undefined;
+
+        const closeFloatingMenus = () => {
+            setIsFilterMenuOpen(false);
+            setIsSortMenuOpen(false);
+        };
+
+        const handlePointerDown = (event) => {
+            const target = event.target;
+            if (filterMenuRef.current?.contains(target) || sortMenuRef.current?.contains(target)) return;
+            closeFloatingMenus();
+        };
+
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') closeFloatingMenus();
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            document.removeEventListener('pointerdown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isFilterMenuOpen, isSortMenuOpen]);
+
+    useEffect(() => {
         if (!selectedItem || typeof document === 'undefined') return undefined;
         const originalOverflow = document.body.style.overflow;
         const originalPaddingRight = document.body.style.paddingRight;
@@ -680,13 +729,19 @@ export default function WaitlistMenuExplorePage({ params }) {
             });
     }, [arrivalCode, entryId, restaurantId, savedItemIds]);
 
-    const cycleSortMode = useCallback(() => {
-        setSortMode((current) => {
-            const currentIndex = visibleSortOptions.findIndex((option) => option.value === current);
-            const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % visibleSortOptions.length : 0;
-            return visibleSortOptions[nextIndex]?.value || 'default';
-        });
-    }, [visibleSortOptions]);
+    const buildMenuViewUrl = useCallback((view = 'menu') => {
+        const query = new URLSearchParams();
+        if (entryId) query.set('entryId', entryId);
+        if (view === 'saved') query.set('view', 'saved');
+        const queryString = query.toString();
+        return `/public/waitlist/${encodeURIComponent(restaurantId)}/menu${queryString ? `?${queryString}` : ''}`;
+    }, [entryId, restaurantId]);
+
+    const handleSavedViewClick = useCallback(() => {
+        const nextView = showSavedOnly ? 'menu' : 'saved';
+        setViewMode(nextView);
+        router.push(buildMenuViewUrl(nextView), { scroll: false });
+    }, [buildMenuViewUrl, router, showSavedOnly]);
 
     const selectCategory = useCallback((categoryKey) => {
         setActiveCategory(categoryKey);
@@ -765,9 +820,9 @@ export default function WaitlistMenuExplorePage({ params }) {
                                 showSavedOnly && 'bg-green-600 text-white hover:bg-green-700'
                             )}
                             aria-pressed={showSavedOnly}
-                            aria-label={showSavedOnly ? 'Show all menu items' : 'Show saved menu items'}
-                            title={showSavedOnly ? 'Show all items' : 'Show saved items'}
-                            onClick={() => setShowSavedOnly((value) => !value)}
+                            aria-label={showSavedOnly ? 'Back to full menu' : 'Open saved menu items'}
+                            title={showSavedOnly ? 'Back to full menu' : 'Open saved items'}
+                            onClick={handleSavedViewClick}
                         >
                             {savedCount} saved
                         </Button>
@@ -801,7 +856,7 @@ export default function WaitlistMenuExplorePage({ params }) {
                                 className="h-11 rounded-xl pl-9"
                             />
                         </div>
-                        <div className="relative">
+                        <div className="relative" ref={filterMenuRef}>
                             <Button
                                 type="button"
                                 size="icon"
@@ -809,7 +864,10 @@ export default function WaitlistMenuExplorePage({ params }) {
                                 className="relative h-11 w-11 shrink-0 rounded-xl"
                                 aria-label={`Filter menu${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
                                 title={activeFilterCount > 0 ? `${activeFilterCount} filters active` : 'Filter'}
-                                onClick={() => setIsFilterMenuOpen((value) => !value)}
+                                onClick={() => {
+                                    setIsSortMenuOpen(false);
+                                    setIsFilterMenuOpen((value) => !value);
+                                }}
                             >
                                 <SlidersHorizontal className="h-4 w-4" />
                                 {activeFilterCount > 0 && (
@@ -884,18 +942,54 @@ export default function WaitlistMenuExplorePage({ params }) {
                                 )}
                             </AnimatePresence>
                         </div>
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant={sortMode === 'default' ? 'outline' : 'default'}
-                            className="h-11 w-11 shrink-0 rounded-xl"
-                            aria-label={`Sort menu: ${sortLabel}`}
-                            title={`Sort: ${sortLabel}`}
-                            onClick={cycleSortMode}
-                        >
-                            <ArrowUpDown className="h-4 w-4" />
-                            <span className="sr-only">{sortLabel}</span>
-                        </Button>
+                        <div className="relative" ref={sortMenuRef}>
+                            <Button
+                                type="button"
+                                size="icon"
+                                variant={sortMode === 'default' ? 'outline' : 'default'}
+                                className="h-11 w-11 shrink-0 rounded-xl"
+                                aria-label={`Sort menu: ${sortLabel}`}
+                                title={`Sort: ${sortLabel}`}
+                                onClick={() => {
+                                    setIsFilterMenuOpen(false);
+                                    setIsSortMenuOpen((value) => !value);
+                                }}
+                            >
+                                <ArrowUpDown className="h-4 w-4" />
+                                <span className="sr-only">{sortLabel}</span>
+                            </Button>
+                            <AnimatePresence>
+                                {isSortMenuOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                                        className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-border bg-background p-2 shadow-xl"
+                                    >
+                                        {visibleSortOptions.map((option) => {
+                                            const isSelected = sortMode === option.value;
+                                            return (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    className={cn(
+                                                        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-bold',
+                                                        isSelected ? 'bg-muted' : 'hover:bg-muted'
+                                                    )}
+                                                    onClick={() => {
+                                                        setSortMode(option.value);
+                                                        setIsSortMenuOpen(false);
+                                                    }}
+                                                >
+                                                    {option.value === 'wishlisted' ? <Trophy className="h-4 w-4" /> : <ArrowUpDown className="h-4 w-4" />}
+                                                    {option.menuLabel || option.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     </div>
                 </section>
 
@@ -930,8 +1024,10 @@ export default function WaitlistMenuExplorePage({ params }) {
                     <Card className="mt-6 border-dashed">
                         <CardContent className="p-8 text-center">
                             <Utensils className="mx-auto h-10 w-10 text-muted-foreground/50" />
-                            <h2 className="mt-4 text-lg font-bold">No items match</h2>
-                            <p className="mt-1 text-sm text-muted-foreground">Try clearing search, category, or saved filters.</p>
+                            <h2 className="mt-4 text-lg font-bold">{showSavedOnly ? 'No saved items yet' : 'No items match'}</h2>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {showSavedOnly ? 'Tap the heart on menu items to keep them here.' : 'Try clearing search, category, or filters.'}
+                            </p>
                         </CardContent>
                     </Card>
                 )}
