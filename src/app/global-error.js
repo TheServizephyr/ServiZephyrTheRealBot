@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
-import { reportClientIncident } from '@/lib/opsClientReporter';
+import { recoverFromChunkLoadError, reportClientIncident } from '@/lib/opsClientReporter';
 
 export default function GlobalError({ error, reset }) {
   useEffect(() => {
+    const isChunkLoadError = recoverFromChunkLoadError(error);
+
     reportClientIncident({
       source: 'next_global_error_boundary',
       area: 'react_root',
@@ -14,6 +16,7 @@ export default function GlobalError({ error, reset }) {
       error,
       context: {
         digest: error?.digest || null,
+        chunkRecovery: isChunkLoadError ? 'reload_scheduled' : null,
       },
     });
   }, [error]);

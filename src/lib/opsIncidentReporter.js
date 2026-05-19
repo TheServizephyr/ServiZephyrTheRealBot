@@ -69,6 +69,13 @@ function truncateString(value, maxLength = MAX_STRING_LENGTH) {
     return `${text.slice(0, maxLength)}... [truncated]`;
 }
 
+function redactSensitiveUrlParams(text) {
+    return String(text || '').replace(
+        /([?&][^=]*(token|ref|auth|code|secret|session|api[_-]?key|password)[^=]*=)[^&#\s"]*/gi,
+        '$1[redacted]'
+    );
+}
+
 export function sanitizeOpsContext(value, depth = 0) {
     if (value === null || value === undefined) return value;
     if (depth > MAX_CONTEXT_DEPTH) return '[max_depth]';
@@ -81,7 +88,7 @@ export function sanitizeOpsContext(value, depth = 0) {
         };
     }
 
-    if (typeof value === 'string') return truncateString(value);
+    if (typeof value === 'string') return truncateString(redactSensitiveUrlParams(value));
     if (typeof value === 'number' || typeof value === 'boolean') return value;
     if (value instanceof Date) return value.toISOString();
 

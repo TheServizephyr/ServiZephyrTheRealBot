@@ -70,7 +70,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                         fps: 10,
                         qrbox: (viewfinderWidth, viewfinderHeight) => {
                             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                            const qrboxSize = Math.floor(minEdge * 0.9);
+                            const qrboxSize = Math.max(50, Math.floor(minEdge * 0.9));
                             return {
                                 width: qrboxSize,
                                 height: qrboxSize,

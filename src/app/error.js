@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { reportClientIncident } from '@/lib/opsClientReporter';
+import { recoverFromChunkLoadError, reportClientIncident } from '@/lib/opsClientReporter';
 
 export default function AppError({ error, reset }) {
+  const [isRecoveringChunk, setIsRecoveringChunk] = useState(false);
+
   useEffect(() => {
+    const isChunkLoadError = recoverFromChunkLoadError(error);
+    setIsRecoveringChunk(isChunkLoadError);
+
     reportClientIncident({
       source: 'next_app_error_boundary',
       area: 'react',
@@ -17,6 +22,7 @@ export default function AppError({ error, reset }) {
       error,
       context: {
         digest: error?.digest || null,
+        chunkRecovery: isChunkLoadError ? 'reload_scheduled' : null,
       },
     });
   }, [error]);
@@ -28,7 +34,9 @@ export default function AppError({ error, reset }) {
           <AlertTriangle className="h-8 w-8 mx-auto text-destructive" />
           <div>
             <h1 className="text-xl font-semibold">Something went wrong</h1>
-            <p className="text-sm text-muted-foreground mt-1">The team has been notified automatically.</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {isRecoveringChunk ? 'Refreshing the latest version...' : 'The team has been notified automatically.'}
+            </p>
           </div>
           <Button onClick={reset} className="w-full">
             <RefreshCw className="h-4 w-4 mr-2" />
