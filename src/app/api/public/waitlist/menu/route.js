@@ -14,7 +14,7 @@ const ACTIVE_EXPLORATION_STATUSES = new Set(['pending', 'ready_to_notify', 'noti
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const WISHLIST_QUALIFYING_THRESHOLD = 20;
 const MAX_FEATURED_WISHLISTED_ITEMS = 7;
-const WISHLIST_MARKER_TTL_MS = 12 * 60 * 60 * 1000;
+const WISHLIST_LOCAL_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getClientIp(req) {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
@@ -37,19 +37,8 @@ function safeTextEquals(left, right) {
     return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function toTimestampMs(value) {
-    if (!value) return 0;
-    if (typeof value.toMillis === 'function') return value.toMillis();
-    if (typeof value.toDate === 'function') return value.toDate().getTime();
-    if (value instanceof Date) return value.getTime();
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    const dateMs = Date.parse(String(value));
-    return Number.isFinite(dateMs) ? dateMs : 0;
-}
-
-function getWishlistMarkerExpiry(nowMs = Date.now()) {
-    return new Date(nowMs + WISHLIST_MARKER_TTL_MS);
+function getWishlistLocalExpiry(nowMs = Date.now()) {
+    return new Date(nowMs + WISHLIST_LOCAL_TTL_MS);
 }
 
 const noStoreJson = (body, init = {}) => NextResponse.json(body, {
@@ -239,7 +228,7 @@ async function loadWishlistSummary(businessRef) {
             threshold: WISHLIST_QUALIFYING_THRESHOLD,
             maxFeaturedItems: MAX_FEATURED_WISHLISTED_ITEMS,
             countMode: 'all_time',
-            markerTtlHours: WISHLIST_MARKER_TTL_MS / (60 * 60 * 1000),
+            savedListTtlHours: WISHLIST_LOCAL_TTL_MS / (60 * 60 * 1000),
             featuredItemIds,
             counts,
         };
@@ -249,7 +238,7 @@ async function loadWishlistSummary(businessRef) {
             threshold: WISHLIST_QUALIFYING_THRESHOLD,
             maxFeaturedItems: MAX_FEATURED_WISHLISTED_ITEMS,
             countMode: 'all_time',
-            markerTtlHours: WISHLIST_MARKER_TTL_MS / (60 * 60 * 1000),
+            savedListTtlHours: WISHLIST_LOCAL_TTL_MS / (60 * 60 * 1000),
             featuredItemIds: [],
             counts: {},
         };
@@ -478,49 +467,39 @@ export async function POST(req) {
             const currentCount = Math.max(0, Number(statsSnap.data()?.count || 0));
             const markerData = wishlistSnap.exists ? (wishlistSnap.data() || {}) : {};
             const nowMs = Date.now();
-            const expiresAt = getWishlistMarkerExpiry(nowMs);
-            const existingExpiryMs = toTimestampMs(markerData.expiresAt);
-            const markerExpiry = existingExpiryMs > 0 ? markerData.expiresAt : expiresAt;
-            const alreadyCounted = wishlistSnap.exists && (markerData.counted === true || markerData.saved === true);
+            const savedListExpiresAt = getWishlistLocalExpiry(nowMs);
+            const alreadyCounted = wishlistSnap.exists && markerData.counted === true;
 
             if (shouldSave) {
-                if (alreadyCounted) {
-                    transaction.set(wishlistRef, {
-                        itemId,
-                        saved: true,
-                        counted: true,
-                        expiresAt,
-                        updatedAt: FieldValue.serverTimestamp(),
-                    }, { merge: true });
-                    return { saved: true, wishlistCount: currentCount };
-                }
-                const nextCount = currentCount + 1;
-                transaction.set(wishlistRef, {
+                const markerPayload = {
                     itemId,
                     saved: true,
-                    counted: true,
-                    createdAt: FieldValue.serverTimestamp(),
-                    firstSavedAt: FieldValue.serverTimestamp(),
-                    expiresAt,
+                    counted: alreadyCounted,
+                    savedListExpiresAt,
+                    expiresAt: FieldValue.delete(),
                     updatedAt: FieldValue.serverTimestamp(),
-                }, { merge: true });
-                transaction.set(statsRef, {
-                    itemId,
-                    count: nextCount,
-                    countMode: 'all_time',
-                    updatedAt: FieldValue.serverTimestamp(),
-                }, { merge: true });
-                return { saved: true, wishlistCount: nextCount };
+                };
+                if (!wishlistSnap.exists) {
+                    markerPayload.createdAt = FieldValue.serverTimestamp();
+                    markerPayload.firstSavedAt = FieldValue.serverTimestamp();
+                }
+                transaction.set(wishlistRef, markerPayload, { merge: true });
+                return { saved: true, wishlistCount: currentCount };
             }
 
             if (!wishlistSnap.exists) {
                 return { saved: false, wishlistCount: currentCount };
             }
+            if (!alreadyCounted) {
+                transaction.delete(wishlistRef);
+                return { saved: false, wishlistCount: currentCount };
+            }
             transaction.set(wishlistRef, {
                 itemId,
                 saved: false,
-                counted: markerData.counted === false ? false : alreadyCounted,
-                expiresAt: markerExpiry,
+                counted: true,
+                savedListExpiresAt,
+                expiresAt: FieldValue.delete(),
                 updatedAt: FieldValue.serverTimestamp(),
             }, { merge: true });
             return { saved: false, wishlistCount: currentCount };

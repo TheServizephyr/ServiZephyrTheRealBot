@@ -16,6 +16,8 @@ const LATE_BOOKING_GRACE_MS = 15 * 60 * 1000;
 const DEFAULT_WAITLIST_MANUAL_CAPACITY = 40;
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
+const WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT = 350;
+const WAITLIST_MENU_WISHLIST_LAPSED_CLEANUP_LIMIT = 20;
 const WAITLIST_VIEW_PERMISSIONS = [
     PERMISSIONS.VIEW_BOOKINGS,
     PERMISSIONS.MANAGE_BOOKINGS,
@@ -355,6 +357,113 @@ async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
     return expiredEntries.length;
 }
 
+function getSavedWishlistDocsForAggregation(wishlistDocs = []) {
+    return wishlistDocs.filter((doc) => {
+        const data = doc.data() || {};
+        return data.saved === true && data.counted !== true;
+    });
+}
+
+function applyWaitlistMenuWishlistFinalization({
+    transaction,
+    businessRef,
+    entryRef,
+    entryData = {},
+    wishlistSnap,
+    status,
+    updatePayload,
+}) {
+    const alreadyCleared = Boolean(entryData.menuWishlistClearedAt);
+    const shouldCloseWishlist = status === 'seated' || status === 'cancelled';
+    if (!shouldCloseWishlist || alreadyCleared) return { aggregatedCount: 0, clearedCount: 0 };
+
+    const wishlistDocs = wishlistSnap?.docs || [];
+    const savedDocsToAggregate = status === 'seated' && !entryData.menuWishlistAggregatedAt
+        ? getSavedWishlistDocsForAggregation(wishlistDocs)
+        : [];
+
+    savedDocsToAggregate.forEach((doc) => {
+        const itemId = String((doc.data() || {}).itemId || doc.id || '').trim();
+        if (!itemId) return;
+        transaction.set(businessRef.collection('waitlist_menu_wishlist_stats').doc(itemId), {
+            itemId,
+            count: FieldValue.increment(1),
+            countMode: 'seated_all_time',
+            updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+    });
+
+    wishlistDocs.forEach((doc) => {
+        transaction.delete(doc.ref);
+    });
+
+    updatePayload.menuWishlistClearedAt = FieldValue.serverTimestamp();
+    updatePayload.menuWishlistClearedReason = status;
+    updatePayload.menuWishlistClearedCount = wishlistDocs.length;
+    updatePayload.menuWishlistCleanupTruncated = wishlistDocs.length >= WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT;
+
+    if (status === 'seated' && !entryData.menuWishlistAggregatedAt) {
+        updatePayload.menuWishlistAggregatedAt = FieldValue.serverTimestamp();
+        updatePayload.menuWishlistAggregatedCount = savedDocsToAggregate.length;
+    }
+
+    return {
+        aggregatedCount: savedDocsToAggregate.length,
+        clearedCount: wishlistDocs.length,
+    };
+}
+
+async function clearWaitlistMenuWishlistMarkers({ firestore, entryDoc, reason }) {
+    const entryData = entryDoc.data() || {};
+    if (entryData.menuWishlistClearedAt) return 0;
+
+    const wishlistSnap = await entryDoc.ref
+        .collection('menu_wishlist')
+        .limit(WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT)
+        .get();
+
+    const batch = firestore.batch();
+    wishlistSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    batch.set(entryDoc.ref, {
+        menuWishlistClearedAt: FieldValue.serverTimestamp(),
+        menuWishlistClearedReason: reason,
+        menuWishlistClearedCount: wishlistSnap.size,
+        menuWishlistCleanupTruncated: wishlistSnap.size >= WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT,
+    }, { merge: true });
+    await batch.commit();
+    return wishlistSnap.size;
+}
+
+async function cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs }) {
+    const lapsedNoShowDocs = waitlistDocs
+        .filter((doc) => {
+            const data = doc.data() || {};
+            return String(data.status || '').toLowerCase() === 'no_show'
+                && !data.menuWishlistClearedAt
+                && !isLiveActiveWaitlistRecord(data);
+        })
+        .slice(0, WAITLIST_MENU_WISHLIST_LAPSED_CLEANUP_LIMIT);
+
+    let clearedEntries = 0;
+    let clearedMarkers = 0;
+
+    for (const entryDoc of lapsedNoShowDocs) {
+        try {
+            const deletedCount = await clearWaitlistMenuWishlistMarkers({
+                firestore,
+                entryDoc,
+                reason: 'no_show_lapsed',
+            });
+            clearedEntries += 1;
+            clearedMarkers += deletedCount;
+        } catch (error) {
+            console.warn('[owner/waitlist] Failed to clear lapsed no-show wishlist markers:', error?.message || error);
+        }
+    }
+
+    return { clearedEntries, clearedMarkers };
+}
+
 async function autoPromoteNextPending({ firestore, businessRef }) {
     const activeNotifiedSnap = await businessRef.collection('waitlist')
         .where('status', 'in', ['notified', READY_TO_NOTIFY_STATUS])
@@ -431,6 +540,7 @@ export async function GET(req) {
         let bridgedBookingsCount = 0;
         let autoExpiredCount = 0;
         let promotedEntryId = null;
+        let wishlistCleanup = { clearedEntries: 0, clearedMarkers: 0 };
 
         if (!isHistory) {
             bridgedBookingsCount = await maybeBridgeLateBookings({
@@ -457,6 +567,10 @@ export async function GET(req) {
 
             const waitlistSnap = await queryRef.get();
             waitlistDocs = waitlistSnap.docs;
+        }
+
+        if (!isHistory) {
+            wishlistCleanup = await cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs });
         }
 
         let entries = waitlistDocs.map((doc) => {
@@ -504,6 +618,7 @@ export async function GET(req) {
                 noShowTimeoutMinutes,
                 bridgedBookingsCount,
                 autoExpiredCount,
+                waitlistMenuWishlistCleanup: wishlistCleanup,
                 promotedEntryId,
                 capacity,
             }
@@ -677,9 +792,19 @@ export async function PATCH(req) {
 
         const previousStatus = String(entryData.status || '').toLowerCase();
 
-        await firestore.runTransaction(async (transaction) => {
+        const wishlistFinalization = await firestore.runTransaction(async (transaction) => {
+            const freshEntrySnap = await transaction.get(entryRef);
+            if (!freshEntrySnap.exists) {
+                throw { message: 'Waitlist entry not found.', status: 404 };
+            }
+            const freshEntryData = freshEntrySnap.data() || {};
             const lockSnap = activePhoneLockRef
                 ? await transaction.get(activePhoneLockRef)
+                : null;
+            const shouldFinalizeWishlist = (status === 'seated' || status === 'cancelled')
+                && !freshEntryData.menuWishlistClearedAt;
+            const wishlistSnap = shouldFinalizeWishlist
+                ? await transaction.get(entryRef.collection('menu_wishlist').limit(WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT))
                 : null;
 
             const updatePayload = {
@@ -705,11 +830,21 @@ export async function PATCH(req) {
                 updatePayload.noShowAt = FieldValue.serverTimestamp();
             }
 
+            const finalizationResult = applyWaitlistMenuWishlistFinalization({
+                transaction,
+                businessRef,
+                entryRef,
+                entryData: freshEntryData,
+                wishlistSnap,
+                status,
+                updatePayload,
+            });
+
             transaction.update(entryRef, {
                 ...updatePayload
             });
 
-            if (!activePhoneLockRef) return;
+            if (!activePhoneLockRef) return finalizationResult;
             if (ACTIVE_STATUSES.has(status)) {
                 transaction.set(activePhoneLockRef, {
                     phone: normalizedPhone,
@@ -717,7 +852,7 @@ export async function PATCH(req) {
                     status: 'active',
                     updatedAt: FieldValue.serverTimestamp(),
                 }, { merge: true });
-                return;
+                return finalizationResult;
             }
 
             if (lockSnap.exists) {
@@ -726,6 +861,7 @@ export async function PATCH(req) {
                     transaction.delete(activePhoneLockRef);
                 }
             }
+            return finalizationResult;
         });
 
         const shouldPromoteNext = ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled'].includes(status);
@@ -739,6 +875,7 @@ export async function PATCH(req) {
         return NextResponse.json({
             message: `Status updated to ${status}`,
             promotedEntryId,
+            wishlistFinalization,
             warning: null,
             capacity,
         }, { status: 200 });
