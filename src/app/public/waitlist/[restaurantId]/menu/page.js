@@ -131,7 +131,7 @@ function parseSavedItemsPayload(raw) {
     };
 }
 
-function WaitlistMenuItem({ item, isSaved, onOpenDetails, onToggleSaved }) {
+function WaitlistMenuItem({ item, isSaved, savePulseKey = 0, onOpenDetails, onToggleSaved }) {
     const price = getLowestPrice(item);
     const portionsCount = Array.isArray(item.portions) ? item.portions.length : 0;
     const addOnGroups = getAddOnGroups(item);
@@ -194,23 +194,31 @@ function WaitlistMenuItem({ item, isSaved, onOpenDetails, onToggleSaved }) {
                             </div>
                             <p className="mt-1 text-sm font-extrabold text-foreground">Rs {price}</p>
                         </div>
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant={isSaved ? 'default' : 'outline'}
-                            className={cn(
-                                'h-10 w-10 shrink-0 rounded-full',
-                                isSaved && 'bg-green-600 text-white hover:bg-green-700'
-                            )}
-                            aria-label={isSaved ? `Remove ${item.name} from saved items` : `Save ${item.name}`}
-                            title={isSaved ? 'Saved' : 'Save for later'}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                onToggleSaved(item.id);
-                            }}
+                        <motion.div
+                            key={`save-pop-${item.id}-${savePulseKey || 0}`}
+                            initial={savePulseKey ? { scale: 0.92 } : false}
+                            animate={savePulseKey ? { scale: [0.92, 1.2, 0.96, 1] } : { scale: 1 }}
+                            transition={{ duration: 0.46, ease: 'easeOut' }}
+                            className="shrink-0"
                         >
-                            {isSaved ? <BookmarkCheck size={18} /> : <Heart size={18} />}
-                        </Button>
+                            <Button
+                                type="button"
+                                size="icon"
+                                variant={isSaved ? 'default' : 'outline'}
+                                className={cn(
+                                    'h-10 w-10 shrink-0 rounded-full transition-shadow',
+                                    isSaved && 'bg-green-600 text-white shadow-[0_0_16px_rgba(22,163,74,0.35)] hover:bg-green-700'
+                                )}
+                                aria-label={isSaved ? `Remove ${item.name} from saved items` : `Save ${item.name}`}
+                                title={isSaved ? 'Saved' : 'Save for later'}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onToggleSaved(item.id);
+                                }}
+                            >
+                                {isSaved ? <BookmarkCheck size={18} /> : <Heart size={18} />}
+                            </Button>
+                        </motion.div>
                     </div>
 
                     {item.description && (
@@ -245,7 +253,7 @@ function WaitlistMenuItem({ item, isSaved, onOpenDetails, onToggleSaved }) {
     );
 }
 
-function WaitlistMenuItemDetail({ item, isSaved, onClose, onToggleSaved }) {
+function WaitlistMenuItemDetail({ item, isSaved, savePulseKey = 0, onClose, onToggleSaved }) {
     if (!item) return null;
 
     const portions = Array.isArray(item.portions) && item.portions.length > 0
@@ -309,19 +317,27 @@ function WaitlistMenuItemDetail({ item, isSaved, onClose, onToggleSaved }) {
                                         </div>
                                         <p className="mt-2 text-lg font-black">Rs {getLowestPrice(item)}</p>
                                     </div>
-                                    <Button
-                                        type="button"
-                                        size="icon"
-                                        variant={isSaved ? 'default' : 'outline'}
-                                        className={cn(
-                                            'h-10 w-10 shrink-0 rounded-full',
-                                            isSaved && 'bg-green-600 text-white hover:bg-green-700'
-                                        )}
-                                        aria-label={isSaved ? `Remove ${item.name} from saved items` : `Save ${item.name}`}
-                                        onClick={() => onToggleSaved(item.id)}
+                                    <motion.div
+                                        key={`detail-save-pop-${item.id}-${savePulseKey || 0}`}
+                                        initial={savePulseKey ? { scale: 0.92 } : false}
+                                        animate={savePulseKey ? { scale: [0.92, 1.2, 0.96, 1] } : { scale: 1 }}
+                                        transition={{ duration: 0.46, ease: 'easeOut' }}
+                                        className="shrink-0"
                                     >
-                                        {isSaved ? <BookmarkCheck size={18} /> : <Heart size={18} />}
-                                    </Button>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant={isSaved ? 'default' : 'outline'}
+                                            className={cn(
+                                                'h-10 w-10 shrink-0 rounded-full transition-shadow',
+                                                isSaved && 'bg-green-600 text-white shadow-[0_0_16px_rgba(22,163,74,0.35)] hover:bg-green-700'
+                                            )}
+                                            aria-label={isSaved ? `Remove ${item.name} from saved items` : `Save ${item.name}`}
+                                            onClick={() => onToggleSaved(item.id)}
+                                        >
+                                            {isSaved ? <BookmarkCheck size={18} /> : <Heart size={18} />}
+                                        </Button>
+                                    </motion.div>
                                 </div>
                                 {item.description && (
                                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{item.description}</p>
@@ -401,6 +417,7 @@ export default function WaitlistMenuExplorePage({ params }) {
     const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [savedItemIds, setSavedItemIds] = useState(() => new Set());
+    const [saveFeedback, setSaveFeedback] = useState({ itemId: '', tick: 0 });
     const [savedExpiresAt, setSavedExpiresAt] = useState(0);
     const [savedItemsHydrated, setSavedItemsHydrated] = useState(false);
     const [hydratedStorageKey, setHydratedStorageKey] = useState('');
@@ -623,6 +640,9 @@ export default function WaitlistMenuExplorePage({ params }) {
         const safeItemId = String(itemId || '').trim();
         if (!safeItemId) return;
         const shouldSave = !savedItemIds.has(safeItemId);
+        if (shouldSave) {
+            setSaveFeedback((current) => ({ itemId: safeItemId, tick: current.tick + 1 }));
+        }
         setSavedExpiresAt(Date.now() + WISHLIST_LOCAL_TTL_MS);
         setSavedItemIds((current) => {
             const next = new Set(current);
@@ -728,9 +748,30 @@ export default function WaitlistMenuExplorePage({ params }) {
                         <p className="text-xs font-bold uppercase tracking-wide text-green-600">Explore Menu</p>
                         <h1 className="truncate text-lg font-black">{restaurantName}</h1>
                     </div>
-                    <div className="rounded-full border border-green-600/30 bg-green-600/10 px-3 py-1 text-xs font-bold text-green-700">
-                        {savedCount} saved
-                    </div>
+                    <motion.div
+                        key={`saved-pill-${saveFeedback.tick}`}
+                        initial={saveFeedback.tick ? { scale: 0.94 } : false}
+                        animate={saveFeedback.tick ? { scale: [0.94, 1.1, 1] } : { scale: 1 }}
+                        transition={{ duration: 0.44, ease: 'easeOut' }}
+                        className={cn('shrink-0 rounded-full', savedCount > 0 && 'animate-pulse shadow-[0_0_20px_rgba(22,163,74,0.28)]')}
+                    >
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                                'h-8 rounded-full border-green-600/30 px-3 text-xs font-bold text-green-700 transition-shadow hover:bg-green-600/10',
+                                savedCount > 0 && 'border-green-500 bg-green-600/10 shadow-[0_0_16px_rgba(22,163,74,0.25)]',
+                                showSavedOnly && 'bg-green-600 text-white hover:bg-green-700'
+                            )}
+                            aria-pressed={showSavedOnly}
+                            aria-label={showSavedOnly ? 'Show all menu items' : 'Show saved menu items'}
+                            title={showSavedOnly ? 'Show all items' : 'Show saved items'}
+                            onClick={() => setShowSavedOnly((value) => !value)}
+                        >
+                            {savedCount} saved
+                        </Button>
+                    </motion.div>
                 </div>
             </header>
 
@@ -750,35 +791,32 @@ export default function WaitlistMenuExplorePage({ params }) {
                 </section>
 
                 <section className="sticky top-[65px] z-10 -mx-4 mt-4 border-b border-border bg-background/95 px-4 pb-3 pt-1 backdrop-blur">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            value={searchQuery}
-                            onChange={(event) => setSearchQuery(event.target.value)}
-                            placeholder="Search menu..."
-                            className="h-11 rounded-xl pl-9"
-                        />
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant={showSavedOnly ? 'default' : 'outline'}
-                            className={cn(showSavedOnly && 'bg-green-600 text-white hover:bg-green-700')}
-                            onClick={() => setShowSavedOnly((value) => !value)}
-                        >
-                            <BookmarkCheck className="mr-1.5 h-4 w-4" /> Saved
-                        </Button>
+                    <div className="flex items-center gap-2">
+                        <div className="relative min-w-0 flex-1">
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={searchQuery}
+                                onChange={(event) => setSearchQuery(event.target.value)}
+                                placeholder="Search menu..."
+                                className="h-11 rounded-xl pl-9"
+                            />
+                        </div>
                         <div className="relative">
                             <Button
                                 type="button"
-                                size="sm"
+                                size="icon"
                                 variant={activeFilterCount > 0 ? 'default' : 'outline'}
+                                className="relative h-11 w-11 shrink-0 rounded-xl"
+                                aria-label={`Filter menu${activeFilterCount > 0 ? `, ${activeFilterCount} active` : ''}`}
+                                title={activeFilterCount > 0 ? `${activeFilterCount} filters active` : 'Filter'}
                                 onClick={() => setIsFilterMenuOpen((value) => !value)}
                             >
-                                <SlidersHorizontal className="mr-1.5 h-4 w-4" />
-                                Filter{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+                                <SlidersHorizontal className="h-4 w-4" />
+                                {activeFilterCount > 0 && (
+                                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-green-600 px-1 text-[10px] font-black text-white">
+                                        {activeFilterCount}
+                                    </span>
+                                )}
                             </Button>
                             <AnimatePresence>
                                 {isFilterMenuOpen && (
@@ -786,7 +824,7 @@ export default function WaitlistMenuExplorePage({ params }) {
                                         initial={{ opacity: 0, y: -4, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                                        className="absolute left-0 top-10 z-20 w-48 rounded-xl border border-border bg-background p-2 shadow-xl"
+                                        className="absolute right-0 top-12 z-20 w-48 rounded-xl border border-border bg-background p-2 shadow-xl"
                                     >
                                         <button
                                             type="button"
@@ -848,11 +886,15 @@ export default function WaitlistMenuExplorePage({ params }) {
                         </div>
                         <Button
                             type="button"
-                            size="sm"
+                            size="icon"
                             variant={sortMode === 'default' ? 'outline' : 'default'}
+                            className="h-11 w-11 shrink-0 rounded-xl"
+                            aria-label={`Sort menu: ${sortLabel}`}
+                            title={`Sort: ${sortLabel}`}
                             onClick={cycleSortMode}
                         >
-                            <ArrowUpDown className="mr-1.5 h-4 w-4" /> {sortLabel}
+                            <ArrowUpDown className="h-4 w-4" />
+                            <span className="sr-only">{sortLabel}</span>
                         </Button>
                     </div>
                 </section>
@@ -875,6 +917,7 @@ export default function WaitlistMenuExplorePage({ params }) {
                                             key={item.id}
                                             item={item}
                                             isSaved={savedItemIds.has(String(item.id || ''))}
+                                            savePulseKey={saveFeedback.itemId === String(item.id || '') ? saveFeedback.tick : 0}
                                             onOpenDetails={setSelectedItem}
                                             onToggleSaved={toggleSaved}
                                         />
@@ -968,6 +1011,7 @@ export default function WaitlistMenuExplorePage({ params }) {
                 <WaitlistMenuItemDetail
                     item={selectedItem}
                     isSaved={savedItemIds.has(String(selectedItem.id || ''))}
+                    savePulseKey={saveFeedback.itemId === String(selectedItem.id || '') ? saveFeedback.tick : 0}
                     onClose={() => setSelectedItem(null)}
                     onToggleSaved={toggleSaved}
                 />
