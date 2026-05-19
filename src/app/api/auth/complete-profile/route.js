@@ -6,6 +6,9 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { generateDisplayId } from '@/lib/id-utils';
 import { migrateGuestToUser } from '@/lib/guest-utils';
 
+const CUSTOMER_ROLES = new Set(['customer']);
+
+const shouldAssignCustomerId = (role) => CUSTOMER_ROLES.has(String(role || '').toLowerCase());
 
 export async function POST(req) {
     try {
@@ -40,9 +43,12 @@ export async function POST(req) {
         let mergedUserData = { ...finalUserData };
         const nowForId = new Date();
 
-        // Add Customer ID to User Profile
-        if (!mergedUserData.customerId) {
+        // Customer IDs belong only to customer profiles. Owner, rider, and admin
+        // accounts are identified by UID plus their role-specific records.
+        if (shouldAssignCustomerId(mergedUserData.role) && !mergedUserData.customerId) {
             mergedUserData.customerId = generateDisplayId('CS_', nowForId);
+        } else if (!shouldAssignCustomerId(mergedUserData.role)) {
+            mergedUserData.customerId = FieldValue.delete();
         }
 
         mergedUserData.createdAt = FieldValue.serverTimestamp();

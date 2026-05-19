@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
@@ -43,9 +43,12 @@ const UserRow = ({ user, serial, onUpdateStatus, onRemoveGuest, onRemoveUser, on
     'Guest Customer': 'bg-indigo-500/10 text-indigo-300',
     'Street Vendor': 'bg-orange-500/10 text-orange-400',
     'Shop Owner': 'bg-purple-500/10 text-purple-400',
+    'Store Owner': 'bg-purple-500/10 text-purple-400',
     Rider: 'bg-cyan-500/10 text-cyan-400',
     Admin: 'bg-red-500/10 text-red-400'
   }
+
+  const isBusinessOwnerRole = ['Owner', 'Street Vendor', 'Shop Owner', 'Store Owner'].includes(user.role);
 
   return (
     <TableRow className="cursor-pointer hover:bg-muted/30" onClick={() => onOpenDetails(user)}>
@@ -88,7 +91,7 @@ const UserRow = ({ user, serial, onUpdateStatus, onRemoveGuest, onRemoveUser, on
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenActivity(user); }}>
               <Eye className="mr-2 h-4 w-4" /> View Activity
             </DropdownMenuItem>
-            {(user.role === 'Owner' || user.role === 'Street Vendor' || user.role === 'Shop Owner') && (
+            {isBusinessOwnerRole && (
               <DropdownMenuItem onClick={(e) => {
                 e.stopPropagation();
                 const dashboardPath = user.role === 'Street Vendor'
@@ -154,7 +157,7 @@ export default function AdminUsersPage() {
   const desktopRuntime = isDesktopApp();
   const cacheKey = 'admin_users_v1';
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -201,11 +204,11 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cacheKey, desktopRuntime]);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
   const fetchUserDeepData = async (user) => {
     setDetailLoading(true);
@@ -326,7 +329,7 @@ export default function AdminUsersPage() {
 
   const filteredUsers = (role) =>
     users.filter((u) =>
-      u.role === role &&
+      (u.role === role || (role === 'Shop Owner' && u.role === 'Store Owner')) &&
       (
         u.name.toLowerCase().includes(search.toLowerCase()) ||
         (u.email || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -342,6 +345,14 @@ export default function AdminUsersPage() {
     if (isNaN(d.getTime())) return 'N/A';
     return withTime ? d.toLocaleString() : d.toLocaleDateString();
   };
+
+  const detailRole = selectedUserDetail?.role || selectedUser?.role || '';
+  const isCustomerDetail = detailRole === 'Customer' || detailRole === 'Guest Customer';
+  const businessProfile = selectedUserDetail?.businessProfile || null;
+  const detailTitle = isCustomerDetail ? 'Customer Details' : 'User Details';
+  const detailDescription = isCustomerDetail
+    ? 'Complete profile information including addresses and latest order reference.'
+    : 'Complete account profile information and linked business details.';
 
   const renderTableContent = (role) => {
     if (loading) {
@@ -543,9 +554,9 @@ export default function AdminUsersPage() {
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Customer Details</DialogTitle>
+            <DialogTitle>{detailTitle}</DialogTitle>
             <DialogDescription>
-              Complete profile information including addresses and latest order reference.
+              {detailDescription}
             </DialogDescription>
           </DialogHeader>
 
@@ -599,35 +610,71 @@ export default function AdminUsersPage() {
                   <p className="text-xs text-muted-foreground">UID / Guest ID</p>
                   <p className="font-medium break-all">{selectedUserDetail.id || 'N/A'}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Customer ID</p>
-                  <p className="font-medium break-all">{selectedUserDetail.customerId || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total Orders</p>
-                  <p className="font-medium">{selectedUserDetail.totalOrders ?? 0}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-xs text-muted-foreground">Last Order Customer Order ID</p>
-                  <p className="font-medium">{selectedUserDetail.lastOrderCustomerOrderId || 'N/A'}</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold mb-2">All Saved Addresses</p>
-                {Array.isArray(selectedUserDetail.addresses) && selectedUserDetail.addresses.length > 0 ? (
-                  <div className="space-y-2">
-                    {selectedUserDetail.addresses.map((addr, idx) => (
-                      <div key={`${idx}-${addr.full || 'addr'}`} className="rounded-md border border-border p-3 text-sm">
-                        <p className="font-medium">Address #{idx + 1}</p>
-                        <p className="text-muted-foreground break-words">{addr.full || 'N/A'}</p>
+                {businessProfile && (
+                  <>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Business Name</p>
+                      <p className="font-medium">{businessProfile.name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Business Type</p>
+                      <p className="font-medium">{businessProfile.businessType || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Merchant ID</p>
+                      <p className="font-medium break-all">{businessProfile.merchantId || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Business Document ID</p>
+                      <p className="font-medium break-all">{businessProfile.id || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Approval Status</p>
+                      <p className="font-medium">{businessProfile.approvalStatus || 'N/A'}</p>
+                    </div>
+                    {businessProfile.address?.full && (
+                      <div className="md:col-span-2">
+                        <p className="text-xs text-muted-foreground">Business Address</p>
+                        <p className="font-medium break-words">{businessProfile.address.full}</p>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No addresses found.</p>
+                    )}
+                  </>
+                )}
+                {isCustomerDetail && (
+                  <>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Customer ID</p>
+                      <p className="font-medium break-all">{selectedUserDetail.customerId || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Orders</p>
+                      <p className="font-medium">{selectedUserDetail.totalOrders ?? 0}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs text-muted-foreground">Last Order Customer Order ID</p>
+                      <p className="font-medium">{selectedUserDetail.lastOrderCustomerOrderId || 'N/A'}</p>
+                    </div>
+                  </>
                 )}
               </div>
+
+              {isCustomerDetail && (
+                <div>
+                  <p className="text-sm font-semibold mb-2">All Saved Addresses</p>
+                  {Array.isArray(selectedUserDetail.addresses) && selectedUserDetail.addresses.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedUserDetail.addresses.map((addr, idx) => (
+                        <div key={`${idx}-${addr.full || 'addr'}`} className="rounded-md border border-border p-3 text-sm">
+                          <p className="font-medium">Address #{idx + 1}</p>
+                          <p className="text-muted-foreground break-words">{addr.full || 'N/A'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No addresses found.</p>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="py-10 text-center text-muted-foreground">No detail data found.</div>

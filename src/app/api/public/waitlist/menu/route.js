@@ -14,6 +14,7 @@ const ACTIVE_EXPLORATION_STATUSES = new Set(['pending', 'ready_to_notify', 'noti
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const WISHLIST_QUALIFYING_THRESHOLD = 20;
 const MAX_FEATURED_WISHLISTED_ITEMS = 7;
+const MAX_WAITLIST_MENU_SAVED_ITEMS = 100;
 const WISHLIST_LOCAL_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getClientIp(req) {
@@ -227,6 +228,7 @@ async function loadWishlistSummary(businessRef) {
         return {
             threshold: WISHLIST_QUALIFYING_THRESHOLD,
             maxFeaturedItems: MAX_FEATURED_WISHLISTED_ITEMS,
+            maxSavedItems: MAX_WAITLIST_MENU_SAVED_ITEMS,
             countMode: 'all_time',
             savedListTtlHours: WISHLIST_LOCAL_TTL_MS / (60 * 60 * 1000),
             featuredItemIds,
@@ -237,6 +239,7 @@ async function loadWishlistSummary(businessRef) {
         return {
             threshold: WISHLIST_QUALIFYING_THRESHOLD,
             maxFeaturedItems: MAX_FEATURED_WISHLISTED_ITEMS,
+            maxSavedItems: MAX_WAITLIST_MENU_SAVED_ITEMS,
             countMode: 'all_time',
             savedListTtlHours: WISHLIST_LOCAL_TTL_MS / (60 * 60 * 1000),
             featuredItemIds: [],
@@ -460,17 +463,48 @@ export async function POST(req) {
         const statsRef = businessRef.collection('waitlist_menu_wishlist_stats').doc(itemId);
 
         const result = await firestore.runTransaction(async (transaction) => {
-            const [wishlistSnap, statsSnap] = await Promise.all([
+            const [freshEntrySnap, wishlistSnap, statsSnap] = await Promise.all([
+                transaction.get(entryRef),
                 transaction.get(wishlistRef),
                 transaction.get(statsRef),
             ]);
+            if (!freshEntrySnap.exists) {
+                throw { message: 'Waitlist entry not found.', status: 404 };
+            }
+
+            const freshEntryData = freshEntrySnap.data() || {};
+            const freshStoredCode = String(freshEntryData.arrivalCode || '').trim().toUpperCase();
+            const freshStatus = String(freshEntryData.status || 'pending').trim().toLowerCase();
+            if (!freshStoredCode || !safeTextEquals(freshStoredCode, arrivalCode)) {
+                throw { message: 'Invalid arrival code.', status: 403 };
+            }
+            if (!ACTIVE_EXPLORATION_STATUSES.has(freshStatus) || freshEntryData.menuWishlistClearedAt) {
+                throw { message: 'This waitlist token is no longer eligible for menu exploration.', status: 403 };
+            }
+
             const currentCount = Math.max(0, Number(statsSnap.data()?.count || 0));
             const markerData = wishlistSnap.exists ? (wishlistSnap.data() || {}) : {};
             const nowMs = Date.now();
             const savedListExpiresAt = getWishlistLocalExpiry(nowMs);
             const alreadyCounted = wishlistSnap.exists && markerData.counted === true;
+            const isCurrentlySaved = wishlistSnap.exists && markerData.saved === true;
 
             if (shouldSave) {
+                if (!isCurrentlySaved) {
+                    const savedMarkersSnap = await transaction.get(
+                        entryRef
+                            .collection('menu_wishlist')
+                            .where('saved', '==', true)
+                            .limit(MAX_WAITLIST_MENU_SAVED_ITEMS)
+                    );
+                    if (savedMarkersSnap.size >= MAX_WAITLIST_MENU_SAVED_ITEMS) {
+                        throw {
+                            message: `You can save up to ${MAX_WAITLIST_MENU_SAVED_ITEMS} menu items for this visit.`,
+                            status: 409,
+                        };
+                    }
+                }
+
                 const markerPayload = {
                     itemId,
                     saved: true,

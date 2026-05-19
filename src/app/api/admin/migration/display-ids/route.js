@@ -4,6 +4,19 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+const normalizeValue = (value) => String(value || '').toLowerCase();
+
+const isCustomerProfile = (data = {}) => {
+    const role = normalizeValue(data.role);
+    const businessType = normalizeValue(data.businessType);
+
+    if (data.isAdmin || role === 'admin') return false;
+    if (['restaurant', 'shop', 'store', 'street-vendor', 'street_vendor'].includes(businessType)) return false;
+    if (['owner', 'restaurant-owner', 'shop-owner', 'store-owner', 'street-vendor', 'rider', 'delivery'].includes(role)) return false;
+
+    return role === 'customer' || !role;
+};
+
 function generateDisplayId(prefix, timestamp) {
     let date = new Date(); // Default to now if missing
     if (timestamp) {
@@ -36,7 +49,7 @@ export async function GET(req) {
 
         const firestore = await getFirestore();
         const batchSize = 100; // Process in chunks if needed, but for now simple loop with Promise.all for batch commits
-        const writeStats = { users: 0, restaurants: 0, shops: 0, vendors: 0 };
+        const writeStats = { users: 0, skippedNonCustomerUsers: 0, restaurants: 0, shops: 0, vendors: 0 };
 
         // 1. Process USERS (Customers)
         console.log("Starting Migration: USERS...");
@@ -45,6 +58,10 @@ export async function GET(req) {
 
         usersSnap.forEach(doc => {
             const data = doc.data();
+            if (!isCustomerProfile(data)) {
+                writeStats.skippedNonCustomerUsers++;
+                return;
+            }
             const newId = generateDisplayId('CS_', data.createdAt || data.created_at);
             userUpdates.push(doc.ref.update({ customerId: newId }));
             writeStats.users++;

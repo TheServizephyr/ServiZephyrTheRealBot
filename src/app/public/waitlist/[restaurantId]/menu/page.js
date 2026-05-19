@@ -10,6 +10,7 @@ import { AlertCircle, ArrowLeft, ArrowUpDown, BookOpen, BookmarkCheck, Drumstick
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
 const ANALYTICS_TAG_KEYS = new Set([
@@ -25,6 +26,7 @@ const getWishlistStorageKey = (restaurantId, entryId) => `servizephyr_waitlist_m
 const getCredentialStorageKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
 const getCategorySectionId = (categoryKey) => `waitlist-menu-category-${encodeURIComponent(String(categoryKey || 'all'))}`;
 const WISHLIST_LOCAL_TTL_MS = 12 * 60 * 60 * 1000;
+const MAX_WAITLIST_MENU_SAVED_ITEMS = 100;
 
 const SORT_OPTIONS = [
     { value: 'default', label: 'Sort', menuLabel: 'Default order' },
@@ -403,6 +405,7 @@ export default function WaitlistMenuExplorePage({ params }) {
     const { restaurantId } = params;
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { toast } = useToast();
     const queryEntryId = String(searchParams.get('entryId') || '').trim();
     const queryArrivalCode = String(searchParams.get('arrivalCode') || '').trim();
     const queryView = String(searchParams.get('view') || '').trim().toLowerCase();
@@ -621,6 +624,7 @@ export default function WaitlistMenuExplorePage({ params }) {
     }, [categories, dietFilter, rawMenu, savedItemIds, searchQuery, showMostWishlistedOnly, showSavedOnly, sortMode]);
 
     const savedCount = savedItemIds.size;
+    const maxSavedItems = Math.max(1, Number(payload?.wishlist?.maxSavedItems || MAX_WAITLIST_MENU_SAVED_ITEMS));
     const restaurantName = payload?.restaurant?.name || menuData.restaurantName || 'Restaurant';
     const waitlistToken = payload?.waitlist?.waitlistToken || '';
     const activeCategoryTitle = activeCategory === 'all'
@@ -689,6 +693,14 @@ export default function WaitlistMenuExplorePage({ params }) {
         const safeItemId = String(itemId || '').trim();
         if (!safeItemId) return;
         const shouldSave = !savedItemIds.has(safeItemId);
+        if (shouldSave && savedItemIds.size >= maxSavedItems) {
+            toast({
+                title: 'Saved limit reached',
+                description: `You can save up to ${maxSavedItems} items for this visit.`,
+                variant: 'destructive',
+            });
+            return;
+        }
         if (shouldSave) {
             setSaveFeedback((current) => ({ itemId: safeItemId, tick: current.tick + 1 }));
         }
@@ -725,9 +737,20 @@ export default function WaitlistMenuExplorePage({ params }) {
                 }
             })
             .catch((syncError) => {
+                setSavedItemIds((current) => {
+                    const next = new Set(current);
+                    if (shouldSave) next.delete(safeItemId);
+                    else next.add(safeItemId);
+                    return next;
+                });
                 console.warn('[waitlist-menu] wishlist sync failed:', syncError?.message || syncError);
+                toast({
+                    title: shouldSave ? 'Item not saved' : 'Item still saved',
+                    description: syncError?.message || 'Could not sync saved items. Please try again.',
+                    variant: 'destructive',
+                });
             });
-    }, [arrivalCode, entryId, restaurantId, savedItemIds]);
+    }, [arrivalCode, entryId, maxSavedItems, restaurantId, savedItemIds, toast]);
 
     const buildMenuViewUrl = useCallback((view = 'menu') => {
         const query = new URLSearchParams();

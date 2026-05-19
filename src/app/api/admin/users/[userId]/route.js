@@ -30,12 +30,47 @@ const normalizeAddress = (address = {}) => ({
 });
 
 const normalizeRole = (data = {}) => {
-    if (data.role === 'admin' || data.isAdmin) return 'Admin';
-    if (data.businessType === 'restaurant' || data.role === 'owner') return 'Owner';
-    if (data.businessType === 'shop' || data.businessType === 'store') return 'Store Owner';
-    if (data.businessType === 'street-vendor' || data.businessType === 'street_vendor') return 'Street Vendor';
-    if (data.role === 'rider' || data.role === 'delivery') return 'Rider';
+    const role = String(data.role || '').toLowerCase();
+    const businessType = String(data.businessType || '').toLowerCase();
+
+    if (role === 'admin' || data.isAdmin) return 'Admin';
+    if (businessType === 'restaurant' || role === 'owner' || role === 'restaurant-owner') return 'Owner';
+    if (businessType === 'shop' || businessType === 'store' || role === 'shop-owner' || role === 'store-owner') return 'Store Owner';
+    if (businessType === 'street-vendor' || businessType === 'street_vendor' || role === 'street-vendor') return 'Street Vendor';
+    if (role === 'rider' || role === 'delivery') return 'Rider';
     return 'Customer';
+};
+
+const OWNER_ROLE_COLLECTIONS = {
+    Owner: ['restaurants'],
+    'Store Owner': ['shops'],
+    'Street Vendor': ['street_vendors'],
+};
+
+const getOwnerBusinessProfile = async (firestore, userId, role) => {
+    const collections = OWNER_ROLE_COLLECTIONS[role] || [];
+    for (const collectionName of collections) {
+        const snap = await firestore
+            .collection(collectionName)
+            .where('ownerId', '==', userId)
+            .limit(1)
+            .get();
+
+        if (!snap.empty) {
+            const doc = snap.docs[0];
+            const data = doc.data() || {};
+            return {
+                id: doc.id,
+                name: data.name || data.businessName || doc.id,
+                businessType: data.businessType || collectionName,
+                merchantId: data.merchantId || null,
+                approvalStatus: data.approvalStatus || data.status || null,
+                address: data.address ? normalizeAddress(data.address) : null,
+            };
+        }
+    }
+
+    return null;
 };
 
 export async function GET(req, { params }) {
@@ -55,6 +90,7 @@ export async function GET(req, { params }) {
         let profile = null;
         let raw = null;
         let role = 'Customer';
+        let businessProfilePromise = Promise.resolve(null);
 
         if (userType === 'guest') {
             const guestDoc = await firestore.collection('guest_profiles').doc(userId).get();
@@ -83,10 +119,11 @@ export async function GET(req, { params }) {
             }
             raw = userDoc.data() || {};
             role = normalizeRole(raw);
+            const isCustomerProfile = role === 'Customer';
             profile = {
                 id: userDoc.id,
                 userType: 'user',
-                customerId: raw.customerId || null,
+                customerId: isCustomerProfile ? (raw.customerId || null) : null,
                 name: raw.name || 'Unnamed User',
                 email: raw.email || 'No Email',
                 phone: raw.phone || raw.phoneNumber || 'No Phone',
@@ -96,6 +133,7 @@ export async function GET(req, { params }) {
                 addresses: Array.isArray(raw.addresses) ? raw.addresses.map(normalizeAddress) : [],
                 profilePictureUrl: raw.profilePictureUrl || '',
             };
+            businessProfilePromise = getOwnerBusinessProfile(firestore, userDoc.id, role);
         }
 
         // Activity from orders
@@ -146,10 +184,12 @@ export async function GET(req, { params }) {
             pickTimestamp(raw, ['lastActivityAt', 'lastSeen', 'updatedAt', 'lastLoginAt', 'lastOrderAt']) ||
             null;
         const lastActivity = activity[0]?.orderDate || profileLastActivity || profile.joinDate;
+        const businessProfile = await businessProfilePromise;
 
         return NextResponse.json({
             user: {
                 ...profile,
+                businessProfile,
                 totalOrders: activity.length,
                 lastActivity,
                 lastOrderCustomerOrderId,
