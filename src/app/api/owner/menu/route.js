@@ -21,6 +21,11 @@ const OWNER_LIKE_ROLES = new Set(['owner', 'restaurant-owner', 'shop-owner', 'st
 const MENU_MANAGER_ROLES = new Set([...OWNER_LIKE_ROLES, 'manager']);
 const MENU_AVAILABILITY_ROLES = new Set([...MENU_MANAGER_ROLES, 'chef']);
 
+function isGeneratedPlaceholderMenuImageUrl(value = '') {
+    const imageUrl = String(value || '').trim();
+    return /^https?:\/\/picsum\.photos\/seed\/[^/]+\/100\/100\/?$/i.test(imageUrl);
+}
+
 function normalizeCompactPortions(item = {}) {
     if (Array.isArray(item?.portions) && item.portions.length > 0) {
         return item.portions.map((portion) => ({
@@ -284,7 +289,8 @@ export async function POST(req) {
         }
         finalCategoryId = normalizedFinalCategoryId;
 
-        const normalizedImageUrl = await normalizeMenuItemImageUrl(item.imageUrl || '', businessId, item.id || item.name);
+        const requestedImageUrl = isGeneratedPlaceholderMenuImageUrl(item.imageUrl) ? '' : item.imageUrl;
+        const normalizedImageUrl = await normalizeMenuItemImageUrl(requestedImageUrl || '', businessId, item.id || item.name);
 
         const finalItem = {
             ...item,

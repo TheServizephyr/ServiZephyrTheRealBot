@@ -74,6 +74,7 @@ export async function GET(req) {
             phone: maskPhone(data.phone),
             paxCount: data.paxCount || 1,
             restaurantName: data.restaurantName || '',
+            menuExploreEnabled: restaurantData.waitlistMenuExploreEnabled === true,
             redacted: true,
             createdAt: toIso(data.createdAt),
             notifiedAt: toIso(data.notifiedAt),

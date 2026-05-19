@@ -2,8 +2,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper } from 'lucide-react';
+import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 
 const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
+const getWaitlistMenuCredentialKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
 
 const normalizeExpectedWaitMinutes = (value, fallback = 0) => {
     const parsed = Number.parseInt(String(value), 10);
@@ -43,6 +45,7 @@ export default function PublicWaitlistPage({ params }) {
     const [isCoinFlipped, setIsCoinFlipped] = useState(false);
     const [timerNowMs, setTimerNowMs] = useState(Date.now());
     const [restaurantData, setRestaurantData] = useState(null);
+    const [menuExploreEnabled, setMenuExploreEnabled] = useState(false);
 
     useEffect(() => {
         const fetchStatus = async () => {
@@ -51,6 +54,7 @@ export default function PublicWaitlistPage({ params }) {
                 if (res.ok) {
                     const data = await res.json();
                     setRestaurantData(data.restaurant);
+                    setMenuExploreEnabled(data.restaurant?.services?.waitlistMenuExplore === true);
                     setStatusError('');
                 } else {
                     setRestaurantData(null);
@@ -138,6 +142,9 @@ export default function PublicWaitlistPage({ params }) {
                 setQueueStatus(nextStatus);
                 setNotifiedAt(String(data?.notifiedAt || ''));
                 setNoShowDeadlineAt(String(data?.noShowDeadlineAt || ''));
+                if (data?.menuExploreEnabled !== undefined) {
+                    setMenuExploreEnabled(data.menuExploreEnabled === true);
+                }
 
                 if (nextStatus === 'seated') {
                     setSuccess(true);
@@ -284,6 +291,15 @@ export default function PublicWaitlistPage({ params }) {
         }
     };
 
+    const persistWaitlistMenuCredential = useCallback(() => {
+        if (typeof window === 'undefined' || !entryId || !arrivalCode) return;
+        try {
+            window.sessionStorage.setItem(getWaitlistMenuCredentialKey(restaurantId, entryId), arrivalCode);
+        } catch {
+            // Session storage may be unavailable; the token page still keeps the credential in memory.
+        }
+    }, [arrivalCode, entryId, restaurantId]);
+
     if (isFetchingStatus) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
@@ -343,6 +359,14 @@ export default function PublicWaitlistPage({ params }) {
         no_show: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
     };
     const queueStatusLabel = queueStatusLabelMap[queueStatus] || 'Waiting';
+    const canExploreMenu = mode !== 'booking'
+        && !isSeated
+        && menuExploreEnabled
+        && Boolean(entryId && arrivalCode)
+        && ['pending', 'ready_to_notify', 'notified', 'arrived'].includes(queueStatus);
+    const waitlistMenuUrl = canExploreMenu
+        ? `/public/waitlist/${encodeURIComponent(restaurantId)}/menu?entryId=${encodeURIComponent(entryId)}`
+        : '';
 
     if (success) {
         return (
@@ -469,9 +493,22 @@ export default function PublicWaitlistPage({ params }) {
                                 <ArrowLeft className="h-5 w-5 mr-2" /> Back
                             </Button>
                         ) : (
-                            <Button className="w-full h-12 text-lg font-bold" onClick={returnToFreshWaitlistForm}>
-                                Close
-                            </Button>
+                            <div className="space-y-3">
+                                {canExploreMenu && (
+                                    <Button asChild className="w-full h-12 text-lg font-bold bg-green-600 text-white hover:bg-green-700">
+                                        <Link href={waitlistMenuUrl} onClick={persistWaitlistMenuCredential}>
+                                            <BookOpen className="h-5 w-5 mr-2" /> Explore Menu
+                                        </Link>
+                                    </Button>
+                                )}
+                                <Button
+                                    className="w-full h-12 text-lg font-bold"
+                                    variant={canExploreMenu ? 'outline' : 'default'}
+                                    onClick={returnToFreshWaitlistForm}
+                                >
+                                    Close
+                                </Button>
+                            </div>
                         )}
                     </Card>
                 </motion.div>

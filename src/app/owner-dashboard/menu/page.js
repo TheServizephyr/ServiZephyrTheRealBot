@@ -713,7 +713,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 portions: finalPortions,
                 isVeg: isShop ? true : item.isVeg,
                 isAvailable: item.isAvailable,
-                imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
+                imageUrl: item.imageUrl || '',
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
                 isDineInExclusive: !isShop && item.isDineInExclusive === true,

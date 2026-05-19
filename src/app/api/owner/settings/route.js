@@ -20,6 +20,16 @@ import { invalidatePublicRestaurantOverview } from '@/services/business/publicRe
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
 const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
+const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
+const WAITLIST_SETTINGS_PATCH_FIELDS = new Set([
+    'isWaitlistEnabled',
+    'waitlistMenuExploreEnabled',
+    'waitlistSeatingMode',
+    'waitlistManualCapacity',
+    'waitlistNoShowTimeoutMinutes',
+    'waitlistExpectedWaitMinutes',
+    'resetWaitlistTokenCounter',
+]);
 
 function normalizeBusinessType(value, fallbackCollectionName = null) {
     const normalized = String(value || '').trim().toLowerCase();
@@ -131,6 +141,24 @@ function normalizeExpectedWaitMinutes(value, fallback = 0) {
     return Math.min(60, Math.max(0, parsed));
 }
 
+async function hasConfiguredMenuItems(businessRef) {
+    if (!businessRef) return false;
+    const menuSnap = await businessRef.collection('menu').get();
+    return menuSnap.docs.some((doc) => {
+        const data = doc.data() || {};
+        const categoryId = String(data.categoryId || '').trim().toLowerCase();
+        return data.isDeleted !== true
+            && categoryId !== RESERVED_OPEN_ITEMS_CATEGORY_ID
+            && String(data.name || '').trim();
+    });
+}
+
+function isWaitlistOnlySettingsPatch(updates = {}) {
+    if (!updates || typeof updates !== 'object' || Array.isArray(updates)) return false;
+    const keys = Object.keys(updates);
+    return keys.length > 0 && keys.every((key) => WAITLIST_SETTINGS_PATCH_FIELDS.has(key));
+}
+
 function normalizePhone(phone) {
     if (!phone) return '';
     const digits = String(phone).replace(/\D/g, '');
@@ -184,6 +212,7 @@ function shouldBumpPublicMenuVersion({
         'waitlistManualCapacity',
         'waitlistNoShowTimeoutMinutes',
         'waitlistExpectedWaitMinutes',
+        'waitlistMenuExploreEnabled',
     ]);
 
     return Object.keys(businessUpdateData).some((key) => publicFacingFields.has(key));
@@ -285,6 +314,7 @@ export async function GET(req) {
                 deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
                 pickupEnabled: fallback('pickupEnabled', true),
                 dineInEnabled: fallback('dineInEnabled', true),
+                waitlistMenuExploreEnabled: businessData?.waitlistMenuExploreEnabled === true,
                 restaurantId: matchedBusinessId || businessDoc.id,
             };
 
@@ -458,6 +488,7 @@ export async function GET(req) {
             upiId: businessData?.upiId || '',
             upiPayeeName: businessData?.upiPayeeName || businessData?.name || '',
             isWaitlistEnabled: businessData?.isWaitlistEnabled || false,
+            waitlistMenuExploreEnabled: businessData?.waitlistMenuExploreEnabled === true,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(businessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(businessData?.waitlistManualCapacity || 40)),
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData?.waitlistNoShowTimeoutMinutes, 10),
@@ -476,13 +507,17 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
+        const updates = await req.json();
+        const isWaitlistSettingsPatch = isWaitlistOnlySettingsPatch(updates);
         // Use standard verifyOwnerWithAudit for robust impersonation handling
         const context = await verifyOwnerWithAudit(
             req,
-            'update_settings',
+            isWaitlistSettingsPatch ? 'update_waitlist_settings' : 'update_settings',
             {},
             true,
-            [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS]
+            isWaitlistSettingsPatch
+                ? [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS, PERMISSIONS.MANAGE_BOOKINGS]
+                : [PERMISSIONS.MANAGE_SETTINGS, PERMISSIONS.MANAGE_OUTLET_SETTINGS]
         );
         const { uid, userData, businessSnap, businessId } = context;
         const businessRef = businessSnap.ref;
@@ -490,8 +525,6 @@ export async function PATCH(req) {
 
         const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(uid);
-
-        const updates = await req.json();
 
         const userUpdateData = {};
         if (updates.name !== undefined) userUpdateData.name = updates.name;
@@ -637,6 +670,22 @@ export async function PATCH(req) {
         if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
         if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
         if (updates.isWaitlistEnabled !== undefined) businessUpdateData.isWaitlistEnabled = updates.isWaitlistEnabled;
+        if (updates.waitlistMenuExploreEnabled !== undefined) {
+            const nextWaitlistMenuExploreEnabled = Boolean(updates.waitlistMenuExploreEnabled);
+            if (nextWaitlistMenuExploreEnabled) {
+                const normalizedBusinessType = normalizeBusinessType(businessData?.businessType, context.collectionName);
+                if (normalizedBusinessType !== 'restaurant') {
+                    return NextResponse.json({ message: 'Waitlist menu exploration is only available for restaurants.' }, { status: 403 });
+                }
+                const hasMenu = await hasConfiguredMenuItems(businessRef);
+                if (!hasMenu) {
+                    return NextResponse.json({
+                        message: 'Please set up at least one menu item before enabling waitlist menu exploration.',
+                    }, { status: 400 });
+                }
+            }
+            businessUpdateData.waitlistMenuExploreEnabled = nextWaitlistMenuExploreEnabled;
+        }
         if (updates.waitlistSeatingMode !== undefined) {
             businessUpdateData.waitlistSeatingMode = normalizeWaitlistSeatingMode(updates.waitlistSeatingMode, 'table_assign');
         }
@@ -814,6 +863,7 @@ export async function PATCH(req) {
             upiId: finalBusinessData?.upiId || '',
             upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
             isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
+            waitlistMenuExploreEnabled: finalBusinessData?.waitlistMenuExploreEnabled === true,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(finalBusinessData?.waitlistNoShowTimeoutMinutes, 10),

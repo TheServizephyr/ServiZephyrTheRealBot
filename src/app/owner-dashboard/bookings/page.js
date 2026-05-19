@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3, Plus } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3, Plus, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -2242,6 +2242,7 @@ function BookingsPageContent() {
     const [employeeAccess, setEmployeeAccess] = useState(() => getStoredEmployeeAccessSnapshot(employeeOfOwnerId));
     const [activeTab, setActiveTab] = useState(() => getInitialBookingsTab(employeeOfOwnerId));
     const [isWaitlistEnabled, setIsWaitlistEnabled] = useState(false);
+    const [waitlistMenuExploreEnabled, setWaitlistMenuExploreEnabled] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
     const [waitlistNoShowTimeoutMinutes, setWaitlistNoShowTimeoutMinutes] = useState(10);
@@ -2437,6 +2438,7 @@ function BookingsPageContent() {
                         const bData = { id: snap.docs[0].id, collection: coll, ...snap.docs[0].data() };
                         setBusinessInfo(bData);
                         setIsWaitlistEnabled(bData.isWaitlistEnabled || false);
+                        setWaitlistMenuExploreEnabled(bData.waitlistMenuExploreEnabled === true);
                         setWaitlistSeatingMode(
                             bData.waitlistSeatingMode === 'manual_seat' ? 'manual_seat' : 'table_assign'
                         );
@@ -2552,6 +2554,35 @@ function BookingsPageContent() {
             }
         } catch (err) { toast({ title: "Failed", description: err.message, variant: "destructive" }); }
         finally { setIsWaitlistLoading(false); }
+    };
+
+    const handleToggleWaitlistMenuExplore = async (enabled) => {
+        setWaitlistConfigLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch(getSettingsApiUrl(), {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ waitlistMenuExploreEnabled: enabled })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to update menu exploration.');
+            const nextEnabled = data.waitlistMenuExploreEnabled === true;
+            setWaitlistMenuExploreEnabled(nextEnabled);
+            setBusinessInfo((prev) => prev ? { ...prev, waitlistMenuExploreEnabled: nextEnabled } : prev);
+            toast({
+                title: enabled ? 'Menu Exploration Enabled' : 'Menu Exploration Disabled',
+                description: enabled
+                    ? 'Guests can browse and save menu items from their waitlist token.'
+                    : 'Guests will no longer see the menu exploration button on the waitlist token.',
+            });
+        } catch (err) {
+            toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+        } finally {
+            setWaitlistConfigLoading(false);
+        }
     };
 
     const handleWaitlistSeatingModeChange = async (mode) => {
@@ -2844,6 +2875,22 @@ function BookingsPageContent() {
                                 <p className="text-xs text-muted-foreground mt-1">Enable or disable public waitlist joins.</p>
                             </div>
                             <Switch checked={isWaitlistEnabled} disabled={isWaitlistLoading} onCheckedChange={handleToggleWaitlist} />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3">
+                            <div className="min-w-0">
+                                <Label className="font-semibold flex items-center gap-2">
+                                    <BookOpen size={15} /> Menu Exploration
+                                </Label>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Show Explore Menu on guest waitlist tokens. Guests can view and save items only.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={waitlistMenuExploreEnabled}
+                                disabled={waitlistConfigLoading}
+                                onCheckedChange={handleToggleWaitlistMenuExplore}
+                            />
                         </div>
 
                         <div className="space-y-2">

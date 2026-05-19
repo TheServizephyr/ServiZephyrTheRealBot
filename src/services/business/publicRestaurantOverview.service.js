@@ -285,6 +285,7 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
                 pickup: businessData.pickupEnabled !== false,
                 dineIn: businessData.dineInEnabled !== false,
                 waitlist: businessData.isWaitlistEnabled === true,
+                waitlistMenuExplore: businessData.waitlistMenuExploreEnabled === true,
             },
             waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes, 10),
             waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(businessData.waitlistExpectedWaitMinutes, 0),

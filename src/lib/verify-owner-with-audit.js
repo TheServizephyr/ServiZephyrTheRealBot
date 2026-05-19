@@ -87,6 +87,7 @@ const ACTION_FEATURE_MAP = {
     view_waitlist: 'bookings',
     create_waitlist_entry: 'bookings',
     update_waitlist_entry: 'bookings',
+    update_waitlist_settings: 'bookings',
     view_waitlist_analytics: 'bookings',
     view_payouts: 'payouts',
     view_inventory: 'inventory',
@@ -100,6 +101,7 @@ const CUSTOM_PAGE_PERMISSION_FALLBACK_ACTIONS = new Set([
     'view_waitlist',
     'create_waitlist_entry',
     'update_waitlist_entry',
+    'update_waitlist_settings',
     'view_waitlist_analytics',
 ]);
 
