@@ -2598,7 +2598,7 @@ function BookingsPageContent() {
     const handleUpdateStatus = async (bookingId, status, bookingForMessage = null) => {
         const shouldDraftWhatsApp = status === 'confirmed' || status === 'cancelled';
         const whatsappUrl = shouldDraftWhatsApp
-            ? buildBookingStatusWhatsAppUrl(bookingForMessage, status, restaurant?.name)
+            ? buildBookingStatusWhatsAppUrl(bookingForMessage, status, businessInfo?.name)
             : '';
         const whatsappWindow = whatsappUrl && typeof window !== 'undefined'
             ? window.open('', '_blank')
@@ -2606,7 +2606,12 @@ function BookingsPageContent() {
 
         try {
             const user = auth.currentUser;
-            if (!user) return;
+            if (!user) {
+                if (whatsappWindow && !whatsappWindow.closed) {
+                    whatsappWindow.close();
+                }
+                return;
+            }
             const idToken = await user.getIdToken();
             const res = await fetch(getBookingsApiUrl(), {
                 method: 'PATCH',
