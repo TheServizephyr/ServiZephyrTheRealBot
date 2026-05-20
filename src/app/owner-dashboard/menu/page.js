@@ -1028,7 +1028,8 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     <div className="space-y-2">
                                         <div className="relative h-20 w-20 overflow-hidden rounded-md border-2 border-dashed border-border bg-muted flex items-center justify-center">
                                             {imagePreviewUrl ? (
-                                                <Image src={imagePreviewUrl} alt={item.name || 'Item image'} layout="fill" objectFit="cover" />
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={imagePreviewUrl} alt={item.name || 'Item image'} className="h-full w-full object-cover" />
                                             ) : (
                                                 <ImageIcon size={24} className="text-muted-foreground" />
                                             )}
@@ -1044,9 +1045,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImageUploading}>
+                                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isSaving}>
                                             <Upload size={16} className="mr-2" />
-                                            {isImageUploading ? 'Uploading...' : (imagePreviewUrl ? 'Replace' : 'Upload')}
+                                            {imagePreviewUrl ? 'Replace' : 'Upload'}
                                         </Button>
                                         {imagePreviewUrl ? (
                                             <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={handleRemoveImage} disabled={isSaving}>
