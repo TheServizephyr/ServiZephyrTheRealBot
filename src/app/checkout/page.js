@@ -1803,6 +1803,7 @@ const CheckoutPageInternal = () => {
                     idempotencyKey,
                     tabId,
                     restaurantId,
+                    token,
                     paymentMethod: effectivePaymentMethod,
                     grandTotal
                 };
@@ -1842,7 +1843,7 @@ const CheckoutPageInternal = () => {
 
                     const options = {
                         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_live_m9PZ4ZL5ItHp9j',
-                        amount: grandTotal * 100,
+                        amount: (data.amount || grandTotal) * 100,
                         currency: "INR",
                         name: cartData.restaurantName || 'Restaurant',
                         description: `Bill Settlement - Table ${tableId} `,

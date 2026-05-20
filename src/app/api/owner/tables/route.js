@@ -68,6 +68,16 @@ export async function GET(req) {
         const tableData = matchedTable;
         const maxCapacity = Number(tableData.max_capacity || 0);
         const dbCurrentPax = Math.max(0, Number(tableData.current_pax || 0));
+        const STALE_EMPTY_TAB_MS = 2 * 60 * 60 * 1000;
+        const nowMs = Date.now();
+        const toMillis = (value) => {
+            if (!value) return null;
+            if (typeof value?.toDate === 'function') return value.toDate().getTime();
+            if (typeof value?.seconds === 'number') return value.seconds * 1000;
+            if (typeof value?._seconds === 'number') return value._seconds * 1000;
+            const parsed = new Date(value).getTime();
+            return Number.isFinite(parsed) ? parsed : null;
+        };
 
         // Fetch joinable tabs for this table.
         // We keep both `active` and `inactive` sessions (inactive means party seated but no order yet).
@@ -79,7 +89,7 @@ export async function GET(req) {
             .map(doc => ({ id: doc.id, ...doc.data() }))
             .filter((tab) => {
                 const status = String(tab?.status || 'inactive').toLowerCase();
-                return status !== 'closed' && status !== 'completed';
+                return status === 'active' || status === 'inactive';
             });
 
         const activeOrdersQuery = await firestore.collection('orders')
@@ -106,23 +116,29 @@ export async function GET(req) {
             if (orderData.tabId) activeTabIdsFromOrders.add(String(orderData.tabId));
         });
 
-        // Use table doc pax as primary source for occupancy to stay consistent with owner dashboard.
-        // Fallback to live orders only when table doc is still zero.
         const liveCurrentPax = Array.from(activePartyPaxMap.values()).reduce((sum, pax) => sum + pax, 0);
+        const validOpenTabs = joinableTabsRaw.filter((tab) => {
+            const tabPax = Number(tab.pax_count || 0);
+            if (tabPax <= 0) return false;
+            const linkedToActiveOrder = activeTabIdsFromOrders.has(String(tab.id));
+            const lastActivityMs = toMillis(tab.updatedAt) || toMillis(tab.createdAt);
+            const staleEmptyTab = !linkedToActiveOrder
+                && !!lastActivityMs
+                && (nowMs - lastActivityMs > STALE_EMPTY_TAB_MS);
+            return !staleEmptyTab;
+        });
+        const openTabPax = validOpenTabs.reduce((sum, tab) => sum + Math.max(0, Number(tab.pax_count || 0)), 0);
         const tableState = String(tableData.state || '').toLowerCase();
         const shouldTrustDbOnly = tableState === 'needs_cleaning';
         const current_pax = shouldTrustDbOnly
             ? Math.min(maxCapacity || dbCurrentPax, dbCurrentPax)
-            : Math.min(maxCapacity || liveCurrentPax, dbCurrentPax > 0 ? dbCurrentPax : liveCurrentPax);
+            : Math.min(maxCapacity || Math.max(liveCurrentPax, openTabPax), Math.max(liveCurrentPax, openTabPax));
 
         // ⚡ FIX: Show ALL open tabs as joinable (not just those with active orders)
         // This ensures the tab list matches the pax count shown to the customer
         // Previously tabs without active orders (e.g., all orders delivered but tab still open)
         // were hidden, causing confusion when pax showed 2/4 but only 1 tab appeared
-        let validActiveTabs = joinableTabsRaw.filter(tab => {
-            const tabPax = Number(tab.pax_count || 0);
-            return tabPax > 0; // Only show tabs that are actually taking up seats
-        });
+        let validActiveTabs = validOpenTabs;
 
         // NEW: Check for uncleaned orders (delivered but not cleaned)
         const uncleanedOrdersQuery = await firestore.collection('orders')

@@ -42,6 +42,16 @@ export async function GET(req) {
         const includeEmptyTabs = ['1', 'true', 'yes'].includes(
             String(searchParams.get('include_empty_tabs') || '').toLowerCase()
         );
+        const STALE_EMPTY_TAB_MS = 2 * 60 * 60 * 1000;
+        const nowMs = Date.now();
+        const toMillis = (value) => {
+            if (!value) return null;
+            if (typeof value?.toDate === 'function') return value.toDate().getTime();
+            if (typeof value?.seconds === 'number') return value.seconds * 1000;
+            if (typeof value?._seconds === 'number') return value._seconds * 1000;
+            const parsed = new Date(value).getTime();
+            return Number.isFinite(parsed) ? parsed : null;
+        };
 
         const { businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
             req,
@@ -72,37 +82,12 @@ export async function GET(req) {
             });
         });
 
-        // 2. Optional: include empty/joinable tabs for waiter flow.
-        // This keeps newly-created tabs visible even before first order.
+        let joinableTabsDocs = [];
         if (includeEmptyTabs) {
             const joinableTabsSnap = await businessRef.collection('dineInTabs')
                 .where('status', 'in', ['active', 'inactive'])
                 .get();
-
-            joinableTabsSnap.forEach((tabDoc) => {
-                const tabData = tabDoc.data() || {};
-                const tableId = String(tabData.tableId || '').trim();
-                if (!tableId || !tableMap.has(tableId)) return;
-
-                const table = tableMap.get(tableId);
-                table.tabs[tabDoc.id] = {
-                    id: tabDoc.id,
-                    dineInTabId: tabDoc.id,
-                    tableId,
-                    tab_name: tabData.tab_name || 'Guest',
-                    pax_count: Number(tabData.pax_count || 1),
-                    status: tabData.status || 'inactive',
-                    mainStatus: tabData.status || 'inactive',
-                    orders: {},
-                    orderBatches: [],
-                    items: [],
-                    hasPending: false,
-                    hasConfirmed: false,
-                    totalAmount: Number(tabData.totalBill || 0),
-                    paymentStatus: tabData.paymentStatus || 'pending',
-                    isPaid: tabData.paymentStatus === 'paid'
-                };
-            });
+            joinableTabsDocs = joinableTabsSnap.docs;
         }
 
         // 4. Fetch all relevant orders that are not finished or rejected
@@ -119,6 +104,7 @@ export async function GET(req) {
         // ✅ Filter out cleaned orders in code (can't do in query due to Firestore limitation)
         // Structure: { tableId_tabName: { orders: [...], hasPending: bool, ... } }
         const orderGroups = new Map();
+        const activeTabIdsFromOrders = new Set();
 
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
@@ -131,6 +117,8 @@ export async function GET(req) {
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
             const status = orderData.status;
+            if (orderData.dineInTabId) activeTabIdsFromOrders.add(String(orderData.dineInTabId));
+            if (orderData.tabId) activeTabIdsFromOrders.add(String(orderData.tabId));
 
             // Get table - Try exact match first, then case-insensitive
             let table = tableMap.get(tableId);
@@ -205,6 +193,46 @@ export async function GET(req) {
                 group.pax_count = orderData.pax_count;
             }
         });
+
+        // 5.0. Optional: include fresh empty/joinable tabs for waiter flow.
+        // Stale empty tabs with no orders are ignored so old abandoned sessions do not keep seats occupied.
+        if (includeEmptyTabs) {
+            joinableTabsDocs.forEach((tabDoc) => {
+                const tabData = tabDoc.data() || {};
+                const tableId = String(tabData.tableId || '').trim();
+                if (!tableId || !tableMap.has(tableId)) return;
+
+                const tabPax = Math.max(0, Number(tabData.pax_count || 0));
+                if (tabPax <= 0) return;
+
+                const linkedToVisibleOrder = activeTabIdsFromOrders.has(String(tabDoc.id));
+                const lastActivityMs = toMillis(tabData.updatedAt) || toMillis(tabData.createdAt);
+                const staleEmptyTab = !linkedToVisibleOrder
+                    && !!lastActivityMs
+                    && (nowMs - lastActivityMs > STALE_EMPTY_TAB_MS);
+
+                if (staleEmptyTab) return;
+
+                const table = tableMap.get(tableId);
+                table.tabs[tabDoc.id] = {
+                    id: tabDoc.id,
+                    dineInTabId: tabDoc.id,
+                    tableId,
+                    tab_name: tabData.tab_name || 'Guest',
+                    pax_count: tabPax,
+                    status: tabData.status || 'inactive',
+                    mainStatus: tabData.status || 'inactive',
+                    orders: {},
+                    orderBatches: [],
+                    items: [],
+                    hasPending: false,
+                    hasConfirmed: false,
+                    totalAmount: Number(tabData.totalBill || 0),
+                    paymentStatus: tabData.paymentStatus || 'pending',
+                    isPaid: tabData.paymentStatus === 'paid'
+                };
+            });
+        }
 
         // ✅ Filter out completed tabs from dashboard
         // Check tab status in Firestore and exclude completed tabs
@@ -667,7 +695,7 @@ export async function PATCH(req) {
 
             await batch.commit();
 
-            // Close ALL dineInTabs associated with these orders
+            // Close all open dineInTabs for affected tables and sync table pax from remaining open tabs.
             try {
                 // Get all unique table IDs from the orders
                 const tableIds = [...new Set(ordersQuery.docs.map(doc => doc.data().tableId))];
@@ -675,26 +703,35 @@ export async function PATCH(req) {
                 for (const tableId of tableIds) {
                     if (!tableId) continue;
 
-                    // Find ALL active tabs for this table - close them all when clearing
                     const tabsQuery = await businessRef.collection('dineInTabs')
                         .where('tableId', '==', tableId)
-                        .where('status', '==', 'active')
                         .get();
 
-                    if (tabsQuery.empty) continue;
-
-                    // Close ALL tabs for this table (Clear Table = clear everything)
                     const tabBatch = firestore.batch();
+                    let closedCount = 0;
 
                     tabsQuery.docs.forEach(tabDoc => {
-                        tabBatch.update(tabDoc.ref, {
+                        const status = String(tabDoc.data()?.status || '').toLowerCase();
+                        if (['closed', 'completed', 'cancelled', 'rejected'].includes(status)) {
+                            return;
+                        }
+                        tabBatch.set(tabDoc.ref, {
                             status: 'closed',
-                            closedAt: FieldValue.serverTimestamp()
-                        });
+                            closedAt: FieldValue.serverTimestamp(),
+                            cleanedAt: FieldValue.serverTimestamp()
+                        }, { merge: true });
+                        closedCount++;
                     });
 
+                    tabBatch.set(businessRef.collection('tables').doc(tableId), {
+                        current_pax: 0,
+                        state: 'available',
+                        cleanedAt: FieldValue.serverTimestamp(),
+                        updatedAt: FieldValue.serverTimestamp()
+                    }, { merge: true });
+
                     await tabBatch.commit();
-                    console.log(`[API clear_tab] Closed ${tabsQuery.size} tab(s) for table ${tableId}`);
+                    console.log(`[API clear_tab] Closed ${closedCount} tab(s) for table ${tableId} and reset table pax`);
                 }
             } catch (tabError) {
                 console.warn('[API dine-in-tables] Could not close dineInTabs:', tabError.message);

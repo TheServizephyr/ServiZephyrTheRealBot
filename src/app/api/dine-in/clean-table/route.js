@@ -383,9 +383,9 @@ async function handleCleanTable(req) {
                         return sum + Math.max(0, Number(doc.data()?.pax_count || 0));
                     }, 0);
 
-                    const paxToRemove = result.pax_count || 0;
-                    const fallbackPax = Math.max(0, (tableData.current_pax || 0) - paxToRemove);
-                    const newCurrentPax = openTabsSnap.empty ? fallbackPax : recalculatedPax;
+                    // Source of truth after closing this tab is the remaining open tabs.
+                    // Subtracting from table.current_pax preserves old drift, leaving phantom seats occupied.
+                    const newCurrentPax = recalculatedPax;
 
                     await tableRef.set({
                         current_pax: newCurrentPax,

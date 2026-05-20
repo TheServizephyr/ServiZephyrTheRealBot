@@ -53,7 +53,8 @@ async function handlePaymentCaptured(paymentEntity) {
     const firestore = await getFirestore();
 
     // Extract order ID from notes
-    const firestoreOrderId = paymentEntity.notes?.firestore_order_id;
+    const notes = paymentEntity.notes || {};
+    const firestoreOrderId = notes.firestore_order_id;
 
     if (!firestoreOrderId) {
         logger.error('Missing firestore_order_id in payment notes', {
@@ -67,6 +68,15 @@ async function handlePaymentCaptured(paymentEntity) {
         razorpayPaymentId: paymentEntity.id,
         amount: paymentEntity.amount / 100 // Convert paise to rupees
     });
+
+    if (String(notes.dine_in_settlement || '').toLowerCase() === 'true') {
+        return await handleDineInSettlementCaptured({
+            firestore,
+            paymentEntity,
+            notes,
+            anchorOrderId: firestoreOrderId
+        });
+    }
 
     // Update order
     const orderRef = firestore.collection('orders').doc(firestoreOrderId);
@@ -122,6 +132,119 @@ async function handlePaymentCaptured(paymentEntity) {
     await incrementMetric(METRICS.PAYMENTS_SUCCESS);
 
     return { status: 'success', orderId: firestoreOrderId };
+}
+
+async function getBusinessRefForSettlement(firestore, restaurantId) {
+    let businessRef = firestore.collection('restaurants').doc(String(restaurantId));
+    let businessSnap = await businessRef.get();
+    if (businessSnap.exists) return businessRef;
+
+    businessRef = firestore.collection('shops').doc(String(restaurantId));
+    businessSnap = await businessRef.get();
+    if (businessSnap.exists) return businessRef;
+
+    return null;
+}
+
+async function handleDineInSettlementCaptured({ firestore, paymentEntity, notes, anchorOrderId }) {
+    const restaurantId = String(notes.restaurant_id || '').trim();
+    const dineInTabId = String(notes.dine_in_tab_id || '').trim();
+
+    if (!restaurantId || !dineInTabId) {
+        logger.error('Missing dine-in settlement metadata', {
+            anchorOrderId,
+            razorpayPaymentId: paymentEntity.id,
+            restaurantId,
+            dineInTabId
+        });
+        throw new Error('Missing dine-in settlement metadata');
+    }
+
+    const ordersById = new Map();
+    const addOrders = async (fieldName) => {
+        const snap = await firestore.collection('orders')
+            .where('restaurantId', '==', restaurantId)
+            .where('deliveryType', '==', 'dine-in')
+            .where(fieldName, '==', dineInTabId)
+            .get();
+        snap.docs.forEach((doc) => ordersById.set(doc.id, doc));
+    };
+
+    await addOrders('dineInTabId');
+    await addOrders('tabId');
+
+    if (ordersById.size === 0) {
+        logger.error('No orders found for dine-in settlement', {
+            anchorOrderId,
+            restaurantId,
+            dineInTabId
+        });
+        throw new Error('No orders found for dine-in settlement');
+    }
+
+    const paymentDetail = {
+        method: 'razorpay',
+        razorpay_payment_id: paymentEntity.id,
+        razorpay_order_id: paymentEntity.order_id,
+        status: 'success',
+        amount: paymentEntity.amount / 100,
+        scope: 'dine_in_tab',
+        timestamp: new Date()
+    };
+
+    const batch = firestore.batch();
+    const tableIds = new Set();
+    let updatedOrders = 0;
+
+    ordersById.forEach((orderDoc) => {
+        const orderData = orderDoc.data() || {};
+        const status = String(orderData.status || '').toLowerCase();
+        if (['rejected', 'cancelled', 'picked_up'].includes(status)) return;
+        if (orderData.tableId) tableIds.add(String(orderData.tableId));
+        batch.set(orderDoc.ref, {
+            paymentStatus: 'paid',
+            paymentMethod: 'razorpay',
+            paidAt: FieldValue.serverTimestamp(),
+            paymentDetails: FieldValue.arrayUnion(paymentDetail),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+        updatedOrders++;
+    });
+
+    const businessRef = await getBusinessRefForSettlement(firestore, restaurantId);
+    if (businessRef) {
+        batch.set(businessRef.collection('dineInTabs').doc(dineInTabId), {
+            paymentStatus: 'paid',
+            paymentMethod: 'razorpay',
+            paidAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        tableIds.forEach((tableId) => {
+            batch.set(businessRef.collection('tables').doc(tableId), {
+                state: 'needs_cleaning',
+                paymentReceivedAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+    }
+
+    await batch.commit();
+    await incrementMetric(METRICS.PAYMENTS_SUCCESS);
+
+    logger.info('Dine-in tab settlement captured', {
+        anchorOrderId,
+        restaurantId,
+        dineInTabId,
+        updatedOrders
+    });
+
+    return {
+        status: 'success',
+        scope: 'dine_in_tab',
+        tabId: dineInTabId,
+        updatedOrders
+    };
 }
 
 /**

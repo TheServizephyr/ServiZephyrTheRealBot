@@ -875,14 +875,46 @@ export async function PATCH(req) {
 
         // --- 3. Handle Payment Status Update ---
         if (paymentStatus && finalIdsToUpdate.length > 0) {
+            const paidDineInTables = new Set();
+            const paidDineInTabs = new Set();
+
             for (const id of finalIdsToUpdate) {
                 const orderSnap = orderMap.get(id);
-                if (!orderSnap || orderSnap.data().restaurantId !== businessId) continue;
+                const orderData = orderSnap?.data() || {};
+                if (!orderSnap || orderData.restaurantId !== businessId) continue;
 
                 const updateData = { paymentStatus };
                 if (paymentMethod) updateData.paymentMethod = paymentMethod;
                 batch.update(orderSnap.ref, updateData);
+
+                if (
+                    String(paymentStatus).toLowerCase() === 'paid' &&
+                    String(orderData.deliveryType || '').toLowerCase() === 'dine-in'
+                ) {
+                    if (orderData.tableId) paidDineInTables.add(String(orderData.tableId));
+                    const dineInTabId = String(orderData.dineInTabId || orderData.tabId || '').trim();
+                    if (dineInTabId) paidDineInTabs.add(dineInTabId);
+                }
             }
+
+            paidDineInTabs.forEach((dineInTabId) => {
+                const tabRef = businessSnap.ref.collection('dineInTabs').doc(dineInTabId);
+                batch.set(tabRef, {
+                    paymentStatus: 'paid',
+                    paymentMethod: paymentMethod || 'counter',
+                    paidAt: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+            });
+
+            paidDineInTables.forEach((tableId) => {
+                const tableRef = businessSnap.ref.collection('tables').doc(tableId);
+                batch.set(tableRef, {
+                    state: 'needs_cleaning',
+                    paymentReceivedAt: FieldValue.serverTimestamp(),
+                    updatedAt: FieldValue.serverTimestamp()
+                }, { merge: true });
+            });
         }
 
         // --- 4. Handle Order Status Update (Main Flow) ---
