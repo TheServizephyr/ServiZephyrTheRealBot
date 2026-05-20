@@ -753,15 +753,15 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
-                <form onSubmit={handleSubmit}>
-                    <DialogHeader>
+            <DialogContent className="max-h-[92dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] overflow-hidden bg-card p-4 text-foreground border-border sm:max-w-4xl sm:p-6 [&_button]:min-w-0 [&_input]:min-w-0 [&_select]:min-w-0">
+                <form onSubmit={handleSubmit} className="flex max-h-[calc(92dvh-2rem)] min-w-0 flex-col overflow-hidden sm:max-h-[calc(92dvh-3rem)]">
+                    <DialogHeader className="shrink-0 pr-8 sm:pr-0">
                         <DialogTitle>{editingItem ? (isShop ? 'Edit Product' : 'Edit Item') : (isShop ? 'Add New Product' : 'Add New Item')}</DialogTitle>
                         <DialogDescription>
                             {editingItem ? 'Update the details for this entry.' : "Fill in the details and click save when you're done."}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                    <div className="grid min-h-0 flex-1 grid-cols-1 gap-x-8 gap-y-4 overflow-y-auto overflow-x-hidden py-4 pr-1 md:grid-cols-2 sm:pr-4">
                         {/* Left Column: Basic Details */}
                         <div className="space-y-4">
                             <div className="grid grid-cols-4 items-center gap-4">
@@ -919,7 +919,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
 
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
-                                <div className="col-span-3 flex items-center gap-4">
+                                <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
                                     <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
                                         {item.imageUrl ? (
                                             <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
@@ -933,15 +933,15 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     </Button>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-end gap-4 pt-4">
+                            <div className="flex flex-wrap items-center justify-start gap-3 pt-4 sm:justify-end sm:gap-4">
                                 {!isShop && (
-                                    <div className="flex items-center space-x-2">
+                                    <div className="flex min-w-[8rem] items-center space-x-2">
                                         <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
                                         <Label htmlFor="is-veg">Vegetarian</Label>
                                     </div>
                                 )}
                                 {!isShop && (
-                                    <div className="flex items-center space-x-2">
+                                    <div className="flex min-w-[8rem] items-center space-x-2">
                                         <Switch
                                             id="is-dinein-exclusive"
                                             checked={item.isDineInExclusive === true}
@@ -950,7 +950,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                         <Label htmlFor="is-dinein-exclusive">Dine-In Only</Label>
                                     </div>
                                 )}
-                                <div className="flex items-center space-x-2">
+                                <div className="flex min-w-[8rem] items-center space-x-2">
                                     <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
                                     <Label htmlFor="is-available">Available</Label>
                                 </div>
@@ -962,14 +962,14 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             <div>
                                 <Label>Pricing</Label>
                                 {!isShop && (
-                                    <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
+                                    <div className="mt-2 grid grid-cols-1 gap-2 rounded-lg bg-muted p-1 sm:grid-cols-2">
                                         <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
                                         <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
                                     </div>
                                 )}
                                 <div className="mt-3 space-y-3">
                                     {(isShop || pricingType === 'single') ? (
-                                        <div className="flex items-center gap-2">
+                                        <div className="grid grid-cols-[minmax(0,7rem)_auto_minmax(0,1fr)] items-center gap-2">
                                             <Label className="w-24">{isShop ? 'Selling Price' : 'Base Price'}</Label>
                                             <IndianRupee className="text-muted-foreground" size={16} />
                                             <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
@@ -977,7 +977,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     ) : (
                                         <>
                                             {item.portions.map((portion, index) => (
-                                                <div key={index} className="flex items-center gap-2">
+                                                <div key={index} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(5rem,6rem)_2.5rem] items-center gap-2">
                                                     <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required />
                                                     <IndianRupee className="text-muted-foreground" size={16} />
                                                     <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required />
@@ -998,12 +998,12 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 <div className="mt-2 space-y-4">
                                     {item.addOnGroups.map((group, groupIndex) => (
                                         <div key={groupIndex} className="p-3 bg-muted/50 border border-border rounded-lg space-y-3">
-                                            <div className="flex items-center gap-2">
+                                            <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-2">
                                                 <input value={group.title} onChange={(e) => handleAddOnGroupChange(groupIndex, 'title', e.target.value)} placeholder="Group Title (e.g., Breads)" className="flex-1 p-2 border rounded-md bg-input border-border text-foreground font-semibold" />
                                                 <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnGroup(groupIndex)}><Trash2 size={16} /></Button>
                                             </div>
                                             {group.options.map((opt, optIndex) => (
-                                                <div key={optIndex} className="flex items-center gap-2">
+                                                <div key={optIndex} className="grid grid-cols-[minmax(0,1fr)_minmax(5rem,6rem)_2.5rem] items-center gap-2">
                                                     <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-input border-border" />
                                                     <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" />
                                                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnOption(groupIndex, optIndex)} disabled={group.options.length <= 1}><Trash2 size={16} /></Button>
@@ -1021,11 +1021,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             </div>}
                         </div>
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="shrink-0 gap-2 sm:gap-0">
                         <DialogClose asChild>
-                            <Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button>
+                            <Button type="button" variant="secondary" disabled={isSaving} className="w-full sm:w-auto">Cancel</Button>
                         </DialogClose>
-                        <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        <Button type="submit" disabled={isSaving} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
                             {isSaving ? (
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                             ) : (
