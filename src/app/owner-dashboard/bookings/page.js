@@ -282,12 +282,13 @@ const filterWaitlistHistoryEntries = (entries = [], searchQuery = '') => {
 
 const formatHistoryStatus = (status) => String(status || '').replace(/_/g, ' ').toUpperCase();
 
-const escapeExcelHtml = (value) => String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+const CSV_FORMULA_PREFIX_PATTERN = /^[=+\-@]/;
+
+const escapeCsvCell = (value) => {
+    const raw = String(value ?? '');
+    const safeValue = CSV_FORMULA_PREFIX_PATTERN.test(raw.trimStart()) ? `'${raw}` : raw;
+    return `"${safeValue.replace(/"/g, '""')}"`;
+};
 
 const sanitizeExportFilePart = (value) => (
     String(value || 'service-history')
@@ -297,23 +298,12 @@ const sanitizeExportFilePart = (value) => (
         .toLowerCase() || 'service-history'
 );
 
-const downloadHistoryExcel = ({ rows, fileName }) => {
+const downloadHistoryCsv = ({ rows, fileName }) => {
     const headers = ['Type', 'Name', 'Phone', 'Token', 'Pax', 'Status', 'Time', 'Reference ID'];
-    const tableRows = rows.map((row) => (
-        `<tr>${row.map((cell) => `<td style='mso-number-format:"\\@";'>${escapeExcelHtml(cell)}</td>`).join('')}</tr>`
-    )).join('');
-    const workbookHtml = `
-        <html>
-            <head><meta charset="UTF-8" /></head>
-            <body>
-                <table border="1">
-                    <thead><tr>${headers.map((header) => `<th>${escapeExcelHtml(header)}</th>`).join('')}</tr></thead>
-                    <tbody>${tableRows}</tbody>
-                </table>
-            </body>
-        </html>
-    `;
-    const blob = new Blob(['\ufeff', workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const csv = [headers, ...rows]
+        .map((row) => row.map(escapeCsvCell).join(','))
+        .join('\r\n');
+    const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1109,11 +1099,11 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
             const rangeName = historyDateRange.startDate === historyDateRange.endDate
                 ? historyDateRange.startDate
                 : `${historyDateRange.startDate}-to-${historyDateRange.endDate}`;
-            downloadHistoryExcel({
+            downloadHistoryCsv({
                 rows,
-                fileName: `${restaurantName}-history-${rangeName}.xls`,
+                fileName: `${restaurantName}-history-${rangeName}.csv`,
             });
-            toast({ title: 'Export Ready', description: `${rows.length} history rows exported for Excel.` });
+            toast({ title: 'Export Ready', description: `${rows.length} history rows exported for Excel CSV.` });
         } catch (error) {
             toast({ title: 'Export Error', description: error.message, variant: 'destructive' });
         } finally {
