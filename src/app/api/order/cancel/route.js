@@ -6,6 +6,7 @@ import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { applyInventoryMovementTransaction, isInventoryManagedBusinessType } from '@/lib/server/inventory';
 import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
+import { verifyScopedAuthToken } from '@/lib/public-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,24 @@ async function getBusinessRef(firestore, restaurantId) {
     return null;
 }
 
+async function isValidCustomerCancelToken(firestore, req, orderId, orderData, trackingToken) {
+    const safeToken = String(trackingToken || '').trim();
+    if (!safeToken || safeToken !== String(orderData.trackingToken || '').trim()) {
+        return false;
+    }
+
+    const tokenCheck = await verifyScopedAuthToken(firestore, safeToken, {
+        allowedTypes: ['tracking', 'whatsapp'],
+        requiredScopes: ['track_orders'],
+        subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
+        orderId,
+        req,
+        auditContext: 'order_cancel',
+    });
+
+    return tokenCheck.valid === true || ['not_found', 'expired'].includes(tokenCheck.reason);
+}
+
 export async function POST(req) {
     console.log('[API /order/cancel] POST request received');
 
@@ -39,7 +58,9 @@ export async function POST(req) {
             cancelledBy, // 'owner' or 'customer'
             reason = 'No reason provided',
             dineInTabId,
-            restaurantId
+            restaurantId,
+            trackingToken,
+            token
         } = body;
 
         if (!orderId) {
@@ -49,9 +70,6 @@ export async function POST(req) {
         if (!cancelledBy || !['owner', 'customer'].includes(cancelledBy)) {
             return NextResponse.json({ message: 'Invalid cancelledBy value. Must be "owner" or "customer".' }, { status: 400 });
         }
-
-        // 🔐 AUTH & OWNERSHIP CHECK
-        const uid = await verifyAndGetUid(req);
 
         // Fetch order for verification
         const orderRef = firestore.collection('orders').doc(orderId);
@@ -64,11 +82,27 @@ export async function POST(req) {
         const orderData = orderSnap.data();
         const effectiveRestaurantId = restaurantId || orderData.restaurantId;
         const effectiveDineInTabId = dineInTabId || orderData.dineInTabId;
+        const requestTrackingToken = trackingToken || token;
+
+        // 🔐 AUTH & OWNERSHIP CHECK
+        let uid = null;
+        if (cancelledBy === 'customer') {
+            try {
+                uid = await verifyAndGetUid(req);
+            } catch {
+                // Dine-in QR customers can be public tracking-token users.
+            }
+        } else {
+            uid = await verifyAndGetUid(req);
+        }
 
         // Validate Ownership
         if (cancelledBy === 'customer') {
-            if (uid !== orderData.userId && uid !== orderData.customerId) {
-                console.warn(`[API /order/cancel] Unauthorized cancellation attempt: User ${uid} tried cancelling Order ${orderId}`);
+            const isOwnerByUid = uid && (uid === orderData.userId || uid === orderData.customerId);
+            const isOwnerByToken = await isValidCustomerCancelToken(firestore, req, orderId, orderData, requestTrackingToken);
+
+            if (!isOwnerByUid && !isOwnerByToken) {
+                console.warn(`[API /order/cancel] Unauthorized cancellation attempt: User ${uid || 'public'} tried cancelling Order ${orderId}`);
                 return NextResponse.json({ message: 'Unauthorized. You do not own this order.' }, { status: 403 });
             }
         } else if (cancelledBy === 'owner') {
@@ -133,7 +167,7 @@ export async function POST(req) {
                     businessRef,
                     items: orderData.items || [],
                     mode: 'restore',
-                    actorId: uid,
+                    actorId: uid || orderData.userId || orderData.customerId || orderData.customerPhone || 'customer',
                     actorRole: cancelledBy,
                     referenceId: orderId,
                     referenceType: 'order_cancel',
@@ -210,7 +244,7 @@ export async function POST(req) {
                         if (orderData.tableId) {
                             const activeTabsSnap = await businessRef.collection('dineInTabs')
                                 .where('tableId', '==', orderData.tableId)
-                                .where('status', '==', 'active')
+                                .where('status', 'in', ['active', 'inactive'])
                                 .get();
                             const recalculatedPax = activeTabsSnap.docs.reduce((sum, doc) => sum + (doc.data()?.pax_count || 0), 0);
                             await businessRef.collection('tables').doc(orderData.tableId).set({

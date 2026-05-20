@@ -549,14 +549,17 @@ function DineInTrackingContent() {
         setCancellingId(batchToCancel);
         setCancelModalOpen(false); // Close modal immediately
         try {
+            const { restaurantId, tableId, tabId, trackingToken } = getDineInContext();
             const res = await fetch('/api/order/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     orderId: batchToCancel,
                     cancelledBy: 'customer',
-                    restaurantId: orderData.restaurant?.id,
-                    dineInTabId: orderData.order?.dineInTabId
+                    restaurantId,
+                    tableId,
+                    dineInTabId: tabId,
+                    trackingToken
                 })
             });
             const data = await res.json();

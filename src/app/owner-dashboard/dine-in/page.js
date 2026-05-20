@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
-import { doc } from 'firebase/firestore';
+import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -2652,6 +2652,92 @@ const DineInPageContent = () => {
             if (!isManualRefresh) setLoading(false);
         }
     }, [businessType, dineInSnapshotCacheKey, handleApiCall, persistDineInSnapshot, readLocalJson]);
+
+    const realtimeRefreshTimerRef = useRef(null);
+
+    useEffect(() => {
+        if (businessType !== 'restaurant' || !restaurantDetails?.id) return;
+
+        const scheduleRefresh = () => {
+            if (realtimeRefreshTimerRef.current) {
+                window.clearTimeout(realtimeRefreshTimerRef.current);
+            }
+
+            realtimeRefreshTimerRef.current = window.setTimeout(() => {
+                if (document.visibilityState === 'visible') {
+                    void fetchData(true);
+                }
+            }, 500);
+        };
+
+        const makeSnapshotHandler = () => {
+            let isInitialSnapshot = true;
+            return () => {
+                if (isInitialSnapshot) {
+                    isInitialSnapshot = false;
+                    return;
+                }
+                scheduleRefresh();
+            };
+        };
+
+        const unsubscribers = [];
+
+        try {
+            const dineInOrderStatuses = [
+                'awaiting_payment',
+                'pending',
+                'accepted',
+                'confirmed',
+                'preparing',
+                'ready',
+                'ready_for_pickup',
+                'pay_at_counter',
+                'delivered'
+            ];
+            const ordersQuery = query(
+                collection(db, 'orders'),
+                where('restaurantId', '==', restaurantDetails.id),
+                where('deliveryType', '==', 'dine-in'),
+                where('status', 'in', dineInOrderStatuses),
+                limit(200)
+            );
+
+            unsubscribers.push(onSnapshot(
+                ordersQuery,
+                makeSnapshotHandler(),
+                (error) => console.warn('[Dine-In Dashboard] Realtime orders listener failed:', error?.message || error)
+            ));
+        } catch (error) {
+            console.warn('[Dine-In Dashboard] Could not start realtime orders listener:', error?.message || error);
+        }
+
+        try {
+            const tabsQuery = query(
+                collection(db, 'restaurants', restaurantDetails.id, 'dineInTabs'),
+                where('status', 'in', ['active', 'inactive']),
+                limit(200)
+            );
+
+            unsubscribers.push(onSnapshot(
+                tabsQuery,
+                makeSnapshotHandler(),
+                (error) => console.warn('[Dine-In Dashboard] Realtime tabs listener failed:', error?.message || error)
+            ));
+        } catch (error) {
+            console.warn('[Dine-In Dashboard] Could not start realtime tabs listener:', error?.message || error);
+        }
+
+        return () => {
+            if (realtimeRefreshTimerRef.current) {
+                window.clearTimeout(realtimeRefreshTimerRef.current);
+                realtimeRefreshTimerRef.current = null;
+            }
+            unsubscribers.forEach((unsubscribe) => {
+                if (typeof unsubscribe === 'function') unsubscribe();
+            });
+        };
+    }, [businessType, fetchData, restaurantDetails?.id]);
 
     const fetchDineInOnlyMenu = useCallback(async () => {
         if (businessType !== 'restaurant') {
