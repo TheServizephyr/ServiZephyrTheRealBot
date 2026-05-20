@@ -22,10 +22,11 @@ import { useUser } from '@/firebase';
 import { validatePriceChange } from '@/lib/priceValidation';
 import PriceChangeConfirmationDialog from '@/components/PriceChangeConfirmationDialog';
 import ConfirmationDialog from '@/components/ConfirmationDialog';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
+import { Progress } from '@/components/ui/progress';
 
 export const dynamic = 'force-dynamic';
 
@@ -426,9 +427,15 @@ const MenuCategory = ({
 const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog, businessType = 'restaurant' }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [isImageUploading, setIsImageUploading] = useState(false);
+    const [imageUploadProgress, setImageUploadProgress] = useState(0);
+    const [imagePreviewUrl, setImagePreviewUrl] = useState('');
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
     const fileInputRef = useRef(null);
+    const uploadTaskRef = useRef(null);
+    const uploadTokenRef = useRef(0);
+    const objectUrlRef = useRef('');
     const [pricingType, setPricingType] = useState('portions');
     const isShop = isStoreBusinessType(businessType);
 
@@ -446,8 +453,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     useEffect(() => {
         if (isOpen) {
             setIsSaving(false);
+            setIsImageUploading(false);
+            setImageUploadProgress(0);
             setNewCategory('');
             setShowNewCategory(false);
+            uploadTaskRef.current = null;
+            uploadTokenRef.current += 1;
+            if (objectUrlRef.current) {
+                URL.revokeObjectURL(objectUrlRef.current);
+                objectUrlRef.current = '';
+            }
             if (editingItem) {
                 if (isShop) {
                     setPricingType('single');
@@ -478,6 +493,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     addOnGroups: isShop ? [] : (editingItem.addOnGroups || []),
                     isDineInExclusive: editingItem.isDineInExclusive === true,
                 });
+                setImagePreviewUrl(editingItem.imageUrl || '');
             } else {
                 setPricingType(isShop ? 'single' : 'portions');
                 setItem({
@@ -503,8 +519,19 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     addOnGroups: isShop ? [] : [],
                     isDineInExclusive: false,
                 });
+                setImagePreviewUrl('');
             }
         } else {
+            uploadTaskRef.current?.cancel?.();
+            uploadTaskRef.current = null;
+            uploadTokenRef.current += 1;
+            setIsImageUploading(false);
+            setImageUploadProgress(0);
+            setImagePreviewUrl('');
+            if (objectUrlRef.current) {
+                URL.revokeObjectURL(objectUrlRef.current);
+                objectUrlRef.current = '';
+            }
             setItem(null);
         }
     }, [editingItem, isOpen, isShop, sortedCategories]);
@@ -547,9 +574,80 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         }
     };
 
+    const uploadMenuItemImage = (fileToUpload, activeToken) => {
+        return new Promise((resolve, reject) => {
+            const uid = auth.currentUser?.uid;
+            if (!uid) {
+                reject(new Error("User not authenticated"));
+                return;
+            }
+
+            const timestamp = Date.now();
+            const safeName = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_');
+            const path = `menu-items/${uid}/${timestamp}-${safeName}`;
+            const fileRef = storageRef(storage, path);
+            const task = uploadBytesResumable(fileRef, fileToUpload, {
+                contentType: fileToUpload.type || 'image/jpeg'
+            });
+
+            uploadTaskRef.current = task;
+            task.on(
+                'state_changed',
+                (snapshot) => {
+                    if (uploadTokenRef.current !== activeToken) return;
+                    const percent = snapshot.totalBytes > 0
+                        ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+                        : 0;
+                    setImageUploadProgress(Math.max(1, Math.min(100, percent)));
+                },
+                reject,
+                async () => {
+                    try {
+                        const downloadURL = await getDownloadURL(task.snapshot.ref);
+                        resolve(downloadURL);
+                    } catch (error) {
+                        reject(error);
+                    }
+                }
+            );
+        });
+    };
+
+    const handleRemoveImage = () => {
+        uploadTaskRef.current?.cancel?.();
+        uploadTaskRef.current = null;
+        uploadTokenRef.current += 1;
+        setIsImageUploading(false);
+        setImageUploadProgress(0);
+        handleChange('imageUrl', '');
+        setImagePreviewUrl('');
+        if (objectUrlRef.current) {
+            URL.revokeObjectURL(objectUrlRef.current);
+            objectUrlRef.current = '';
+        }
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
+            const activeToken = uploadTokenRef.current + 1;
+            uploadTokenRef.current = activeToken;
+            uploadTaskRef.current?.cancel?.();
+            uploadTaskRef.current = null;
+
+            if (objectUrlRef.current) {
+                URL.revokeObjectURL(objectUrlRef.current);
+            }
+            objectUrlRef.current = URL.createObjectURL(file);
+            setImagePreviewUrl(objectUrlRef.current);
+            setIsImageUploading(true);
+            setImageUploadProgress(1);
+            handleChange('imageUrl', '');
+
+            let fileToUpload = file;
             try {
                 // Compress image before uploading
                 const compressionOptions = {
@@ -562,41 +660,44 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 const compressedFile = await imageCompression(file, compressionOptions);
                 console.log(`Original menu item image size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
                 console.log(`Compressed menu item image size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+                fileToUpload = compressedFile;
+            } catch (compressionError) {
+                console.warn('Menu item image compression failed, uploading original file:', compressionError);
+            }
 
-                const uid = auth.currentUser?.uid;
-                if (!uid) throw new Error("User not authenticated");
+            if (uploadTokenRef.current !== activeToken) return;
 
-                const timestamp = Date.now();
-                const safeName = compressedFile.name.replace(/[^a-zA-Z0-9.]/g, '_');
-                const path = `menu-items/${uid}/${timestamp}-${safeName}`;
-                const fileRef = storageRef(storage, path);
-                const snapshot = await uploadBytes(fileRef, compressedFile, {
-                    contentType: compressedFile.type || 'image/jpeg'
-                });
-                const downloadURL = await getDownloadURL(snapshot.ref);
+            try {
+                const downloadURL = await uploadMenuItemImage(fileToUpload, activeToken);
+                if (uploadTokenRef.current !== activeToken) return;
                 handleChange('imageUrl', downloadURL);
-            } catch (error) {
-                console.error('Menu item image compression failed:', error);
-                try {
-                    const uid = auth.currentUser?.uid;
-                    if (!uid) throw new Error("User not authenticated");
-                    const timestamp = Date.now();
-                    const safeName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-                    const path = `menu-items/${uid}/${timestamp}-${safeName}`;
-                    const fileRef = storageRef(storage, path);
-                    const snapshot = await uploadBytes(fileRef, file, {
-                        contentType: file.type || 'image/jpeg'
-                    });
-                    const downloadURL = await getDownloadURL(snapshot.ref);
-                    handleChange('imageUrl', downloadURL);
-                } catch (uploadError) {
-                    console.error('Menu item image upload failed:', uploadError);
-                    handleChange('imageUrl', '');
-                    showInfoDialog({
-                        isOpen: true,
-                        title: 'Upload Failed',
-                        message: `Could not upload image: ${uploadError.message}. Please try again.`
-                    });
+                setImagePreviewUrl(downloadURL);
+                if (objectUrlRef.current) {
+                    URL.revokeObjectURL(objectUrlRef.current);
+                    objectUrlRef.current = '';
+                }
+            } catch (uploadError) {
+                if (uploadError?.code === 'storage/canceled') return;
+                console.error('Menu item image upload failed:', uploadError);
+                handleChange('imageUrl', '');
+                setImagePreviewUrl('');
+                if (objectUrlRef.current) {
+                    URL.revokeObjectURL(objectUrlRef.current);
+                    objectUrlRef.current = '';
+                }
+                showInfoDialog({
+                    isOpen: true,
+                    title: 'Upload Failed',
+                    message: `Could not upload image: ${uploadError.message}. Please try again.`
+                });
+            } finally {
+                if (uploadTokenRef.current === activeToken) {
+                    uploadTaskRef.current = null;
+                    setIsImageUploading(false);
+                    setImageUploadProgress(0);
+                }
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
                 }
             }
         }
@@ -640,6 +741,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!item || isSaving) return;
+        if (isImageUploading) {
+            showInfoDialog({ isOpen: true, title: 'Upload In Progress', message: 'Please wait for the image upload to finish before saving this item.' });
+            return;
+        }
 
         const finalCategoryId = showNewCategory ? newCategory.trim().toLowerCase().replace(/\s+/g, '-') : item.categoryId;
         const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
@@ -920,17 +1025,37 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
                                 <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-3 sm:gap-4">
-                                    <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
-                                        {item.imageUrl ? (
-                                            <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
-                                        ) : (
-                                            <ImageIcon size={24} className="text-muted-foreground" />
+                                    <div className="space-y-2">
+                                        <div className="relative h-20 w-20 overflow-hidden rounded-md border-2 border-dashed border-border bg-muted flex items-center justify-center">
+                                            {imagePreviewUrl ? (
+                                                <Image src={imagePreviewUrl} alt={item.name || 'Item image'} layout="fill" objectFit="cover" />
+                                            ) : (
+                                                <ImageIcon size={24} className="text-muted-foreground" />
+                                            )}
+                                            {isImageUploading && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-background/65 text-xs font-semibold text-foreground">
+                                                    {imageUploadProgress}%
+                                                </div>
+                                            )}
+                                        </div>
+                                        {isImageUploading && (
+                                            <Progress value={imageUploadProgress} className="h-1.5 w-20" />
                                         )}
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-                                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                        <Upload size={16} className="mr-2" />Upload
-                                    </Button>
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isImageUploading}>
+                                            <Upload size={16} className="mr-2" />
+                                            {isImageUploading ? 'Uploading...' : (imagePreviewUrl ? 'Replace' : 'Upload')}
+                                        </Button>
+                                        {imagePreviewUrl ? (
+                                            <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" onClick={handleRemoveImage} disabled={isSaving}>
+                                                <Trash2 size={16} className="mr-2" />Remove
+                                            </Button>
+                                        ) : (
+                                            null
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center justify-start gap-3 pt-4 sm:justify-end sm:gap-4">
@@ -1025,11 +1150,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                         <DialogClose asChild>
                             <Button type="button" variant="secondary" disabled={isSaving} className="w-full sm:w-auto">Cancel</Button>
                         </DialogClose>
-                        <Button type="submit" disabled={isSaving} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
+                        <Button type="submit" disabled={isSaving || isImageUploading} className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto">
                             {isSaving ? (
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                             ) : (
-                                editingItem ? 'Save Changes' : 'Save Item'
+                                isImageUploading ? `Uploading ${imageUploadProgress}%` : (editingItem ? 'Save Changes' : 'Save Item')
                             )}
                         </Button>
                     </DialogFooter>
