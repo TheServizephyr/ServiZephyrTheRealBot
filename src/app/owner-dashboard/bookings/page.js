@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3, Plus, BookOpen } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2, ListOrdered, PhoneCall, MessageCircle, QrCode, Download, Save, MapPin, History, Settings, ScanLine, BarChart3, Plus, BookOpen, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -402,6 +402,10 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
     }, [booking.bookingDateTime]);
 
     const canBeCompleted = bookingDate ? isPast(bookingDate) : true;
+    const occasionText = String(booking.occasion || booking.notes || '').trim();
+    const bookedAtText = createdAtDate
+        ? `Booked ${formatDistanceToNow(createdAtDate, { addSuffix: true })}`
+        : 'Booked time unavailable';
 
     return (
         <Card className={cn("overflow-hidden border-border/50 bg-muted/5 hover:bg-muted/10 transition-colors border-l-4", booking.status === 'confirmed' ? "border-l-green-500" : booking.status === 'pending' ? "border-l-yellow-500" : "border-l-muted")}>
@@ -422,20 +426,35 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
                     <div className="flex items-center gap-1"><CalendarClock size={12} /> {formatDateTime(booking.bookingDateTime)}</div>
                 </div>
 
-                {booking.status === 'pending' ? (
+                {occasionText && (
+                    <div
+                        className="flex min-w-0 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[10px] font-medium text-muted-foreground"
+                        title={occasionText}
+                    >
+                        <Sparkles size={12} className="shrink-0 text-primary" />
+                        <span className="truncate">Occasion: {occasionText}</span>
+                    </div>
+                )}
+
+                {booking.status === 'pending' && (
                     <div className="grid grid-cols-2 gap-2 pt-2">
                         <Button variant="outline" size="sm" className="h-8 border-green-500/50 text-green-500 hover:bg-green-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'confirmed')}>
                             <Check size={14} className="mr-1" /> Confirm
                         </Button>
                         <Button variant="outline" size="sm" className="h-8 border-red-500/50 text-red-500 hover:bg-red-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
-                            <X size={14} className="mr-1" /> Cancel
+                            <X size={14} className="mr-1" /> Reject
                         </Button>
                     </div>
-                ) : (
-                    <div className="flex justify-between items-center pt-1 mt-1 border-t border-border/50">
-                        <span className="text-[9px] text-muted-foreground font-medium italic">
-                            {createdAtDate && `Booked ${formatDistanceToNow(createdAtDate, { addSuffix: true })}`}
-                        </span>
+                )}
+
+                <div className={cn(
+                    "flex items-center pt-1 mt-1 border-t border-border/50",
+                    booking.status === 'pending' ? "justify-start" : "justify-between"
+                )}>
+                    <span className="text-[9px] text-muted-foreground font-medium italic">
+                        {bookedAtText}
+                    </span>
+                    {booking.status !== 'pending' && (
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" className="h-7 w-7 p-0 hover:bg-muted/20">
@@ -457,8 +476,8 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                    </div>
-                )}
+                    )}
+                </div>
             </CardContent>
         </Card>
     );
@@ -2510,19 +2529,36 @@ function BookingsPageContent() {
         return url.toString();
     };
 
+    const getBookingsApiUrl = () => {
+        const url = new URL('/api/owner/bookings', window.location.origin);
+        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
+        return url.toString();
+    };
+
     const handleUpdateStatus = async (bookingId, status) => {
         try {
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/bookings', {
+            const res = await fetch(getBookingsApiUrl(), {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ bookingId, status }),
             });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.message || `Failed to update booking to ${status}.`);
+            }
             if (res.ok) {
-                setInfoDialog({ isOpen: true, title: 'Success', message: `Booking ${status}.` });
-                fetchBookings(true);
+                const messageParts = [data.message || `Booking ${status}.`];
+                if (data.whatsappSent) {
+                    messageParts.push('Customer WhatsApp message sent.');
+                } else if (data.whatsappWarning) {
+                    messageParts.push(data.whatsappWarning);
+                }
+                setInfoDialog({ isOpen: true, title: 'Success', message: messageParts.join(' ') });
+                void fetchBookings(true);
             }
         } catch (err) { setInfoDialog({ isOpen: true, title: 'Error', message: err.message }); }
     };
