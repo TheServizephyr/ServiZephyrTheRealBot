@@ -1,7 +1,6 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
-import { sendSystemMessage } from '@/lib/whatsapp';
 
 function assertRestaurantCollection(collectionName) {
     if (collectionName !== 'restaurants') {
@@ -12,103 +11,24 @@ function assertRestaurantCollection(collectionName) {
     }
 }
 
-function toDate(value) {
-    if (!value) return null;
-    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-    if (typeof value?.toDate === 'function') {
-        const date = value.toDate();
-        return Number.isNaN(date.getTime()) ? null : date;
-    }
-    const seconds = value?._seconds || value?.seconds;
-    if (seconds) {
-        const date = new Date(seconds * 1000);
-        return Number.isNaN(date.getTime()) ? null : date;
-    }
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatBookingDateForMessage(value) {
-    const date = toDate(value);
-    if (!date) return 'the selected time';
-    return new Intl.DateTimeFormat('en-IN', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: 'Asia/Kolkata',
-    }).format(date);
-}
-
-function normalizePhoneForWhatsApp(value) {
-    const digits = String(value || '').replace(/\D/g, '');
-    const lastTen = digits.slice(-10);
-    if (/^\d{10}$/.test(lastTen)) return `91${lastTen}`;
-    if (/^\d{11,15}$/.test(digits)) return digits;
-    return '';
-}
-
-function truncateText(value, maxLength = 140) {
-    const text = String(value || '').trim().replace(/\s+/g, ' ');
-    if (text.length <= maxLength) return text;
-    return `${text.slice(0, maxLength - 3).trim()}...`;
-}
-
 function getCustomerNotificationTone(status, previousStatus) {
     if (status === 'confirmed') {
         return {
-            message: 'Your table booking has been approved.',
-            preview: 'Booking approved',
             responseMessage: 'Booking approved.',
         };
     }
     if (status === 'cancelled' && previousStatus === 'pending') {
         return {
-            message: 'Your table booking request has been rejected.',
-            preview: 'Booking rejected',
             responseMessage: 'Booking rejected.',
         };
     }
     if (status === 'cancelled') {
         return {
-            message: 'Your table booking has been cancelled.',
-            preview: 'Booking cancelled',
             responseMessage: 'Booking cancelled.',
         };
     }
     return {
-        message: `Your table booking status is now ${status}.`,
-        preview: `Booking ${status}`,
         responseMessage: `Booking marked as ${status}.`,
-    };
-}
-
-function buildBookingStatusMessage({ booking, status, previousStatus }) {
-    const tone = getCustomerNotificationTone(status, previousStatus);
-    const customerName = truncateText(booking.customerName || 'there', 80);
-    const guestCount = Math.max(1, Number(booking.partySize || 1));
-    const occasion = truncateText(booking.occasion || booking.notes || '', 120);
-    const lines = [
-        `Hi ${customerName},`,
-        tone.message,
-        '',
-        `Date & time: ${formatBookingDateForMessage(booking.bookingDateTime)}`,
-        `Guests: ${guestCount}`,
-    ];
-
-    if (occasion) {
-        lines.push(`Occasion: ${occasion}`);
-    }
-
-    lines.push(
-        '',
-        status === 'confirmed'
-            ? 'Please arrive on time. We look forward to hosting you.'
-            : 'Please contact the restaurant if you need help with another slot.'
-    );
-
-    return {
-        text: lines.join('\n'),
-        preview: `${tone.preview} for ${formatBookingDateForMessage(booking.bookingDateTime)}`,
-        responseMessage: tone.responseMessage,
     };
 }
 
@@ -276,7 +196,7 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName, businessData } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         assertRestaurantCollection(collectionName);
         const { bookingId, status } = await req.json();
 
@@ -308,44 +228,10 @@ export async function PATCH(req) {
 
         await bookingRef.update(updates);
 
-        const notification = buildBookingStatusMessage({ booking: bookingData, status, previousStatus });
-        let whatsappSent = false;
-        let whatsappWarning = null;
-
-        if (['confirmed', 'cancelled'].includes(status) && previousStatus !== status) {
-            const customerPhoneWithCode = normalizePhoneForWhatsApp(bookingData.customerPhone);
-            const botPhoneNumberId = String(businessData?.botPhoneNumberId || '').trim();
-
-            if (!customerPhoneWithCode) {
-                whatsappWarning = 'Customer WhatsApp message was not sent because the phone number is invalid.';
-            } else if (!botPhoneNumberId) {
-                whatsappWarning = 'Customer WhatsApp message was not sent because the restaurant bot number is not configured.';
-            } else {
-                try {
-                    await sendSystemMessage(
-                        customerPhoneWithCode,
-                        notification.text,
-                        botPhoneNumberId,
-                        businessId,
-                        businessData?.name || 'ServiZephyr',
-                        collectionName,
-                        {
-                            customerName: bookingData.customerName || null,
-                            conversationPreview: notification.preview,
-                        }
-                    );
-                    whatsappSent = true;
-                } catch (notifyError) {
-                    console.warn('[Owner Bookings] Failed to notify customer about booking status:', notifyError?.message || notifyError);
-                    whatsappWarning = 'Booking updated, but customer WhatsApp message could not be sent.';
-                }
-            }
-        }
+        const notification = getCustomerNotificationTone(status, previousStatus);
 
         return NextResponse.json({
             message: notification.responseMessage,
-            whatsappSent,
-            whatsappWarning,
         }, { status: 200 });
 
     } catch (error) {

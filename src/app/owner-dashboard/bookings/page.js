@@ -370,6 +370,60 @@ const formatDateTime = (dateValue) => {
     return format(date, "dd MMM, yyyy 'at' hh:mm a");
 };
 
+const getWaMePhoneDigits = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    const phoneDigits = digits.slice(-10);
+    return /^\d{10}$/.test(phoneDigits) ? phoneDigits : '';
+};
+
+const truncateMessagePart = (value, maxLength = 120) => {
+    const text = String(value || '').trim().replace(/\s+/g, ' ');
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength - 3).trim()}...`;
+};
+
+const buildBookingStatusWhatsAppUrl = (booking, status, restaurantName) => {
+    const phoneDigits = getWaMePhoneDigits(booking?.customerPhone);
+    if (!phoneDigits) return '';
+
+    const safeRestaurantName = truncateMessagePart(restaurantName || 'the restaurant', 80);
+    const customerName = truncateMessagePart(booking?.customerName || 'there', 80);
+    const guestCount = Math.max(1, Number(booking?.partySize || 1));
+    const guestCountText = `${guestCount} ${guestCount === 1 ? 'guest' : 'guests'}`;
+    const occasion = truncateMessagePart(booking?.occasion || booking?.notes || '', 120);
+    const previousStatus = String(booking?.status || '').trim().toLowerCase();
+    const isPendingReject = status === 'cancelled' && previousStatus === 'pending';
+    const statusLine = status === 'confirmed'
+        ? `Your table booking at ${safeRestaurantName} has been approved.`
+        : isPendingReject
+            ? `Sorry, your table booking request at ${safeRestaurantName} has been rejected.`
+            : `Your table booking at ${safeRestaurantName} has been cancelled.`;
+
+    const lines = [
+        `Hi ${customerName},`,
+        '',
+        statusLine,
+        '',
+        `Date & time: ${formatDateTime(booking?.bookingDateTime)}`,
+        `Guests: ${guestCountText}`,
+    ];
+
+    if (occasion) {
+        lines.push(`Occasion: ${occasion}`);
+    }
+
+    lines.push(
+        '',
+        status === 'confirmed'
+            ? 'Please arrive on time. We look forward to hosting you.'
+            : 'Please contact the restaurant if you need help with another slot.',
+        '',
+        'Thank you!'
+    );
+
+    return `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(lines.join('\n'))}`;
+};
+
 const formatCountdown = (totalSeconds) => {
     const safeSeconds = Math.max(0, Number(totalSeconds || 0));
     const mins = Math.floor(safeSeconds / 60);
@@ -438,10 +492,10 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
 
                 {booking.status === 'pending' && (
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                        <Button variant="outline" size="sm" className="h-8 border-green-500/50 text-green-500 hover:bg-green-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'confirmed')}>
+                        <Button variant="outline" size="sm" className="h-8 border-green-500/50 text-green-500 hover:bg-green-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'confirmed', booking)}>
                             <Check size={14} className="mr-1" /> Confirm
                         </Button>
-                        <Button variant="outline" size="sm" className="h-8 border-red-500/50 text-red-500 hover:bg-red-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
+                        <Button variant="outline" size="sm" className="h-8 border-red-500/50 text-red-500 hover:bg-red-500/10 text-[11px]" onClick={() => onUpdateStatus(booking.id, 'cancelled', booking)}>
                             <X size={14} className="mr-1" /> Reject
                         </Button>
                     </div>
@@ -465,11 +519,11 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
                                 {booking.status === 'confirmed' && (
                                     <>
                                         {canBeCompleted && (
-                                            <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed')}>
+                                            <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed', booking)}>
                                                 <CheckCircle className="mr-2 h-4 w-4 text-blue-500" /> <span className="text-blue-500">Mark Completed</span>
                                             </DropdownMenuItem>
                                         )}
-                                        <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
+                                        <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'cancelled', booking)}>
                                             <X className="mr-2 h-4 w-4 text-red-500" /> <span className="text-red-500">Cancel Booking</span>
                                         </DropdownMenuItem>
                                     </>
@@ -670,7 +724,12 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
         setLoading(true);
         try {
             const user = auth.currentUser;
-            if (!user) return;
+            if (!user) {
+                if (whatsappWindow && !whatsappWindow.closed) {
+                    whatsappWindow.close();
+                }
+                return;
+            }
             const idToken = await user.getIdToken();
             let url = new URL('/api/owner/waitlist', window.location.origin);
             url.searchParams.append('history', 'true');
@@ -2536,7 +2595,15 @@ function BookingsPageContent() {
         return url.toString();
     };
 
-    const handleUpdateStatus = async (bookingId, status) => {
+    const handleUpdateStatus = async (bookingId, status, bookingForMessage = null) => {
+        const shouldDraftWhatsApp = status === 'confirmed' || status === 'cancelled';
+        const whatsappUrl = shouldDraftWhatsApp
+            ? buildBookingStatusWhatsAppUrl(bookingForMessage, status, restaurant?.name)
+            : '';
+        const whatsappWindow = whatsappUrl && typeof window !== 'undefined'
+            ? window.open('', '_blank')
+            : null;
+
         try {
             const user = auth.currentUser;
             if (!user) return;
@@ -2552,15 +2619,25 @@ function BookingsPageContent() {
             }
             if (res.ok) {
                 const messageParts = [data.message || `Booking ${status}.`];
-                if (data.whatsappSent) {
-                    messageParts.push('Customer WhatsApp message sent.');
-                } else if (data.whatsappWarning) {
-                    messageParts.push(data.whatsappWarning);
+                if (whatsappUrl) {
+                    if (whatsappWindow && !whatsappWindow.closed) {
+                        whatsappWindow.location.href = whatsappUrl;
+                    } else {
+                        window.open(whatsappUrl, '_blank');
+                    }
+                    messageParts.push('WhatsApp draft opened.');
+                } else if (shouldDraftWhatsApp) {
+                    messageParts.push('WhatsApp draft was not opened because the customer phone is missing or invalid.');
                 }
                 setInfoDialog({ isOpen: true, title: 'Success', message: messageParts.join(' ') });
                 void fetchBookings(true);
             }
-        } catch (err) { setInfoDialog({ isOpen: true, title: 'Error', message: err.message }); }
+        } catch (err) {
+            if (whatsappWindow && !whatsappWindow.closed) {
+                whatsappWindow.close();
+            }
+            setInfoDialog({ isOpen: true, title: 'Error', message: err.message });
+        }
     };
 
     const handleToggleWaitlist = async (enabled) => {
