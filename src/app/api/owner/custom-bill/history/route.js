@@ -283,6 +283,7 @@ export async function POST(req) {
                 businessCollection: collectionName,
                 businessId,
                 customerDocId: customerId || customerPhone,
+                actorId: customerId || '',
                 customerName,
                 customerPhone,
                 customerAddress: customerAddress || null,
@@ -292,6 +293,7 @@ export async function POST(req) {
                 orderTotal: totalAmount,
                 items,
                 customerType,
+                useProvidedCustomerDocId: Boolean(customerId),
             }).catch((profileError) => {
                 console.error('[Custom Bill History] Failed to update customer profile:', profileError);
             });

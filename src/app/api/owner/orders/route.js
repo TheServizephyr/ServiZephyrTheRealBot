@@ -263,6 +263,71 @@ function redactOrderForViewer(orderData = {}, canViewCustomerDetails = true, can
     return redacted;
 }
 
+async function queryBusinessCustomerByField(customersRef, field, value, op = '==') {
+    const safeValue = String(value || '').trim();
+    if (!safeValue) return null;
+
+    try {
+        const snap = await customersRef.where(field, op, safeValue).limit(1).get();
+        return snap.empty ? null : snap.docs[0];
+    } catch {
+        return null;
+    }
+}
+
+async function resolveOrderCustomerData(firestore, businessCollectionName, businessId, orderData = {}, requestedCustomerId = '') {
+    const customersRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers');
+    const normalizedPhone = normalizeIndianPhone(orderData.customerPhone || orderData.phone);
+    const directIds = [...new Set([
+        requestedCustomerId,
+        orderData.customerId,
+        orderData.userId,
+        orderData.guestId,
+        orderData.restaurantCustomerDocId,
+    ]
+        .filter(Boolean)
+        .map((value) => String(value).trim())
+        .filter((value) => !/^\d{10}$/.test(value)))];
+
+    for (const id of directIds) {
+        const snap = await customersRef.doc(id).get().catch(() => null);
+        if (snap?.exists) return snap.data();
+    }
+
+    const actorIds = [...new Set([
+        requestedCustomerId,
+        orderData.customerId,
+        orderData.userId,
+        orderData.guestId,
+    ].filter(Boolean).map((value) => String(value).trim()))];
+
+    for (const actorId of actorIds) {
+        for (const [field, op] of [
+            ['actorIds', 'array-contains'],
+            ['currentActorId', '=='],
+            ['userId', '=='],
+            ['uid', '=='],
+            ['guestId', '=='],
+            ['legacyGuestId', '=='],
+        ]) {
+            const matchedDoc = await queryBusinessCustomerByField(customersRef, field, actorId, op);
+            if (matchedDoc) return matchedDoc.data();
+        }
+    }
+
+    if (normalizedPhone) {
+        const legacyPhoneDoc = await customersRef.doc(normalizedPhone).get().catch(() => null);
+        if (legacyPhoneDoc?.exists) return legacyPhoneDoc.data();
+
+        for (const field of ['phone', 'customerPhone', 'phoneNumber', 'normalizedPhone']) {
+            const matchedDoc = await queryBusinessCustomerByField(customersRef, field, normalizedPhone);
+            if (matchedDoc) return matchedDoc.data();
+        }
+    }
+
+    return null;
+}
+
 
 export async function GET(req) {
     const telemetryStartedAt = Date.now();
@@ -318,18 +383,13 @@ export async function GET(req) {
                 ...orderData,
             }, canViewCustomerDetails, canViewPaymentDetails);
 
-            // If customerId is provided, fetch customer details as well
             let customerData = null;
-            if (customerId && canViewCustomerDetails) {
+            if (canViewCustomerDetails) {
                 const businessCollectionName =
                     (businessData.businessType === 'shop' || businessData.businessType === 'store')
                         ? 'shops'
                         : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
-                const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
-                const customerSnap = await customerRef.get();
-                if (customerSnap.exists) {
-                    customerData = customerSnap.data();
-                }
+                customerData = await resolveOrderCustomerData(firestore, businessCollectionName, businessId, orderData, customerId);
             }
             await trackEndpointRead('api.owner.orders.get', 2 + (customerData ? 1 : 0));
 

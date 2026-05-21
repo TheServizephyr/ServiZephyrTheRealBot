@@ -24,7 +24,7 @@ import { getFirestore, FieldValue, GeoPoint, verifyIdToken } from '@/lib/firebas
 import { createOrderV1, processOrderV1 } from '@/app/api/order/create/legacy/createOrderV1_LEGACY';
 
 import { getOrCreateGuestProfile } from '@/lib/guest-utils';
-import { resolveBusinessCustomerProfileRef, upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
+import { upsertBusinessCustomerProfile } from '@/lib/customer-profiles';
 import { resolveGuestAccessRef } from '@/lib/public-auth';
 import { FEATURE_FLAGS } from '@/lib/featureFlags';
 import {
@@ -798,14 +798,7 @@ export async function createOrderV2(req, options = {}) {
         }
         console.log(`[createOrderV2] ✅ All Discovery & Validation completed in total ${Date.now() - discoveryStart}ms`);
         console.log(`[createOrderV2] ✅ Identity: ${userId}, Phone: ${normalizedPhone}, Name: ${finalCustomerName}`);
-        const resolvedRestaurantCustomer = await resolveBusinessCustomerProfileRef({
-            firestore,
-            businessCollection: business.collection,
-            businessId: business.id,
-            actorId: userId,
-            customerPhone: normalizedPhone,
-        });
-        const restaurantCustomerDocId = String(resolvedRestaurantCustomer?.customerDocId || '').trim();
+        const restaurantCustomerDocId = String(userId || '').trim();
         const trustedCouponActorUid = String(refSession?.subjectId || bearerUid || '').trim();
         const couponAudience = await resolveCouponAudienceContext({
             firestore,
@@ -1242,7 +1235,7 @@ export async function createOrderV2(req, options = {}) {
                             firestore,
                             businessCollection: business.collection,
                             businessId: business.id,
-                            customerDocId: restaurantCustomerDocId || userId,
+                            customerDocId: userId,
                             actorId: userId,
                             customerName: orderData.customerName,
                             customerEmail: finalCustomerEmail,
@@ -1251,6 +1244,7 @@ export async function createOrderV2(req, options = {}) {
                             customerStatus: isGuest ? 'unclaimed' : 'verified',
                             orderId: firestoreOrderId,
                             customerType: isGuest ? 'guest' : 'uid',
+                            useProvidedCustomerDocId: true,
                         });
                     } catch (profileSyncError) {
                         console.error('[createOrderV2] Customer profile sync failed for awaiting_payment order:', profileSyncError);
@@ -1523,7 +1517,7 @@ export async function createOrderV2(req, options = {}) {
                     firestore,
                     businessCollection: business.collection,
                     businessId: business.id,
-                    customerDocId: restaurantCustomerDocId || userId,
+                    customerDocId: userId,
                     actorId: userId,
                     customerName: orderData.customerName,
                     customerEmail: finalCustomerEmail,
@@ -1535,6 +1529,7 @@ export async function createOrderV2(req, options = {}) {
                     orderTotal: serverGrandTotal,
                     items: finalValidatedItems,
                     customerType: isGuest ? 'guest' : 'uid',
+                    useProvidedCustomerDocId: true,
                 });
             } catch (profileSyncError) {
                 console.error('[createOrderV2] Customer profile sync failed:', profileSyncError);

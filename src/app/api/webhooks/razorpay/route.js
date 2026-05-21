@@ -556,6 +556,7 @@ export async function POST(req) {
                         businessCollection: businessCollectionNameForCustomer,
                         businessId: restaurantId,
                         customerDocId: userId,
+                        actorId: userId,
                         customerName: customerDetails?.name || 'Guest Customer',
                         customerPhone: customerDetails?.phone || '',
                         customerAddress: customerDetails?.address || null,
@@ -565,6 +566,7 @@ export async function POST(req) {
                         orderTotal: paymentAmount / 100,
                         items,
                         customerType: String(userId).startsWith('g_') ? 'guest' : 'uid',
+                        useProvidedCustomerDocId: true,
                     });
                 } catch (syncErr) {
                     console.error('[Webhook RZP] Customer profile sync failed:', syncErr);

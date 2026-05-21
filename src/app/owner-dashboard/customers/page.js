@@ -988,10 +988,29 @@ export default function CustomersPage() {
         }
         if (searchQuery) {
             const lowercasedQuery = searchQuery.toLowerCase();
-            filteredItems = filteredItems.filter(customer =>
-                (customer.name || '').toLowerCase().includes(lowercasedQuery) ||
-                (customer.email || '').toLowerCase().includes(lowercasedQuery)
-            );
+            const numericQuery = searchQuery.replace(/\D/g, '');
+            filteredItems = filteredItems.filter(customer => {
+                const textFields = [
+                    customer.name,
+                    customer.email,
+                    customer.id,
+                    customer.customerId,
+                    customer.userId,
+                    customer.uid,
+                    customer.guestId,
+                    customer.currentActorId,
+                    ...(Array.isArray(customer.actorIds) ? customer.actorIds : []),
+                ].map((value) => String(value || '').toLowerCase());
+                const phoneFields = [
+                    customer.phone,
+                    customer.phoneNumber,
+                    customer.customerPhone,
+                    customer.normalizedPhone,
+                ].map((value) => String(value || '').replace(/\D/g, ''));
+
+                return textFields.some((value) => value.includes(lowercasedQuery))
+                    || (numericQuery && phoneFields.some((value) => value.includes(numericQuery)));
+            });
         }
         filteredItems.sort((a, b) => {
             const key = sortConfig.key;
@@ -1347,7 +1366,7 @@ export default function CustomersPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                     <input
                         type="text"
-                        placeholder="Search by name or email..."
+                        placeholder="Search by name, phone, email, or ID..."
                         className="bg-input border border-border rounded-lg w-full md:w-80 pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}

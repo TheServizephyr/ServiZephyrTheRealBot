@@ -102,8 +102,10 @@ async function queryOrdersByRange(firestore, businessId, startDate, endDate) {
 
 function getOrderCustomerIdentity(orderData, orderDocId, customerLookupById, customerLookupByPhone) {
     const candidateIds = [
+        orderData.restaurantCustomerDocId,
         orderData.customerId,
         orderData.userId,
+        orderData.guestId,
     ].filter(Boolean).map(String);
 
     for (const id of candidateIds) {
@@ -131,6 +133,13 @@ function computeLeaderboardMetrics(customers, ordersDocs, weekStart, weekEnd) {
         customerById.set(baseId, baseId);
         if (customer.userId) customerById.set(String(customer.userId), baseId);
         if (customer.uid) customerById.set(String(customer.uid), baseId);
+        if (customer.guestId) customerById.set(String(customer.guestId), baseId);
+        if (customer.currentActorId) customerById.set(String(customer.currentActorId), baseId);
+        if (Array.isArray(customer.actorIds)) {
+            customer.actorIds.forEach((actorId) => {
+                if (actorId) customerById.set(String(actorId), baseId);
+            });
+        }
         const phone = normalizePhone(customer.phone || customer.phoneNumber);
         if (phone) customerByPhone.set(phone, baseId);
     });

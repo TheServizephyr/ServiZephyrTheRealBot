@@ -142,6 +142,7 @@ export async function resolveBusinessCustomerProfileRef({
     customerDocId = '',
     actorId = '',
     customerPhone = '',
+    useProvidedCustomerDocId = false,
 } = {}) {
     if (!firestore || !businessCollection || !businessId) return null;
 
@@ -152,6 +153,18 @@ export async function resolveBusinessCustomerProfileRef({
         .collection(String(businessCollection))
         .doc(String(businessId))
         .collection('customers');
+
+    if (useProvidedCustomerDocId) {
+        const stableDocId = normalizeActorId(safeCustomerDocId) || safeActorId || safeCustomerDocId;
+        if (!stableDocId) return null;
+        const directRef = customersRef.doc(stableDocId);
+        const directSnap = await directRef.get().catch(() => null);
+        return {
+            customerRef: directRef,
+            customerDocId: stableDocId,
+            customerSnap: directSnap?.exists ? directSnap : null,
+        };
+    }
 
     const directIds = dedupeStrings([safeCustomerDocId, safeActorId]);
     for (const directId of directIds) {
@@ -358,6 +371,7 @@ export async function rebuildBusinessCustomerProfile({
     customerAddress = null,
     customerStatus = 'verified',
     customerType = null,
+    actorId = '',
 } = {}) {
     if (!firestore || !businessCollection || !businessId || !customerDocId) return;
     const resolvedProfile = await resolveBusinessCustomerProfileRef({
@@ -365,8 +379,9 @@ export async function rebuildBusinessCustomerProfile({
         businessCollection,
         businessId,
         customerDocId,
-        actorId: customerDocId,
+        actorId: actorId || customerDocId,
         customerPhone,
+        useProvidedCustomerDocId: true,
     });
     if (!resolvedProfile?.customerRef) return;
 
@@ -376,7 +391,7 @@ export async function rebuildBusinessCustomerProfile({
     const current = customerSnap.exists ? (customerSnap.data() || {}) : {};
     const metadata = mergeCustomerProfileMetadata(current, {
         customerDocId: stableCustomerDocId,
-        actorId: customerDocId,
+        actorId: actorId || customerDocId,
         customerName,
         customerEmail,
         customerPhone,
@@ -473,6 +488,7 @@ export async function upsertBusinessCustomerProfile({
     orderTotal = 0,
     items = [],
     customerType = null,
+    useProvidedCustomerDocId = false,
 }) {
     if (!firestore || !businessCollection || !businessId || (!customerDocId && !actorId)) return;
     const resolvedProfile = await resolveBusinessCustomerProfileRef({
@@ -482,6 +498,7 @@ export async function upsertBusinessCustomerProfile({
         customerDocId,
         actorId,
         customerPhone,
+        useProvidedCustomerDocId,
     });
     if (!resolvedProfile?.customerRef) return null;
 

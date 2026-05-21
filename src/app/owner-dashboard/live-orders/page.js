@@ -1179,7 +1179,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
             {/* Info Sections */}
             <div
                 className="bg-muted/30 p-3 rounded-xl border border-border/50 space-y-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => onDetailClick(order.id, order.customerId)}
+                onClick={() => onDetailClick(order.id, order.customerId || order.userId || order.guestId)}
             >
                 <div className="flex gap-2.5 items-start">
                     <User size={14} className="text-primary mt-0.5 shrink-0" />
@@ -1248,7 +1248,7 @@ const OrderCard = ({ order, onDetailClick, actionButtonProps, onSelect, isSelect
                     )
                 })}
                 {(order.items || []).length > 3 && (
-                    <div className="text-xs text-primary font-bold pt-1 cursor-pointer hover:underline" onClick={() => onDetailClick(order.id, order.customerId)}>
+                    <div className="text-xs text-primary font-bold pt-1 cursor-pointer hover:underline" onClick={() => onDetailClick(order.id, order.customerId || order.userId || order.guestId)}>
                         +{(order.items || []).length - 3} more items...
                     </div>
                 )}
@@ -2336,7 +2336,10 @@ export default function LiveOrdersPage() {
 
     const handleDetailClick = async (orderId, customerId) => {
         try {
-            const data = await handleAPICall('GET', { id: orderId, customerId });
+            const data = await handleAPICall('GET', {
+                id: orderId,
+                ...(customerId ? { customerId } : {}),
+            });
             setDetailModalData({ isOpen: true, data });
         } catch (e) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load details: ${e.message}` });
@@ -2687,7 +2690,7 @@ export default function LiveOrdersPage() {
                                             <td className="p-4 align-top">
                                                 <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{getOrderDisplayId(order, order.id || 'Unknown')}</div>
                                                 <div
-                                                    onClick={() => handleDetailClick(order.id, order.customerId)}
+                                                    onClick={() => handleDetailClick(order.id, order.customerId || order.userId || order.guestId)}
                                                     className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
                                                     title="View Customer & Order Details"
                                                 >

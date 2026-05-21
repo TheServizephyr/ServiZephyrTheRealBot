@@ -38,10 +38,10 @@ export function resolveOrderCustomerActorId(orderData = {}) {
 }
 
 function resolveOrderCustomerDocId(orderData = {}) {
-    return (
-        String(orderData?.restaurantCustomerDocId || '').trim() ||
-        resolveOrderCustomerActorId(orderData)
-    );
+    const actorId = resolveOrderCustomerActorId(orderData);
+    const restaurantCustomerDocId = String(orderData?.restaurantCustomerDocId || '').trim();
+    if (/^\d{10}$/.test(restaurantCustomerDocId)) return actorId || restaurantCustomerDocId;
+    return actorId || restaurantCustomerDocId;
 }
 
 export function resolveOrderBusinessCollection(orderData = {}, fallbackCollection = '') {
@@ -117,6 +117,7 @@ export async function syncCompletedOrderCounterForOrder({
         customerDocId: stableCustomerDocId,
         actorId,
         customerPhone: orderData?.customerPhone || '',
+        useProvidedCustomerDocId: true,
     });
     if (!resolvedProfile?.customerRef) return false;
 
