@@ -284,6 +284,7 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
                 delivery: businessData.deliveryEnabled !== false,
                 pickup: businessData.pickupEnabled !== false,
                 dineIn: businessData.dineInEnabled !== false,
+                booking: businessData.isBookingEnabled !== false,
                 waitlist: businessData.isWaitlistEnabled === true,
                 waitlistMenuExplore: businessData.waitlistMenuExploreEnabled === true,
             },

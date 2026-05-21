@@ -148,10 +148,11 @@ export async function GET(req, { params }) {
         autoScheduleEnabled: businessData?.autoScheduleEnabled === true,
       },
     };
-    const orderingPayload = menuSnapshot?.ordering || {
+    const fallbackOrderingPayload = {
       deliveryEnabled: publicSettings?.deliveryEnabled ?? true,
       pickupEnabled: publicSettings?.pickupEnabled ?? false,
       dineInEnabled: publicSettings?.dineInEnabled ?? false,
+      isBookingEnabled: publicSettings?.isBookingEnabled ?? true,
       dineInModel: businessData?.dineInModel || 'post-paid',
       payments: {
         deliveryCod: publicSettings?.deliveryCodEnabled ?? false,
@@ -211,6 +212,10 @@ export async function GET(req, { params }) {
         zoneFallbackToLegacy: true,
         zones: [],
       },
+    };
+    const orderingPayload = {
+      ...(menuSnapshot?.ordering || fallbackOrderingPayload),
+      isBookingEnabled: businessData?.isBookingEnabled !== false,
     };
     let couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
     let hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());

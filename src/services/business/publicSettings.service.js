@@ -51,6 +51,7 @@ export function buildPublicSettingsFromData(data = {}, deliveryConfig = {}) {
         deliveryEnabled: fallback('deliveryEnabled', true),
         pickupEnabled: fallback('pickupEnabled', true),
         dineInEnabled: fallback('dineInEnabled', true),
+        isBookingEnabled: data.isBookingEnabled !== false,
 
         deliveryCodEnabled: fallback('deliveryCodEnabled', true),
         deliveryOnlinePaymentEnabled: fallback('deliveryOnlinePaymentEnabled', true),
@@ -103,6 +104,7 @@ export async function getPublicSettings(firestore, restaurantId) {
             deliveryEnabled: true,
             pickupEnabled: true,
             dineInEnabled: true,
+            isBookingEnabled: true,
             deliveryCodEnabled: true,
             deliveryOnlinePaymentEnabled: true,
             pickupOnlinePaymentEnabled: true,

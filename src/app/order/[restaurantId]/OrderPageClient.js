@@ -63,6 +63,7 @@ const getDefaultRestaurantData = () => ({
     name: '', status: null, logoUrl: '', bannerUrls: ['/order_banner.jpg'],
     deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
     pickupEnabled: false, dineInEnabled: true, businessAddress: null,
+    isBookingEnabled: true,
     customCategories: [],
     autoScheduleEnabled: false, openingTime: '09:00', closingTime: '22:00', timeZone: 'Asia/Kolkata',
     dineInModel: 'post-paid',
@@ -120,6 +121,7 @@ const mapRestaurantDataFromBootstrap = (bootstrapData) => {
         deliveryEnabled: ordering.deliveryEnabled !== false,
         pickupEnabled: ordering.pickupEnabled === true,
         dineInEnabled: ordering.dineInEnabled !== false,
+        isBookingEnabled: ordering.isBookingEnabled !== false,
         businessAddress: business.address || null,
         businessType: business.type || 'restaurant',
         customCategories: menu.categories || [],
@@ -918,7 +920,7 @@ const QrScannerModal = ({ isOpen, onClose }) => {
     );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog, newTabPax, setNewTabPax, newTabName, setNewTabName, isEditing, onUpdateTab }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog, newTabPax, setNewTabPax, newTabName, setNewTabName, isEditing, onUpdateTab, isBookingEnabled = true }) => {
     const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -978,6 +980,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     };
 
     const handleConfirmBooking = async () => {
+        if (!isBookingEnabled) {
+            setInfoDialog({ isOpen: true, title: "Booking Closed", message: "This restaurant is not accepting new table bookings right now." });
+            return;
+        }
         if (!bookingDetails.name.trim() || !bookingDetails.phone.trim()) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter your name and phone number.' });
             return;
@@ -1075,8 +1081,18 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 </DialogHeader>
                                 <div className="grid md:grid-cols-2 gap-4 px-6 pb-8">
                                     <button
-                                        onClick={() => setActiveModal('book')}
-                                        className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
+                                        onClick={() => {
+                                            if (!isBookingEnabled) {
+                                                setInfoDialog({ isOpen: true, title: "Booking Closed", message: "This restaurant is not accepting new table bookings right now." });
+                                                return;
+                                            }
+                                            setActiveModal('book');
+                                        }}
+                                        className={cn(
+                                            "p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 transition-all group",
+                                            isBookingEnabled ? "hover:bg-muted hover:border-primary" : "opacity-60 cursor-not-allowed"
+                                        )}
+                                        disabled={!isBookingEnabled}
                                     >
                                         <CalendarClock className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
                                         <div>
@@ -2681,6 +2697,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                     deliveryEnabled: settingsData.deliveryEnabled !== undefined ? settingsData.deliveryEnabled : menuData.deliveryEnabled,
                     pickupEnabled: settingsData.pickupEnabled !== undefined ? settingsData.pickupEnabled : menuData.pickupEnabled,
                     dineInEnabled: settingsData.dineInEnabled !== undefined ? settingsData.dineInEnabled : menuData.dineInEnabled,
+                    isBookingEnabled: settingsData.isBookingEnabled !== undefined ? settingsData.isBookingEnabled : menuData.isBookingEnabled,
 
                     businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
@@ -4342,6 +4359,7 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
                         setNewTabName={setNewTabName}
                         isEditing={isEditingModal}
                         onUpdateTab={handleUpdateTab}
+                        isBookingEnabled={restaurantData.isBookingEnabled !== false}
                     />
                     {/* ✅ Car Order Modal */}
                     <CarOrderModal

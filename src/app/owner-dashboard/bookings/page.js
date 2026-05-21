@@ -2310,8 +2310,10 @@ function BookingsPageContent() {
     const [employeeAccess, setEmployeeAccess] = useState(() => getStoredEmployeeAccessSnapshot(employeeOfOwnerId));
     const [activeTab, setActiveTab] = useState(() => getInitialBookingsTab(employeeOfOwnerId));
     const [isWaitlistEnabled, setIsWaitlistEnabled] = useState(false);
+    const [isBookingEnabled, setIsBookingEnabled] = useState(true);
     const [waitlistMenuExploreEnabled, setWaitlistMenuExploreEnabled] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
+    const [isBookingLoading, setIsBookingLoading] = useState(false);
     const [waitlistSeatingMode, setWaitlistSeatingMode] = useState('table_assign');
     const [waitlistNoShowTimeoutMinutes, setWaitlistNoShowTimeoutMinutes] = useState(10);
     const [waitlistExpectedWaitMinutes, setWaitlistExpectedWaitMinutes] = useState(0);
@@ -2506,6 +2508,7 @@ function BookingsPageContent() {
                         const bData = { id: snap.docs[0].id, collection: coll, ...snap.docs[0].data() };
                         setBusinessInfo(bData);
                         setIsWaitlistEnabled(bData.isWaitlistEnabled || false);
+                        setIsBookingEnabled(bData.isBookingEnabled !== false);
                         setWaitlistMenuExploreEnabled(bData.waitlistMenuExploreEnabled === true);
                         setWaitlistSeatingMode(
                             bData.waitlistSeatingMode === 'manual_seat' ? 'manual_seat' : 'table_assign'
@@ -2662,6 +2665,30 @@ function BookingsPageContent() {
             }
         } catch (err) { toast({ title: "Failed", description: err.message, variant: "destructive" }); }
         finally { setIsWaitlistLoading(false); }
+    };
+
+    const handleToggleBooking = async (enabled) => {
+        setIsBookingLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const res = await fetch(getSettingsApiUrl(), {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isBookingEnabled: enabled })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to update booking status.');
+            const nextEnabled = data.isBookingEnabled !== false;
+            setIsBookingEnabled(nextEnabled);
+            setBusinessInfo((prev) => prev ? { ...prev, isBookingEnabled: nextEnabled } : prev);
+            toast({ title: `Bookings ${nextEnabled ? 'Enabled' : 'Disabled'}` });
+        } catch (err) {
+            toast({ title: "Failed", description: err.message, variant: "destructive" });
+        } finally {
+            setIsBookingLoading(false);
+        }
     };
 
     const handleToggleWaitlistMenuExplore = async (enabled) => {
@@ -2887,6 +2914,20 @@ function BookingsPageContent() {
                 </motion.div>
             )}
 
+            {!loading && businessInfo && isBookingEnabled === false && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-600 dark:text-red-400"
+                >
+                    <AlertTriangle size={20} className="shrink-0" />
+                    <div className="flex-1">
+                        <p className="text-sm font-bold">New Bookings Disabled</p>
+                        <p className="text-xs opacity-80">New table bookings are blocked until Booking Status is turned on.</p>
+                    </div>
+                </motion.div>
+            )}
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 mb-3 md:mb-6">
                     <TabsList className={cn(
@@ -2969,14 +3010,24 @@ function BookingsPageContent() {
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Settings size={18} /> Waitlist Settings
+                            <Settings size={18} /> Booking & Waitlist Settings
                         </DialogTitle>
                         <DialogDescription>
-                            Configure live waitlist behavior independently from dine-in QR ordering.
+                            Control public table bookings and live waitlist behavior.
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="space-y-5 py-2">
+                        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3">
+                            <div className="min-w-0">
+                                <Label className="font-semibold flex items-center gap-2">
+                                    <CalendarClock size={15} /> Booking Status
+                                </Label>
+                                <p className="text-xs text-muted-foreground mt-1">Enable or disable new table booking requests.</p>
+                            </div>
+                            <Switch checked={isBookingEnabled} disabled={isBookingLoading} onCheckedChange={handleToggleBooking} />
+                        </div>
+
                         <div className="flex items-center justify-between gap-4">
                             <div>
                                 <Label className="font-semibold">Waitlist Status</Label>

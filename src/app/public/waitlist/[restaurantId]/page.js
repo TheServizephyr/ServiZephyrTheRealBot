@@ -72,6 +72,17 @@ export default function PublicWaitlistPage({ params }) {
     }, [restaurantId]);
 
     useEffect(() => {
+        if (!restaurantData || statusError) return;
+        const waitlistEnabled = restaurantData?.services?.waitlist === true;
+        const bookingEnabled = restaurantData?.services?.booking !== false;
+        setMode((currentMode) => {
+            if (currentMode === 'waitlist' && !waitlistEnabled && bookingEnabled) return 'booking';
+            if (currentMode === 'booking' && !bookingEnabled && waitlistEnabled) return 'waitlist';
+            return currentMode;
+        });
+    }, [restaurantData, statusError]);
+
+    useEffect(() => {
         if (typeof window === 'undefined') return;
         const storageKey = getWaitlistStorageKey(restaurantId);
         const raw = window.localStorage.getItem(storageKey);
@@ -232,6 +243,12 @@ export default function PublicWaitlistPage({ params }) {
             }
 
             const isBookingMode = mode === 'booking';
+            if (isBookingMode && restaurantData?.services?.booking === false) {
+                throw new Error('Bookings are currently disabled for this restaurant.');
+            }
+            if (!isBookingMode && restaurantData?.services?.waitlist !== true) {
+                throw new Error('Waitlist is currently disabled for this restaurant.');
+            }
             let endpoint = '/api/public/waitlist/join';
             let payload = {
                 restaurantId,
@@ -311,6 +328,9 @@ export default function PublicWaitlistPage({ params }) {
     const statusUnavailable = !restaurantData || Boolean(statusError);
     const isOpen = !statusUnavailable && restaurantData?.isOpen !== false;
     const isWaitlistEnabled = !statusUnavailable && restaurantData?.services?.waitlist === true;
+    const isBookingEnabled = !statusUnavailable && restaurantData?.services?.booking !== false;
+    const isCurrentModeEnabled = mode === 'booking' ? isBookingEnabled : isWaitlistEnabled;
+    const isPublicIntakeDisabled = !isWaitlistEnabled && !isBookingEnabled;
     const restaurantName = restaurantData?.name || 'Restaurant';
     const phoneDigitCount = String(phone || '').replace(/\D/g, '').length;
     const phoneValidationMessage = phoneTouched && phoneDigitCount !== 10
@@ -532,26 +552,26 @@ export default function PublicWaitlistPage({ params }) {
                 animate={{ y: 0, opacity: 1 }}
                 className="w-full max-w-md"
             >
-                <Card className={cn("border-border shadow-2xl bg-card overflow-hidden transition-all duration-500", (statusUnavailable || !isOpen || !isWaitlistEnabled) && "opacity-90 grayscale-[0.5]")}>
+                <Card className={cn("border-border shadow-2xl bg-card overflow-hidden transition-all duration-500", (statusUnavailable || !isOpen || isPublicIntakeDisabled) && "opacity-90 grayscale-[0.5]")}>
                     <CardHeader className="space-y-1 bg-muted/30 border-b border-border/50">
                         <CardTitle className="text-2xl font-black uppercase tracking-tight">Guest Details</CardTitle>
                         <CardDescription className="font-medium">Secure your spot in the queue.</CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6">
-                        {(statusUnavailable || !isOpen || !isWaitlistEnabled) ? (
+                        {(statusUnavailable || !isOpen || isPublicIntakeDisabled) ? (
                             <div className="py-8 text-center space-y-4">
                                 <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-2">
                                     <AlertCircle size={32} />
                                 </div>
                                 <h3 className="text-xl font-bold uppercase tracking-tight">
-                                    {statusUnavailable ? 'Status Unavailable' : (!isOpen ? 'Restaurant is Closed' : 'Waitlist is Full/Disabled')}
+                                    {statusUnavailable ? 'Status Unavailable' : (!isOpen ? 'Restaurant is Closed' : 'Bookings & Waitlist Disabled')}
                                 </h3>
                                 <p className="text-muted-foreground text-sm px-4">
                                     {statusUnavailable
                                         ? statusError
                                         : !isOpen
-                                        ? "Sorry, we aren't accepting waitlist entries right now because the restaurant is closed. Please check back during business hours."
-                                        : "We are currently not accepting new waitlist entries. Please check with the host at the restaurant."}
+                                        ? "Sorry, we aren't accepting bookings or waitlist entries right now because the restaurant is closed. Please check back during business hours."
+                                        : "We are currently not accepting new bookings or waitlist entries. Please check with the host at the restaurant."}
                                 </p>
                             </div>
                         ) : (
@@ -562,7 +582,7 @@ export default function PublicWaitlistPage({ params }) {
                                         variant={mode === 'waitlist' ? 'default' : 'outline'}
                                         className="h-10"
                                         onClick={() => setMode('waitlist')}
-                                        disabled={loading}
+                                        disabled={loading || !isWaitlistEnabled}
                                     >
                                         Join Now
                                     </Button>
@@ -571,7 +591,7 @@ export default function PublicWaitlistPage({ params }) {
                                         variant={mode === 'booking' ? 'default' : 'outline'}
                                         className="h-10"
                                         onClick={() => setMode('booking')}
-                                        disabled={loading}
+                                        disabled={loading || !isBookingEnabled}
                                     >
                                         Book for Later
                                     </Button>
@@ -580,6 +600,12 @@ export default function PublicWaitlistPage({ params }) {
                                 {mode === 'waitlist' ? (
                                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs font-semibold leading-relaxed text-muted-foreground">
                                         {waitlistExpectedWaitMessage}
+                                    </div>
+                                ) : null}
+
+                                {mode === 'booking' && !isBookingEnabled ? (
+                                    <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs font-semibold leading-relaxed text-destructive">
+                                        Bookings are currently disabled for this restaurant.
                                     </div>
                                 ) : null}
 
@@ -714,7 +740,7 @@ export default function PublicWaitlistPage({ params }) {
                             form="waitlist-form"
                             className="w-full h-14 text-xl font-black uppercase tracking-tight shadow-lg shadow-primary/20"
                             size="lg"
-                            disabled={loading || statusUnavailable || !isOpen || !isWaitlistEnabled}
+                            disabled={loading || statusUnavailable || !isOpen || !isCurrentModeEnabled}
                         >
                             {loading ? (
                                 <Loader2 className="mr-2 h-6 w-6 animate-spin" />

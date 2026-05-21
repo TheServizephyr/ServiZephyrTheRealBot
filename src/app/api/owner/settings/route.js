@@ -23,6 +23,7 @@ const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const WAITLIST_SETTINGS_PATCH_FIELDS = new Set([
     'isWaitlistEnabled',
+    'isBookingEnabled',
     'waitlistMenuExploreEnabled',
     'waitlistSeatingMode',
     'waitlistManualCapacity',
@@ -208,6 +209,7 @@ function shouldBumpPublicMenuVersion({
         'dineInOnlinePaymentEnabled',
         'dineInPayAtCounterEnabled',
         'isWaitlistEnabled',
+        'isBookingEnabled',
         'waitlistSeatingMode',
         'waitlistManualCapacity',
         'waitlistNoShowTimeoutMinutes',
@@ -314,6 +316,7 @@ export async function GET(req) {
                 deliveryOrderSlabPerKmFee: fallback('deliveryOrderSlabPerKmFee', 15),
                 pickupEnabled: fallback('pickupEnabled', true),
                 dineInEnabled: fallback('dineInEnabled', true),
+                isBookingEnabled: businessData?.isBookingEnabled !== false,
                 waitlistMenuExploreEnabled: businessData?.waitlistMenuExploreEnabled === true,
                 restaurantId: matchedBusinessId || businessDoc.id,
             };
@@ -488,6 +491,7 @@ export async function GET(req) {
             upiId: businessData?.upiId || '',
             upiPayeeName: businessData?.upiPayeeName || businessData?.name || '',
             isWaitlistEnabled: businessData?.isWaitlistEnabled || false,
+            isBookingEnabled: businessData?.isBookingEnabled !== false,
             waitlistMenuExploreEnabled: businessData?.waitlistMenuExploreEnabled === true,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(businessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(businessData?.waitlistManualCapacity || 40)),
@@ -670,6 +674,7 @@ export async function PATCH(req) {
         if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
         if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
         if (updates.isWaitlistEnabled !== undefined) businessUpdateData.isWaitlistEnabled = updates.isWaitlistEnabled;
+        if (updates.isBookingEnabled !== undefined) businessUpdateData.isBookingEnabled = updates.isBookingEnabled === true;
         if (updates.waitlistMenuExploreEnabled !== undefined) {
             const nextWaitlistMenuExploreEnabled = Boolean(updates.waitlistMenuExploreEnabled);
             if (nextWaitlistMenuExploreEnabled) {
@@ -863,6 +868,7 @@ export async function PATCH(req) {
             upiId: finalBusinessData?.upiId || '',
             upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
             isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
+            isBookingEnabled: finalBusinessData?.isBookingEnabled !== false,
             waitlistMenuExploreEnabled: finalBusinessData?.waitlistMenuExploreEnabled === true,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),

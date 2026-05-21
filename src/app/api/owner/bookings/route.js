@@ -151,6 +151,9 @@ export async function POST(req) {
         if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
             return NextResponse.json({ message: 'Bookings are only available for restaurant businesses.' }, { status: 403 });
         }
+        if (businessData?.isBookingEnabled === false) {
+            return NextResponse.json({ message: 'Bookings are currently disabled for this restaurant.' }, { status: 403 });
+        }
 
         // Prevent duplicate active booking request for same phone and slot.
         const duplicateSnap = await businessRef.collection('bookings')
