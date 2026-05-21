@@ -1944,6 +1944,28 @@ const CarSpotQrModal = ({ isOpen, onClose, restaurant, handleApiCall }) => {
 };
 
 
+const getServiceRequestDisplay = (request = {}) => {
+    const requestType = String(request.requestType || request.type || '').toLowerCase();
+    const tableId = request.tableId || '-';
+
+    if (requestType === 'pay_at_counter') {
+        const customerName = String(request.customerName || '').trim();
+        const amount = Number(request.totalAmount || 0);
+        const amountText = amount > 0 ? ` • ${formatCurrency(amount)}` : '';
+        const customerText = customerName ? `${customerName} chose counter payment` : 'Customer chose counter payment';
+        return {
+            title: `Table ${tableId} Pay at Counter`,
+            description: `${customerText}${amountText}`,
+        };
+    }
+
+    return {
+        title: `Table ${tableId}`,
+        description: 'Needs assistance',
+    };
+};
+
+
 const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restaurantId, compact = false }) => {
     const [requests, setRequests] = useState([]);
     const [isExpanded, setIsExpanded] = useState(true);
@@ -1973,10 +1995,21 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
 
         let interval = null;
         let isMounted = true;
+        let unsubscribe = null;
 
         const setRequestsSafely = (nextRequests) => {
             if (!isMounted) return;
-            setRequests(Array.isArray(nextRequests) ? nextRequests : []);
+            const normalizedRequests = Array.isArray(nextRequests) ? nextRequests : [];
+            setRequests(normalizedRequests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+        };
+
+        const mapRequestDoc = (doc) => {
+            const data = doc.data ? doc.data() : doc;
+            return {
+                ...data,
+                id: data.id || doc.id,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString()),
+            };
         };
 
         const fetchRequests = async () => {
@@ -2008,10 +2041,32 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
             }
         };
 
-        void startPolling();
+        if (restaurantId) {
+            try {
+                const requestsQuery = query(
+                    collection(db, 'restaurants', restaurantId, 'serviceRequests'),
+                    where('status', '==', 'pending'),
+                    limit(50)
+                );
+                unsubscribe = onSnapshot(
+                    requestsQuery,
+                    (snapshot) => setRequestsSafely(snapshot.docs.map(mapRequestDoc)),
+                    (error) => {
+                        console.warn('[Dine-In Dashboard] Service request realtime listener failed:', error?.message || error);
+                        void startPolling();
+                    }
+                );
+            } catch (error) {
+                console.warn('[Dine-In Dashboard] Could not start service request realtime listener:', error?.message || error);
+                void startPolling();
+            }
+        } else {
+            void startPolling();
+        }
 
         return () => {
             isMounted = false;
+            if (typeof unsubscribe === 'function') unsubscribe();
             if (interval) clearInterval(interval);
         };
     }, [employeeOfOwnerId, impersonatedOwnerId, restaurantId]);
@@ -2056,12 +2111,13 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
                                 ? formatDistanceToNow(createdAt, { addSuffix: true })
                                 : 'just now';
                             const requestKey = req?.id || `${req?.tableId || 'table'}_${index}`;
+                            const display = getServiceRequestDisplay(req);
 
                             return (
                                 <div key={requestKey} className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="text-sm font-semibold truncate">Table {req?.tableId || '-'}</p>
-                                        <p className="text-xs text-muted-foreground truncate">Needs assistance • {createdLabel}</p>
+                                        <p className="text-sm font-semibold truncate">{display.title}</p>
+                                        <p className="text-xs text-muted-foreground truncate">{display.description} • {createdLabel}</p>
                                     </div>
                                     <Button
                                         size="icon"
@@ -2136,47 +2192,50 @@ const LiveServiceRequests = ({ impersonatedOwnerId, employeeOfOwnerId, restauran
                         {/* Request cards */}
                         {requests.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {requests.map((req, index) => (
-                                    <motion.div
-                                        key={req.id}
-                                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={{ opacity: 0, scale: 0.9, x: 100 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        whileHover={{ scale: 1.02, y: -2 }}
-                                        className="group relative backdrop-blur-lg bg-gradient-to-br from-white/90 to-amber-50/80 dark:from-white/10 dark:to-white/5 border border-amber-300 dark:border-white/20 rounded-xl p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300"
-                                    >
-                                        {/* Shimmer effect on hover */}
-                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-200/20 dark:via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer rounded-xl"></div>
-
-                                        <div className="relative z-10 flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-2 rounded-lg">
-                                                    <span className="text-white font-bold text-sm">T{req.tableId}</span>
-                                                </div>
-                                                <div>
-                                                    <p className="font-semibold text-amber-900 dark:text-amber-100 text-sm">Table {req.tableId}</p>
-                                                    <p className="text-xs text-amber-700 dark:text-amber-200/70">Needs assistance!</p>
-                                                </div>
-                                            </div>
-                                            <motion.button
-                                                whileHover={{ scale: 1.1, rotate: 15 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                onClick={() => handleAcknowledge(req.id)}
-                                                className="bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 p-2 rounded-lg shadow-lg hover:shadow-green-500/50 transition-all"
-                                            >
-                                                <CheckCircle size={18} className="text-white" />
-                                            </motion.button>
-                                        </div>
-
-                                        {/* Pulse ring animation */}
+                                {requests.map((req, index) => {
+                                    const display = getServiceRequestDisplay(req);
+                                    return (
                                         <motion.div
-                                            animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                                            transition={{ duration: 2, repeat: Infinity }}
-                                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full"
-                                        ></motion.div>
-                                    </motion.div>
-                                ))}
+                                            key={req.id}
+                                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.9, x: 100 }}
+                                            transition={{ delay: index * 0.1 }}
+                                            whileHover={{ scale: 1.02, y: -2 }}
+                                            className="group relative backdrop-blur-lg bg-gradient-to-br from-white/90 to-amber-50/80 dark:from-white/10 dark:to-white/5 border border-amber-300 dark:border-white/20 rounded-xl p-4 shadow-xl hover:shadow-2xl hover:shadow-amber-500/30 transition-all duration-300"
+                                        >
+                                            {/* Shimmer effect on hover */}
+                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-200/20 dark:via-white/10 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-shimmer rounded-xl"></div>
+
+                                            <div className="relative z-10 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-2 rounded-lg">
+                                                        <span className="text-white font-bold text-sm">T{req.tableId}</span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-amber-900 dark:text-amber-100 text-sm">{display.title}</p>
+                                                        <p className="text-xs text-amber-700 dark:text-amber-200/70">{display.description}</p>
+                                                    </div>
+                                                </div>
+                                                <motion.button
+                                                    whileHover={{ scale: 1.1, rotate: 15 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => handleAcknowledge(req.id)}
+                                                    className="bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 p-2 rounded-lg shadow-lg hover:shadow-green-500/50 transition-all"
+                                                >
+                                                    <CheckCircle size={18} className="text-white" />
+                                                </motion.button>
+                                            </div>
+
+                                            {/* Pulse ring animation */}
+                                            <motion.div
+                                                animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                                                transition={{ duration: 2, repeat: Infinity }}
+                                                className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full"
+                                            ></motion.div>
+                                        </motion.div>
+                                    );
+                                })}
                             </div>
                         ) : (
                             <motion.div

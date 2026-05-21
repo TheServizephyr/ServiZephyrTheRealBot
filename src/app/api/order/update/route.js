@@ -1,8 +1,64 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { verifyScopedAuthToken } from '@/lib/public-auth';
 import { findBusinessById } from '@/services/business/businessService';
 import { queueDashboardStatsRefresh } from '@/lib/server/dashboardStats';
+import { invalidateEphemeralCacheByPrefix } from '@/lib/server/ephemeralCache';
+
+const isDineInLikeOrder = (orderData = {}) => ['dine-in', 'car-order'].includes(String(orderData?.deliveryType || '').toLowerCase());
+const isEnabled = (value) => value !== false;
+
+async function upsertPayAtCounterServiceRequest({ business, orderId, ordersToUpdate, dineInTabId }) {
+    if (!business?.ref || business.collection !== 'restaurants') return;
+
+    const firstOrderData = ordersToUpdate[0]?.data ? ordersToUpdate[0].data() : null;
+    if (!firstOrderData || !isDineInLikeOrder(firstOrderData)) return;
+
+    const tableId = String(firstOrderData.tableId || firstOrderData.table || '').trim();
+    if (!tableId) return;
+
+    const resolvedTabId = String(dineInTabId || firstOrderData.dineInTabId || firstOrderData.tabId || '').trim();
+    const requestKey = `pay_at_counter:${resolvedTabId || orderId}`;
+    const totalAmount = ordersToUpdate.reduce((sum, doc) => sum + Number(doc.data()?.totalAmount || 0), 0);
+    const customerName = String(firstOrderData.customerName || firstOrderData.tab_name || firstOrderData.name || 'Customer').trim();
+    const paxCount = Number(firstOrderData.pax_count || firstOrderData.paxCount || 0);
+
+    const existingSnap = await business.ref.collection('serviceRequests')
+        .where('requestKey', '==', requestKey)
+        .limit(1)
+        .get();
+
+    const existingPendingDoc = existingSnap.docs.find((doc) => String(doc.data()?.status || '').toLowerCase() === 'pending');
+    const requestRef = existingPendingDoc
+        ? existingPendingDoc.ref
+        : business.ref.collection('serviceRequests').doc();
+
+    const requestData = {
+        id: requestRef.id,
+        requestKey,
+        requestType: 'pay_at_counter',
+        type: 'pay_at_counter',
+        title: 'Pay at Counter',
+        message: `${customerName} from Table ${tableId} chose Pay at Counter.`,
+        tableId,
+        dineInTabId: resolvedTabId || null,
+        orderId: orderId || null,
+        customerName,
+        pax_count: Number.isFinite(paxCount) && paxCount > 0 ? paxCount : null,
+        totalAmount,
+        paymentStatus: 'pay_at_counter',
+        paymentMethod: 'counter',
+        status: 'pending',
+        updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (!existingPendingDoc) {
+        requestData.createdAt = FieldValue.serverTimestamp();
+    }
+
+    await requestRef.set(requestData, { merge: true });
+    invalidateEphemeralCacheByPrefix(`owner:service-requests:${business.ref.path}`);
+}
 
 /**
  * PATCH /api/order/update
@@ -71,7 +127,7 @@ export async function PATCH(req) {
                         if (!['dine-in', 'car-order'].includes(String(data.deliveryType || '').toLowerCase())) continue;
                         if (trackingToken !== data.trackingToken) continue;
                         const tokenCheck = await verifyScopedAuthToken(firestore, trackingToken, {
-                            allowedTypes: ['tracking'],
+                            allowedTypes: ['tracking', 'whatsapp'],
                             subjectId: data.userId || data.customerId || data.customerPhone || '',
                             orderId: doc.id,
                             req,
@@ -101,7 +157,7 @@ export async function PATCH(req) {
                 // Ownership check
                 const tokenCheck = (trackingToken && isDineInLike && orderData.trackingToken === trackingToken)
                     ? await verifyScopedAuthToken(firestore, trackingToken, {
-                        allowedTypes: ['tracking'],
+                        allowedTypes: ['tracking', 'whatsapp'],
                         subjectId: orderData.userId || orderData.customerId || orderData.customerPhone || '',
                         orderId,
                         req,
@@ -125,6 +181,22 @@ export async function PATCH(req) {
             );
         }
 
+        const firstOrderData = ordersToUpdate[0]?.data ? ordersToUpdate[0].data() : null;
+        const targetRestaurantId = String(firstOrderData?.restaurantId || '').trim();
+        const business = targetRestaurantId
+            ? await findBusinessById(firestore, targetRestaurantId, { includeDeliverySettings: false })
+            : null;
+        const hasDineInLikeOrder = ordersToUpdate.some((doc) => isDineInLikeOrder(doc.data()));
+
+        if (hasDineInLikeOrder && business?.data) {
+            if (requestedPaymentStatus === 'paid' && !isEnabled(business.data.dineInOnlinePaymentEnabled)) {
+                return NextResponse.json({ message: 'Online payment is disabled for dine-in at this restaurant.' }, { status: 403 });
+            }
+            if (requestedPaymentStatus === 'pay_at_counter' && !isEnabled(business.data.dineInPayAtCounterEnabled)) {
+                return NextResponse.json({ message: 'Pay at Counter is disabled for dine-in at this restaurant.' }, { status: 403 });
+            }
+        }
+
         // Update payment status for all orders
         const batch = firestore.batch();
         const updateData = {};
@@ -142,23 +214,24 @@ export async function PATCH(req) {
 
         await batch.commit();
 
-        const firstOrderData = ordersToUpdate[0]?.data ? ordersToUpdate[0].data() : null;
-        const targetRestaurantId = String(firstOrderData?.restaurantId || '').trim();
-        if (targetRestaurantId) {
+        if (requestedPaymentStatus === 'pay_at_counter' && business?.ref) {
             try {
-                const business = await findBusinessById(firestore, targetRestaurantId, {
-                    includeDeliverySettings: false,
+                await upsertPayAtCounterServiceRequest({ business, orderId, ordersToUpdate, dineInTabId: queryTabId });
+            } catch (requestError) {
+                console.warn('[API][PATCH /order/update] Failed to create pay-at-counter service request:', requestError?.message || requestError);
+            }
+        }
+
+        if (targetRestaurantId && business?.ref) {
+            try {
+                await queueDashboardStatsRefresh({
+                    businessRef: business.ref,
+                    businessId: targetRestaurantId,
+                    collectionName: business.collection,
+                    reason: 'order_updated',
+                    bumpStatsVersion: true,
+                    bumpActiveOrderVersion: true,
                 });
-                if (business?.ref) {
-                    await queueDashboardStatsRefresh({
-                        businessRef: business.ref,
-                        businessId: targetRestaurantId,
-                        collectionName: business.collection,
-                        reason: 'order_updated',
-                        bumpStatsVersion: true,
-                        bumpActiveOrderVersion: true,
-                    });
-                }
             } catch (derivedError) {
                 console.warn('[API][PATCH /order/update] Failed to queue derived refresh:', derivedError?.message || derivedError);
             }

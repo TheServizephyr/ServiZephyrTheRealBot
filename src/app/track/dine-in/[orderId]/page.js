@@ -397,6 +397,10 @@ function DineInTrackingContent() {
 
     const handlePayOnline = async () => {
         if (isProcessingPayment) return;
+        if (!paymentSettings?.dineInOnlinePaymentEnabled) {
+            alert("Online payment is not enabled for this restaurant. Please pay at the counter.");
+            return;
+        }
         setIsProcessingPayment(true);
         setIsPaymentChoiceModalOpen(false);
 
@@ -433,7 +437,8 @@ function DineInTrackingContent() {
                             orderId: orderId, // active order
                             dineInTabId: orderData.order?.dineInTabId || searchParams.get('tabId') || null,
                             paymentStatus: 'paid',
-                            paymentMethod: 'online'
+                            paymentMethod: 'online',
+                            trackingToken: sessionToken
                         })
                     });
 

@@ -78,6 +78,16 @@ export async function POST(req) {
         const businessRef = await getBusinessRef(firestore, restaurantId);
 
         if (businessRef) {
+            const businessSnap = await businessRef.get();
+            const businessData = businessSnap.exists ? (businessSnap.data() || {}) : {};
+            const normalizedPaymentMethod = String(paymentMethod || '').trim().toLowerCase();
+            const isOnlineSettlement = normalizedPaymentMethod === 'online' || normalizedPaymentMethod === 'razorpay';
+            const isPhonePeSettlement = normalizedPaymentMethod === 'phonepe';
+
+            if (isOnlineSettlement && businessData.dineInOnlinePaymentEnabled === false) {
+                return NextResponse.json({ error: 'Online payment is disabled for dine-in at this restaurant.' }, { status: 403 });
+            }
+
             const tabRef = businessRef.collection('dineInTabs').doc(String(tabId));
             const tabSnap = await tabRef.get();
 
@@ -112,9 +122,6 @@ export async function POST(req) {
                 return NextResponse.json({ error: 'No pending amount' }, { status: 400 });
             }
 
-            const normalizedPaymentMethod = String(paymentMethod || '').trim().toLowerCase();
-            const isOnlineSettlement = normalizedPaymentMethod === 'online' || normalizedPaymentMethod === 'razorpay';
-            const isPhonePeSettlement = normalizedPaymentMethod === 'phonepe';
             const firstUnpaidOrder = tabOrders.find((doc) => {
                 const order = doc.data() || {};
                 return String(order.paymentStatus || '').toLowerCase() !== 'paid';
