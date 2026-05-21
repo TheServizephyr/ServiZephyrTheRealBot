@@ -507,7 +507,7 @@ export async function GET(req) {
         return respond({ orders }, 200);
 
     } catch (error) {
-        require('fs').appendFileSync('orders_error_log.txt', (error.stack || error) + '\n'); telemetryStatus = error?.status || 500;
+        telemetryStatus = error?.status || 500;
         telemetryError = error?.message || 'Owner orders GET failed';
         console.error("GET ORDERS ERROR:", error);
         return respond({ message: `Backend Error: ${error.message}` }, telemetryStatus);

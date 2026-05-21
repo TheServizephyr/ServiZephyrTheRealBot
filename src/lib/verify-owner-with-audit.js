@@ -326,6 +326,11 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
 
             // If we reached here, no business was found
             const isKnownOwnerRole = OWNER_ROLES.has(userRole);
+            if (userRole === 'admin' && !isImpersonating) {
+                console.warn(`[verifyOwnerWithAudit] Admin ${uid} attempted owner endpoint access without impersonation context`);
+                throw { message: 'Admin access to this endpoint requires impersonate_owner_id.', status: 403 };
+            }
+
             if (!isKnownOwnerRole && !isImpersonating && !employeeOfOwnerId) {
                 console.warn(`[verifyOwnerWithAudit] Access Denied for UID ${uid} (Role: ${userRole}, No business found)`);
                 throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
@@ -337,7 +342,13 @@ export async function verifyOwnerWithAudit(req, action, metadata = {}, checkRevo
     }
 
     // 2. AWAIT RESOLUTION
-    let context; try { context = await req._ownerContextPromise; } catch (e) { require('fs').appendFileSync('audit_error_log.txt', (e.stack || e.message || JSON.stringify(e)) + '\n'); throw e; }
+    let context;
+    try {
+        context = await req._ownerContextPromise;
+    } catch (e) {
+        console.error('[verifyOwnerWithAudit] Owner context resolution failed:', e);
+        throw e;
+    }
 
     const inferredFeatureId = inferFeatureIdFromAction(action, req);
 
