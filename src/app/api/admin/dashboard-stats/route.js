@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { addDays, getAdminOrderAnalytics, parseAnalyticsRange, toIstDayKey } from '@/lib/server/adminAnalyticsMetrics';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,13 +28,19 @@ export async function GET(req) {
         const totalUsersSnap = await firestore.collection('users').count().get();
         const totalUsers = totalUsersSnap.data().count;
 
-        // 4. Today's metrics
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const todayOrdersSnap = await firestore.collection('orders').where('orderDate', '>=', today).get();
-        const todayOrders = todayOrdersSnap.size;
-        const todayRevenue = todayOrdersSnap.docs.reduce((sum, doc) => sum + (doc.data().totalAmount || 0), 0);
+        // 4. Order analytics for the admin dashboard
+        const todayKey = toIstDayKey(new Date());
+        const selectedWindow = parseAnalyticsRange(new URLSearchParams({
+            start: addDays(todayKey, -6),
+            end: todayKey,
+        }));
+        const orderAnalytics = await getAdminOrderAnalytics(firestore, {
+            selectedWindow,
+            topLimit: 5,
+            restaurantLimit: 8,
+        });
+        const todayOrders = orderAnalytics.periodSummary.today.current.orderCount;
+        const todayRevenue = orderAnalytics.periodSummary.today.current.revenue;
 
         // 5. Recent Signups
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
@@ -58,24 +65,12 @@ export async function GET(req) {
         });
 
         // 6. Weekly Order Data
-        const weeklyOrderData = [];
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            const day = date.toLocaleDateString('en-US', { weekday: 'short' });
-
-            const startOfDay = new Date(date);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(date);
-            endOfDay.setHours(23, 59, 59, 999);
-
-            const daySnap = await firestore.collection('orders')
-                .where('orderDate', '>=', startOfDay)
-                .where('orderDate', '<=', endOfDay)
-                .count().get();
-
-            weeklyOrderData.push({ day, orders: daySnap.data().count });
-        }
+        const weeklyOrderData = orderAnalytics.revenueData.map((row) => ({
+            day: new Date(`${row.date}T00:00:00.000Z`).toLocaleDateString('en-US', { weekday: 'short' }),
+            date: row.date,
+            orders: row.orders,
+            revenue: row.revenue,
+        }));
 
 
         return NextResponse.json({
@@ -84,6 +79,9 @@ export async function GET(req) {
             totalUsers,
             todayOrders,
             todayRevenue,
+            periodSummary: orderAnalytics.periodSummary,
+            topRestaurantsToday: orderAnalytics.restaurantBreakdown,
+            sourceBreakdown: orderAnalytics.sourceBreakdown,
             recentSignups,
             weeklyOrderData
         }, { status: 200 });
