@@ -452,6 +452,8 @@ async function resolveDineInLikeToken({
  */
 export async function createOrderV2(req, options = {}) {
     const startTime = Date.now();
+    let activeIdempotencyKey = null;
+    let orderPersistenceStarted = false;
     console.log(`[createOrderV2] 🏁 START processing order request at ${new Date(startTime).toISOString()}`);
 
     try {
@@ -499,6 +501,7 @@ export async function createOrderV2(req, options = {}) {
             skipAddressValidation = false,
             initialStatus = 'pending'
         } = body;
+        activeIdempotencyKey = idempotencyKey || null;
 
         const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
         const requestedInitialStatus = String(initialStatus || 'pending').trim().toLowerCase();
@@ -1161,6 +1164,7 @@ export async function createOrderV2(req, options = {}) {
             // CRITICAL: Create Firestore order FIRST (same as V1)
             // Status: 'awaiting_payment' (webhook will change to 'pending')
             const firestoreOrderId = firestore.collection('orders').doc().id;
+            orderPersistenceStarted = true;
 
             const orderData = {
                 customerName: finalCustomerName,
@@ -1481,6 +1485,7 @@ export async function createOrderV2(req, options = {}) {
         // Generate Order ID beforehand to decouple dependencies
         const orderId = firestore.collection('orders').doc().id;
         console.log(`[createOrderV2] Order ID reserved: ${orderId}`);
+        orderPersistenceStarted = true;
 
         const saveOrderPromise = persistOrderWithInventory({
             firestore,
@@ -1645,6 +1650,20 @@ export async function createOrderV2(req, options = {}) {
 
     } catch (error) {
         console.error('[createOrderV2] Error:', error);
+
+        if (activeIdempotencyKey && !orderPersistenceStarted) {
+            await idempotencyRepository.fail(activeIdempotencyKey, error).catch((failError) => {
+                console.warn('[createOrderV2] Failed to release idempotency key after pre-write error:', failError?.message || failError);
+            });
+        }
+
+        if (error instanceof PricingError) {
+            return buildErrorResponse({
+                message: error.message || 'Menu prices changed. Please refresh and try again.',
+                code: error.code,
+                status: 400
+            });
+        }
 
         return buildErrorResponse({
             message: `Backend Error: ${error.message}`,

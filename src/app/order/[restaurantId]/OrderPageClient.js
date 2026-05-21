@@ -43,6 +43,7 @@ import AddressSelectionList from '@/components/AddressSelectionList';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { getDineInDetails, saveDineInDetails, updateDineInDetails } from '@/lib/dineInStorage';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
+import { normalizeCartItemsAgainstMenu } from '@/lib/cartPriceSync';
 import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
 import {
     clearCustomerAddressesUpdatedAt,
@@ -3671,6 +3672,16 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
     }
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
+
+    useEffect(() => {
+        const syncResult = normalizeCartItemsAgainstMenu(cart, restaurantData.menu);
+        if (!syncResult.changed) return;
+
+        console.log('[Order Page] Synced cart prices with latest menu before checkout.', {
+            removedCount: syncResult.removedCount,
+        });
+        setCart(syncResult.cart);
+    }, [cart, restaurantData.menu]);
     const isBusinessClosed = restaurantData.isOpen === false;
     const nextOpeningTimeLabel = useMemo(() => {
         if (!isBusinessClosed || restaurantData.autoScheduleEnabled !== true) return '';

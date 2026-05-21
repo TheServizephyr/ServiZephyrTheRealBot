@@ -24,6 +24,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchWithRetry } from '@/lib/fetchWithRetry';
 import { safeReadCart, safeWriteCart } from '@/lib/cartStorage';
+import { normalizeCartItemsAgainstMenu } from '@/lib/cartPriceSync';
 import { getItemVariantLabel } from '@/lib/itemVariantDisplay';
 import { sendClientTelemetryEvent } from '@/lib/clientTelemetry';
 import {
@@ -855,8 +856,23 @@ const CheckoutPageInternal = () => {
                     setPaymentOptionsLoaded
                 });
                 console.log('[Checkout] Loaded bootstrap data:', menuData?.coupons?.length || 0, 'coupons');
+
+                const cartSyncResult = normalizeCartItemsAgainstMenu(updatedData.cart || [], menuData?.menu || {});
+                if (cartSyncResult.changed) {
+                    updatedData = {
+                        ...updatedData,
+                        cart: cartSyncResult.cart,
+                    };
+                    setCart(cartSyncResult.cart);
+                    safeWriteCart(restaurantId, updatedData);
+                    console.log('[Checkout] Synced cart prices with latest menu before order create.', {
+                        removedCount: cartSyncResult.removedCount,
+                    });
+                }
+
                 setCartData(prev => ({
                     ...prev,
+                    cart: updatedData.cart || [],
                     availableCoupons: (menuData?.coupons || []).map(normalizeCoupon).filter(Boolean),
                     deliveryCharge: menuData?.deliveryCharge,
                     deliveryFeeType: menuData?.deliveryFeeType,
@@ -1725,6 +1741,11 @@ const CheckoutPageInternal = () => {
 
 
     const placeOrder = async (paymentMethod) => {
+        if (isProcessingPayment || orderState !== ORDER_STATE.IDLE) {
+            console.log('[Checkout Page] Order already in progress; ignoring duplicate submit.');
+            return;
+        }
+
         // If PhonePe is selected for online payment, use 'phonepe' as payment method
         const effectivePaymentMethod = (paymentMethod === 'online' && paymentGateway === 'phonepe') ? 'phonepe' : paymentMethod;
         console.log(`[Checkout Page] placeOrder called with paymentMethod: ${paymentMethod}, effective: ${effectivePaymentMethod}`);
