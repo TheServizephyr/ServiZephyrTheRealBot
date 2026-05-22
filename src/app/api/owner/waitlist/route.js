@@ -529,6 +529,10 @@ export async function GET(req) {
         const firestore = await getFirestore();
         const url = new URL(req.url);
         const isHistory = url.searchParams.get('history') === 'true';
+        const includeAll = url.searchParams.get('all') === 'true';
+        if (includeAll && context.callerRole !== 'owner') {
+            throw { message: 'Owner access required for all-time waitlist customer data.', status: 403 };
+        }
         const historyDateRange = isHistory ? getHistoryDateRange(url) : null;
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data() || {};
@@ -542,7 +546,7 @@ export async function GET(req) {
         let promotedEntryId = null;
         let wishlistCleanup = { clearedEntries: 0, clearedMarkers: 0 };
 
-        if (!isHistory) {
+        if (!isHistory && !includeAll) {
             bridgedBookingsCount = await maybeBridgeLateBookings({
                 firestore,
                 businessRef,
@@ -554,7 +558,10 @@ export async function GET(req) {
 
         let waitlistDocs = [];
 
-        if (isHistory && historyDateRange) {
+        if (includeAll) {
+            const waitlistSnap = await businessRef.collection('waitlist').get();
+            waitlistDocs = waitlistSnap.docs;
+        } else if (isHistory && historyDateRange) {
             waitlistDocs = await fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange });
         } else {
             let queryRef = businessRef.collection('waitlist');
@@ -569,7 +576,7 @@ export async function GET(req) {
             waitlistDocs = waitlistSnap.docs;
         }
 
-        if (!isHistory) {
+        if (!isHistory && !includeAll) {
             wishlistCleanup = await cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs });
         }
 
@@ -589,11 +596,11 @@ export async function GET(req) {
             };
         });
 
-        if (!isHistory) {
+        if (!isHistory && !includeAll) {
             entries = entries.filter((entry) => isLiveActiveWaitlistRecord(entry));
         }
 
-        if (isHistory) {
+        if (isHistory || includeAll) {
             entries.sort((a, b) => getHistoryMillis(b) - getHistoryMillis(a));
         } else {
             entries.sort((a, b) => {

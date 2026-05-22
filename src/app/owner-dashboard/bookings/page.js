@@ -321,6 +321,144 @@ const sortActiveWaitlistEntries = (entries = []) => [...entries].filter(isLiveAc
     return getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
 });
 
+const normalizeCustomerPhone = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    const phone = digits.slice(-10);
+    return /^\d{10}$/.test(phone) ? phone : '';
+};
+
+const formatCustomerPhone = (phone) => (
+    phone ? `${phone.slice(0, 5)} ${phone.slice(5)}` : 'No mobile'
+);
+
+const getCustomerName = (...values) => {
+    const found = values.find((value) => String(value || '').trim());
+    return String(found || 'Guest').trim();
+};
+
+const getBookingActivityMs = (booking = {}) => (
+    getTimestampMs(booking.bookingDateTime)
+    || getTimestampMs(booking.createdAt)
+    || getTimestampMs(booking.updatedAt)
+    || 0
+);
+
+const buildBookingCustomerInsights = ({ bookings = [], waitlistEntries = [] }) => {
+    const customerMap = new Map();
+    let missingPhoneEntries = 0;
+    let totalBookings = 0;
+    let totalWaitlistJoins = 0;
+    let totalCovers = 0;
+
+    const ensureCustomer = ({ phone, name, activityMs }) => {
+        if (!customerMap.has(phone)) {
+            customerMap.set(phone, {
+                phone,
+                name: name || 'Guest',
+                bookingCount: 0,
+                waitlistCount: 0,
+                totalCovers: 0,
+                activeWaitlistCount: 0,
+                completedCount: 0,
+                cancelledCount: 0,
+                noShowCount: 0,
+                seatedCount: 0,
+                firstSeenMs: activityMs || 0,
+                lastSeenMs: activityMs || 0,
+                latestStatus: '',
+                latestSource: '',
+            });
+        }
+        return customerMap.get(phone);
+    };
+
+    bookings.forEach((booking) => {
+        const phone = normalizeCustomerPhone(booking.customerPhone || booking.phone);
+        if (!phone) {
+            missingPhoneEntries += 1;
+            return;
+        }
+        const activityMs = getBookingActivityMs(booking);
+        const name = getCustomerName(booking.customerName, booking.name);
+        const partySize = Math.max(0, Number(booking.partySize || booking.guests || 0));
+        const status = String(booking.status || 'pending').toLowerCase();
+        const customer = ensureCustomer({ phone, name, activityMs });
+        customer.bookingCount += 1;
+        customer.totalCovers += partySize;
+        totalBookings += 1;
+        totalCovers += partySize;
+        if (status === 'completed') customer.completedCount += 1;
+        if (status === 'cancelled') customer.cancelledCount += 1;
+        if (activityMs && (!customer.firstSeenMs || activityMs < customer.firstSeenMs)) customer.firstSeenMs = activityMs;
+        if (activityMs >= customer.lastSeenMs) {
+            customer.lastSeenMs = activityMs;
+            customer.latestStatus = status;
+            customer.latestSource = 'Booking';
+            customer.name = name;
+        }
+    });
+
+    waitlistEntries.forEach((entry) => {
+        const phone = normalizeCustomerPhone(entry.phone || entry.customerPhone);
+        if (!phone) {
+            missingPhoneEntries += 1;
+            return;
+        }
+        const activityMs = getWaitlistHistoryMs(entry) || getTimestampMs(entry.createdAt) || getTimestampMs(entry.updatedAt) || 0;
+        const name = getCustomerName(entry.name, entry.customerName);
+        const paxCount = Math.max(0, Number(entry.paxCount || entry.partySize || entry.guests || 0));
+        const status = String(entry.status || 'pending').toLowerCase();
+        const customer = ensureCustomer({ phone, name, activityMs });
+        customer.waitlistCount += 1;
+        customer.totalCovers += paxCount;
+        totalWaitlistJoins += 1;
+        totalCovers += paxCount;
+        if (ACTIVE_WAITLIST_STATUSES.includes(status)) customer.activeWaitlistCount += 1;
+        if (status === 'seated') customer.seatedCount += 1;
+        if (status === 'cancelled') customer.cancelledCount += 1;
+        if (status === 'no_show') customer.noShowCount += 1;
+        if (activityMs && (!customer.firstSeenMs || activityMs < customer.firstSeenMs)) customer.firstSeenMs = activityMs;
+        if (activityMs >= customer.lastSeenMs) {
+            customer.lastSeenMs = activityMs;
+            customer.latestStatus = status;
+            customer.latestSource = 'Waitlist';
+            customer.name = name;
+        }
+    });
+
+    const customers = Array.from(customerMap.values()).map((customer) => ({
+        ...customer,
+        totalVisits: customer.bookingCount + customer.waitlistCount,
+        isRepeat: (customer.bookingCount + customer.waitlistCount) > 1,
+        isBookingCustomer: customer.bookingCount > 0,
+        isWaitlistCustomer: customer.waitlistCount > 0,
+    })).sort((a, b) => {
+        if (b.totalVisits !== a.totalVisits) return b.totalVisits - a.totalVisits;
+        return b.lastSeenMs - a.lastSeenMs;
+    });
+
+    const repeatCustomers = customers.filter((customer) => customer.isRepeat);
+    const bookingCustomers = customers.filter((customer) => customer.isBookingCustomer);
+    const waitlistCustomers = customers.filter((customer) => customer.isWaitlistCustomer);
+    const bothChannelCustomers = customers.filter((customer) => customer.isBookingCustomer && customer.isWaitlistCustomer);
+
+    return {
+        customers,
+        topRepeatCustomers: repeatCustomers.slice(0, 6),
+        totalUniqueCustomers: customers.length,
+        repeatCustomerCount: repeatCustomers.length,
+        newCustomerCount: customers.length - repeatCustomers.length,
+        bookingCustomerCount: bookingCustomers.length,
+        waitlistCustomerCount: waitlistCustomers.length,
+        bothChannelCustomerCount: bothChannelCustomers.length,
+        totalBookings,
+        totalWaitlistJoins,
+        totalCovers,
+        missingPhoneEntries,
+        repeatRate: customers.length ? Math.round((repeatCustomers.length / customers.length) * 100) : 0,
+    };
+};
+
 const normalizeBookingSnapshotDoc = (snapshotDoc) => {
     const data = snapshotDoc.data() || {};
     return {
@@ -801,12 +939,18 @@ const formatAnalyticsMinutes = (value) => {
     return `${parsed.toFixed(parsed % 1 === 0 ? 0 : 1)} min`;
 };
 
-const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId }) => {
+const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId, bookings = [], restaurant }) => {
     const { toast } = useToast();
     const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [loading, setLoading] = useState(false);
     const [analytics, setAnalytics] = useState(null);
+    const [waitlistCustomerEntries, setWaitlistCustomerEntries] = useState([]);
+    const [customerInsightsLoading, setCustomerInsightsLoading] = useState(false);
+    const [customerInsightSearch, setCustomerInsightSearch] = useState('');
+    const [customerInsightFilter, setCustomerInsightFilter] = useState('all');
+    const [analyticsTab, setAnalyticsTab] = useState('overview');
+    const [customerInsightsLoaded, setCustomerInsightsLoaded] = useState(false);
 
     const fetchAnalytics = useCallback(async () => {
         if (startDate > endDate) {
@@ -835,9 +979,37 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
         }
     }, [startDate, endDate, impersonatedOwnerId, employeeOfOwnerId, toast]);
 
+    const fetchWaitlistCustomerEntries = useCallback(async () => {
+        setCustomerInsightsLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            const url = new URL('/api/owner/waitlist', window.location.origin);
+            url.searchParams.set('all', 'true');
+            if (impersonatedOwnerId) url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+
+            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || 'Failed to load customer waitlist data.');
+            setWaitlistCustomerEntries(Array.isArray(data.entries) ? data.entries : []);
+            setCustomerInsightsLoaded(true);
+        } catch (err) {
+            toast({ title: 'Customer Insights Error', description: err.message, variant: 'destructive' });
+        } finally {
+            setCustomerInsightsLoading(false);
+        }
+    }, [impersonatedOwnerId, toast]);
+
     useEffect(() => {
         if (isOpen) void fetchAnalytics();
     }, [isOpen, fetchAnalytics]);
+
+    useEffect(() => {
+        if (isOpen && analyticsTab === 'customers' && !customerInsightsLoaded) {
+            void fetchWaitlistCustomerEntries();
+        }
+    }, [analyticsTab, customerInsightsLoaded, fetchWaitlistCustomerEntries, isOpen]);
 
     const summaryCards = useMemo(() => {
         if (!analytics?.summary) return [];
@@ -891,6 +1063,39 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
         ];
     }, [analytics]);
 
+    const customerInsights = useMemo(() => buildBookingCustomerInsights({
+        bookings,
+        waitlistEntries: waitlistCustomerEntries,
+    }), [bookings, waitlistCustomerEntries]);
+
+    const handleCustomerInsightsExport = useCallback(() => {
+        const headers = ['Name', 'Mobile', 'Total Visits', 'Bookings', 'Waitlist Joins', 'Known Covers', 'First Seen', 'Last Seen', 'Latest Source', 'Latest Status'];
+        const rows = customerInsights.customers.map((customer) => [
+            customer.name,
+            customer.phone,
+            customer.totalVisits,
+            customer.bookingCount,
+            customer.waitlistCount,
+            customer.totalCovers,
+            customer.firstSeenMs ? formatDateTime(new Date(customer.firstSeenMs)) : '',
+            customer.lastSeenMs ? formatDateTime(new Date(customer.lastSeenMs)) : '',
+            customer.latestSource,
+            formatHistoryStatus(customer.latestStatus),
+        ]);
+        const csv = [headers, ...rows]
+            .map((row) => row.map(escapeCsvCell).join(','))
+            .join('\r\n');
+        const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${sanitizeExportFilePart(restaurant?.name || 'restaurant')}-customer-insights.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, [customerInsights.customers, restaurant?.name]);
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -902,7 +1107,12 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
                         Customer mix, peak hours, conversion, wait time and data quality for the selected range.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4">
+                <Tabs value={analyticsTab} onValueChange={setAnalyticsTab} className="space-y-4">
+                    <TabsList className="grid w-full max-w-md grid-cols-2">
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="customers">Customer Insights</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="overview" className="space-y-4">
                     <div className="flex flex-wrap items-center gap-2">
                         <Label htmlFor="analyticsStartDate" className="text-sm">From</Label>
                         <input
@@ -1072,7 +1282,19 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
                     ) : (
                         <p className="text-sm text-muted-foreground">No analytics data available.</p>
                     )}
-                </div>
+                    </TabsContent>
+                    <TabsContent value="customers" className="space-y-4">
+                        <CustomerInsightsPanel
+                            insights={customerInsights}
+                            loading={customerInsightsLoading}
+                            searchQuery={customerInsightSearch}
+                            onSearchChange={setCustomerInsightSearch}
+                            filter={customerInsightFilter}
+                            onFilterChange={setCustomerInsightFilter}
+                            onExport={handleCustomerInsightsExport}
+                        />
+                    </TabsContent>
+                </Tabs>
                 <DialogFooter>
                     <Button type="button" variant="outline" onClick={onClose}>Close</Button>
                 </DialogFooter>
@@ -1329,6 +1551,208 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         </Dialog>
     );
 };
+
+const CustomerInsightsPanel = ({
+    insights,
+    loading,
+    searchQuery,
+    onSearchChange,
+    filter,
+    onFilterChange,
+    onExport,
+}) => {
+    const filterOptions = [
+        { value: 'all', label: 'All' },
+        { value: 'repeat', label: 'Repeat' },
+        { value: 'new', label: 'New' },
+        { value: 'booking', label: 'Booking' },
+        { value: 'waitlist', label: 'Waitlist' },
+    ];
+    const q = String(searchQuery || '').trim().toLowerCase();
+    const filteredCustomers = insights.customers.filter((customer) => {
+        const matchesSearch = !q
+            || String(customer.name || '').toLowerCase().includes(q)
+            || String(customer.phone || '').includes(q);
+        if (!matchesSearch) return false;
+        if (filter === 'repeat') return customer.isRepeat;
+        if (filter === 'new') return !customer.isRepeat;
+        if (filter === 'booking') return customer.isBookingCustomer;
+        if (filter === 'waitlist') return customer.isWaitlistCustomer;
+        return true;
+    });
+
+    const metricCards = [
+        { label: 'Total Customers', value: insights.totalUniqueCustomers, icon: Users },
+        { label: 'Repeat Customers', value: insights.repeatCustomerCount, icon: RefreshCw, tone: 'text-emerald-600' },
+        { label: 'Bookings', value: insights.totalBookings, icon: CalendarClock },
+        { label: 'Waitlist Joins', value: insights.totalWaitlistJoins, icon: ListOrdered },
+        { label: 'Known Covers', value: insights.totalCovers, icon: User },
+    ];
+
+    return (
+        <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <CardTitle className="flex items-center gap-2 text-lg md:text-2xl">
+                            <Sparkles className="h-5 w-5 text-primary" /> All-Time Customer Insights
+                        </CardTitle>
+                        <CardDescription>
+                            {loading ? 'Syncing customer data...' : `${insights.totalUniqueCustomers} customers with name and mobile for this restaurant, across all bookings and waitlist joins.`}
+                        </CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={onExport} disabled={!insights.customers.length}>
+                        <Download size={15} className="mr-2" /> Export
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-3">
+                    {metricCards.map(({ label, value, icon: Icon, tone }) => (
+                        <div key={label} className="rounded-lg border border-border bg-muted/20 p-3 min-h-[92px]">
+                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                <span className="truncate">{label}</span>
+                                <Icon size={15} className={tone || 'text-muted-foreground'} />
+                            </div>
+                            <div className="mt-2 text-2xl font-black tabular-nums">{value}</div>
+                            {label === 'Repeat Customers' && (
+                                <div className="mt-1 text-xs text-muted-foreground">{insights.repeatRate}% repeat rate</div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-4">
+                    <div className="space-y-3 min-w-0">
+                        <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+                            <div className="relative flex-1 min-w-0">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    placeholder="Search customer or mobile..."
+                                    className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    value={searchQuery}
+                                    onChange={(event) => onSearchChange(event.target.value)}
+                                />
+                            </div>
+                            <div className="flex overflow-x-auto rounded-lg border border-border p-1">
+                                {filterOptions.map((option) => (
+                                    <Button
+                                        key={option.value}
+                                        type="button"
+                                        size="sm"
+                                        variant={filter === option.value ? 'default' : 'ghost'}
+                                        className="h-8 shrink-0 px-3 text-xs"
+                                        onClick={() => onFilterChange(option.value)}
+                                    >
+                                        {option.label}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="min-w-[190px]">Customer</TableHead>
+                                        <TableHead className="text-right">Visits</TableHead>
+                                        <TableHead className="text-right">Bookings</TableHead>
+                                        <TableHead className="text-right">Waitlist</TableHead>
+                                        <TableHead className="min-w-[150px]">Last Seen</TableHead>
+                                        <TableHead className="min-w-[130px]">Latest</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredCustomers.slice(0, 120).map((customer) => (
+                                        <TableRow key={customer.phone}>
+                                            <TableCell>
+                                                <div className="font-semibold max-w-[220px] truncate">{customer.name}</div>
+                                                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                                                    <Phone size={12} /> {formatCustomerPhone(customer.phone)}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right font-black tabular-nums">{customer.totalVisits}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{customer.bookingCount}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{customer.waitlistCount}</TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {customer.lastSeenMs ? formatDateTime(new Date(customer.lastSeenMs)) : 'N/A'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-sm font-medium">{customer.latestSource || 'N/A'}</div>
+                                                <div className="text-xs text-muted-foreground">{formatHistoryStatus(customer.latestStatus)}</div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                    {!filteredCustomers.length && (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                                                No customers found.
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                        {filteredCustomers.length > 120 && (
+                            <p className="text-xs text-muted-foreground">Showing first 120 customers. Use search to narrow the list.</p>
+                        )}
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="rounded-lg border border-border bg-muted/20 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <h3 className="font-bold">Repeat Watchlist</h3>
+                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-600">
+                                    {insights.repeatCustomerCount}
+                                </span>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                                {insights.topRepeatCustomers.length ? insights.topRepeatCustomers.map((customer) => (
+                                    <div key={customer.phone} className="flex items-center justify-between gap-3 rounded-md bg-background px-3 py-2">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-semibold">{customer.name}</div>
+                                            <div className="text-xs text-muted-foreground">{formatCustomerPhone(customer.phone)}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-black">{customer.totalVisits}</div>
+                                            <div className="text-[10px] text-muted-foreground uppercase">visits</div>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <p className="py-6 text-center text-sm text-muted-foreground">No repeat customers yet.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted/20 p-3">
+                            <h3 className="font-bold">Data Quality</h3>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Booking + Waitlist</div>
+                                    <div className="font-black">{insights.bothChannelCustomerCount}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Missing Mobile</div>
+                                    <div className="font-black">{insights.missingPhoneEntries}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Booking Customers</div>
+                                    <div className="font-black">{insights.bookingCustomerCount}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Waitlist Customers</div>
+                                    <div className="font-black">{insights.waitlistCustomerCount}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+};
+
 const WaitlistManagement = ({
     restaurant,
     impersonatedOwnerId,
@@ -2571,15 +2995,6 @@ function BookingsPageContent() {
         };
     }, [businessInfo?.collection, businessInfo?.id, fetchBookings, persistBookingsToCache]);
 
-    const handleRefreshAll = useCallback(() => {
-        void fetchBookings(true);
-        if (canMountWaitlistManagement) {
-            setWaitlistRefreshSignal((value) => value + 1);
-        }
-    }, [canMountWaitlistManagement, fetchBookings]);
-
-    const handleBookingCreatedFromQuickAdd = useCallback(() => fetchBookings(true), [fetchBookings]);
-
     useEffect(() => {
         setNoShowTimeoutDraft(String(waitlistNoShowTimeoutMinutes || 10));
     }, [waitlistNoShowTimeoutMinutes, isWaitlistSettingsOpen]);
@@ -2597,6 +3012,17 @@ function BookingsPageContent() {
         else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
         return url.toString();
     };
+
+    const handleRefreshAll = useCallback(() => {
+        void fetchBookings(true);
+        if (canMountWaitlistManagement) {
+            setWaitlistRefreshSignal((value) => value + 1);
+        }
+    }, [canMountWaitlistManagement, fetchBookings]);
+
+    const handleBookingCreatedFromQuickAdd = useCallback(() => {
+        void fetchBookings(true);
+    }, [fetchBookings]);
 
     const handleUpdateStatus = async (bookingId, status, bookingForMessage = null) => {
         const shouldDraftWhatsApp = status === 'confirmed' || status === 'cancelled';
@@ -3144,6 +3570,8 @@ function BookingsPageContent() {
                     onClose={() => setIsWaitlistAnalyticsOpen(false)}
                     impersonatedOwnerId={impersonatedOwnerId}
                     employeeOfOwnerId={employeeOfOwnerId}
+                    bookings={bookings}
+                    restaurant={businessInfo}
                 />
             )}
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ ...infoDialog, isOpen: false })} title={infoDialog.title} message={infoDialog.message} />
