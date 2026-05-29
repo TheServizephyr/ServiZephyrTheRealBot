@@ -155,6 +155,12 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'flagcdn.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
     // Suppress legacy Image warnings in development
     dangerouslyAllowSVG: true,

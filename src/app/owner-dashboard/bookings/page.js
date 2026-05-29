@@ -508,10 +508,32 @@ const formatDateTime = (dateValue) => {
     return format(date, "dd MMM, yyyy 'at' hh:mm a");
 };
 
-const getWaMePhoneDigits = (value) => {
-    const digits = String(value || '').replace(/\D/g, '');
-    const phoneDigits = digits.slice(-10);
-    return /^\d{10}$/.test(phoneDigits) ? phoneDigits : '';
+const getInternationalPhoneDigits = (record, phoneKey = 'phone') => {
+    const e164Digits = String(record?.phoneE164 || record?.customerPhoneE164 || '').replace(/\D/g, '');
+    if (/^\d{6,15}$/.test(e164Digits)) return e164Digits;
+
+    const dialCode = String(
+        record?.phoneCountryDialCode ||
+        record?.customerPhoneDialCode ||
+        record?.customerPhoneCountryDialCode ||
+        ''
+    ).replace(/\D/g, '');
+    const nationalNumber = String(
+        record?.phoneNationalNumber ||
+        record?.customerPhoneNationalNumber ||
+        ''
+    ).replace(/\D/g, '');
+    const composedDigits = `${dialCode}${nationalNumber}`;
+    if (dialCode && /^\d{6,15}$/.test(composedDigits)) return composedDigits;
+
+    const fallbackDigits = String(record?.[phoneKey] || '').replace(/\D/g, '');
+    if (/^\d{10}$/.test(fallbackDigits)) return `91${fallbackDigits}`;
+    return /^\d{6,15}$/.test(fallbackDigits) ? fallbackDigits : '';
+};
+
+const formatInternationalPhone = (record, phoneKey = 'phone') => {
+    const digits = getInternationalPhoneDigits(record, phoneKey);
+    return digits ? `+${digits}` : '';
 };
 
 const truncateMessagePart = (value, maxLength = 120) => {
@@ -521,7 +543,7 @@ const truncateMessagePart = (value, maxLength = 120) => {
 };
 
 const buildBookingStatusWhatsAppUrl = (booking, status, restaurantName) => {
-    const phoneDigits = getWaMePhoneDigits(booking?.customerPhone);
+    const phoneDigits = getInternationalPhoneDigits(booking, 'customerPhone');
     if (!phoneDigits) return '';
 
     const safeRestaurantName = truncateMessagePart(restaurantName || 'the restaurant', 80);
@@ -559,7 +581,7 @@ const buildBookingStatusWhatsAppUrl = (booking, status, restaurantName) => {
         'Thank you!'
     );
 
-    return `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(lines.join('\n'))}`;
+    return `https://wa.me/${phoneDigits}?text=${encodeURIComponent(lines.join('\n'))}`;
 };
 
 const formatCountdown = (totalSeconds) => {
@@ -598,6 +620,7 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
     const bookedAtText = createdAtDate
         ? `Booked ${formatDistanceToNow(createdAtDate, { addSuffix: true })}`
         : 'Booked time unavailable';
+    const customerPhoneLabel = formatInternationalPhone(booking, 'customerPhone') || booking.customerPhone;
 
     return (
         <Card className={cn("overflow-hidden border-border/50 bg-muted/5 hover:bg-muted/10 transition-colors border-l-4", booking.status === 'confirmed' ? "border-l-green-500" : booking.status === 'pending' ? "border-l-yellow-500" : "border-l-muted")}>
@@ -605,7 +628,7 @@ const BookingCard = ({ booking, onUpdateStatus }) => {
                 <div className="flex justify-between items-start">
                     <div>
                         <h4 className="font-bold text-sm">{booking.customerName}</h4>
-                        <p className="text-[10px] text-muted-foreground">{booking.customerPhone}</p>
+                        <p className="text-[10px] text-muted-foreground">{customerPhoneLabel}</p>
                     </div>
                     <span className={cn('flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold rounded-full capitalize', currentStatusConfig.style)}>
                         {currentStatusConfig.icon}
@@ -2032,21 +2055,21 @@ const WaitlistManagement = ({
     };
 
     const handleNotify = (entry) => {
-        const phoneDigits = String(entry?.phone || '').replace(/\D/g, '');
-        if (!/^\d{10}$/.test(phoneDigits)) {
+        const phoneDigits = getInternationalPhoneDigits(entry, 'phone');
+        if (!phoneDigits) {
             toast({ title: "Phone Missing", description: "Add a valid phone number before sending WhatsApp.", variant: "destructive" });
             return;
         }
         const guestCountText = `${entry.paxCount} ${Number(entry.paxCount) === 1 ? 'guest' : 'guests'}`;
         const lapseMinutes = Number(waitlistMeta?.noShowTimeoutMinutes || 10);
         const msg = `Hi ${entry.name},\n\nGreat news! Your table for ${guestCountText} at ${restaurant?.name || 'the restaurant'} is now ready.\n\nPlease come to the entrance when you can.\nYour seat may lapse after ${lapseMinutes} minutes, so please arrive soon to avoid cancellation.\nIf you are not visiting, please let us know so we can assist the next guest.\n\nThank you!`;
-        window.open(`https://wa.me/91${phoneDigits}?text=${encodeURIComponent(msg)}`, '_blank');
+        window.open(`https://wa.me/${phoneDigits}?text=${encodeURIComponent(msg)}`, '_blank');
         handleUpdateStatus(entry.id, 'notified');
     };
 
     const handleCallCustomer = async (entry) => {
-        const phoneDigits = String(entry?.phone || '').replace(/\D/g, '');
-        if (!/^\d{10}$/.test(phoneDigits)) {
+        const phoneDigits = getInternationalPhoneDigits(entry, 'phone');
+        if (!phoneDigits) {
             toast({ title: "Phone Missing", description: "Add a valid phone number before calling.", variant: "destructive" });
             return;
         }
@@ -2055,7 +2078,7 @@ const WaitlistManagement = ({
             await handleUpdateStatus(entry.id, 'notified');
         }
 
-        window.location.href = `tel:+91${phoneDigits}`;
+        window.location.href = `tel:+${phoneDigits}`;
     };
 
     const handleArrivalScanSuccess = useCallback(async (decodedText) => {
@@ -2164,8 +2187,8 @@ const WaitlistManagement = ({
     const quickAddPhoneError = quickAddPhoneTouched
         && (quickAddPhoneRequired || quickAddPhoneDigits.length > 0)
         && quickAddPhoneDigits.length !== 10;
-    const scannedPhoneDigits = String(scannedWaitlistEntry?.phone || '').replace(/\D/g, '');
-    const hasScannedContactPhone = /^\d{10}$/.test(scannedPhoneDigits);
+    const scannedPhoneLabel = formatInternationalPhone(scannedWaitlistEntry, 'phone');
+    const hasScannedContactPhone = Boolean(scannedPhoneLabel);
 
     return (
         <div className="space-y-6">
@@ -2277,8 +2300,8 @@ const WaitlistManagement = ({
                             ? Math.max(0, Math.min(1, remainingNoShowSeconds / totalNoShowSeconds))
                             : 0;
                         const progressDeg = Math.round(progressRatio * 360);
-                        const entryPhoneDigits = String(entry.phone || '').replace(/\D/g, '');
-                        const hasContactPhone = /^\d{10}$/.test(entryPhoneDigits);
+                        const entryPhoneLabel = formatInternationalPhone(entry, 'phone');
+                        const hasContactPhone = Boolean(entryPhoneLabel);
 
                         return (
                             <Card key={entry.id} className={cn(
@@ -2309,7 +2332,7 @@ const WaitlistManagement = ({
                                                         <span className="text-[10px] bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded-md border border-green-500/20">Ready to Seat</span>
                                                     )}
                                                 </h4>
-                                                <p className="text-xs text-muted-foreground">{hasContactPhone ? `+91 ${entryPhoneDigits}` : 'No phone added'}</p>
+                                                <p className="text-xs text-muted-foreground">{hasContactPhone ? entryPhoneLabel : 'No phone added'}</p>
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-1.5">
@@ -2572,7 +2595,7 @@ const WaitlistManagement = ({
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <h4 className="truncate text-lg font-black">{scannedWaitlistEntry.name}</h4>
-                                            <p className="text-sm text-muted-foreground">{hasScannedContactPhone ? `+91 ${scannedPhoneDigits}` : 'No phone added'}</p>
+                                            <p className="text-sm text-muted-foreground">{hasScannedContactPhone ? scannedPhoneLabel : 'No phone added'}</p>
                                         </div>
                                         <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
                                             {scannedWaitlistEntry.waitlistToken || 'TOKEN'}

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
+import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -9,6 +10,35 @@ const WAITLIST_COUNTER_TIMEZONE = 'Asia/Kolkata';
 const READY_TO_NOTIFY_STATUS = 'ready_to_notify';
 const ACTIVE_WAITLIST_STATUSES = new Set(['pending', READY_TO_NOTIFY_STATUS, 'notified', 'arrived', 'no_show']);
 const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+function normalizePublicPhonePayload(body = {}) {
+    const countryIso = String(body.phoneCountryIso || 'IN').trim().toUpperCase();
+    let dialCode = '';
+    try {
+        dialCode = getCountryCallingCode(countryIso);
+    } catch {
+        return null;
+    }
+
+    const rawNationalNumber = String(body.phoneNationalNumber || body.phone || '').replace(/\D/g, '');
+    const parsedPhone = parsePhoneNumberFromString(rawNationalNumber, countryIso);
+    if (!rawNationalNumber || validatePhoneNumberLength(rawNationalNumber, countryIso) !== undefined || parsedPhone?.isPossible() !== true) {
+        return null;
+    }
+
+    const nationalNumber = parsedPhone.nationalNumber;
+    const e164 = parsedPhone.number.replace(/\D/g, '');
+    const storedPhone = countryIso === 'IN' && /^\d{10}$/.test(nationalNumber) ? nationalNumber : e164;
+
+    return {
+        storedPhone,
+        phoneE164: e164,
+        phoneNationalNumber: nationalNumber,
+        phoneCountryDialCode: dialCode,
+        phoneCountryIso: countryIso,
+        phoneCountryName: String(body.phoneCountryName || '').trim(),
+    };
+}
 
 function randomUpperAlpha(length = 2) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -78,7 +108,8 @@ function getDateKeyInTimeZone(date = new Date()) {
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { restaurantId, name, phone, paxCount } = await req.json();
+        const body = await req.json();
+        const { restaurantId, name, phone, paxCount } = body;
 
         if (!restaurantId || !name || !phone || paxCount === undefined || paxCount === null) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
@@ -89,11 +120,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid guest count. Please enter between 1 and 20.' }, { status: 400 });
         }
 
-        const phoneDigits = String(phone || '').replace(/\D/g, '');
-        const normalizedPhone = phoneDigits.length > 10 ? phoneDigits.slice(-10) : phoneDigits;
-        if (!/^\d{10}$/.test(normalizedPhone)) {
+        const normalizedPhonePayload = normalizePublicPhonePayload(body);
+        if (!normalizedPhonePayload) {
             return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
         }
+        const normalizedPhone = normalizedPhonePayload.storedPhone;
 
         // Validate restaurant exists
         const restaurantSnap = await firestore.collection('restaurants').doc(restaurantId).get();
@@ -159,6 +190,11 @@ export async function POST(req) {
                 id: newEntryRef.id,
                 name: String(name || '').trim(),
                 phone: normalizedPhone,
+                phoneE164: normalizedPhonePayload.phoneE164,
+                phoneNationalNumber: normalizedPhonePayload.phoneNationalNumber,
+                phoneCountryDialCode: normalizedPhonePayload.phoneCountryDialCode,
+                phoneCountryIso: normalizedPhonePayload.phoneCountryIso,
+                phoneCountryName: normalizedPhonePayload.phoneCountryName,
                 paxCount: normalizedPaxCount,
                 status: 'pending',
                 queuePriority: 2,
@@ -180,6 +216,10 @@ export async function POST(req) {
             }, { merge: true });
             transaction.set(activePhoneLockRef, {
                 phone: normalizedPhone,
+                phoneE164: normalizedPhonePayload.phoneE164,
+                phoneNationalNumber: normalizedPhonePayload.phoneNationalNumber,
+                phoneCountryDialCode: normalizedPhonePayload.phoneCountryDialCode,
+                phoneCountryIso: normalizedPhonePayload.phoneCountryIso,
                 entryId: newEntryRef.id,
                 status: 'active',
                 createdAt: FieldValue.serverTimestamp(),

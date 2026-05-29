@@ -2,18 +2,80 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, Phone, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen } from 'lucide-react';
+import { Users, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen, ChevronDown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
+import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 
 const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
 const getWaitlistMenuCredentialKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
+const DEFAULT_PHONE_COUNTRY_ISO = 'IN';
+const MAX_INTERNATIONAL_PHONE_DIGITS = 15;
+const countryDisplayNames = new Intl.DisplayNames(['en'], { type: 'region' });
+const getCountryName = (iso) => countryDisplayNames.of(iso) || iso;
+const PHONE_COUNTRY_OPTIONS = getCountries()
+    .map((iso) => ({
+        iso,
+        name: getCountryName(iso),
+        dialCode: getCountryCallingCode(iso),
+        flagUrl: `https://flagcdn.com/w40/${String(iso).toLowerCase()}.png`,
+    }))
+    .sort((a, b) => {
+        if (a.iso === DEFAULT_PHONE_COUNTRY_ISO) return -1;
+        if (b.iso === DEFAULT_PHONE_COUNTRY_ISO) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
+const getPhoneCountryOption = (iso) => (
+    PHONE_COUNTRY_OPTIONS.find((country) => country.iso === iso) || PHONE_COUNTRY_OPTIONS[0]
+);
+
+const buildPhoneE164Digits = (country, nationalNumber) => {
+    const parsedPhone = parsePhoneNumberFromString(String(nationalNumber || ''), country?.iso);
+    if (parsedPhone?.isPossible()) {
+        return parsedPhone.number.replace(/\D/g, '');
+    }
+    const dialCode = String(country?.dialCode || '').replace(/\D/g, '');
+    return `${dialCode}${String(nationalNumber || '').replace(/\D/g, '')}`;
+};
+
+const isValidNationalPhoneForCountry = (country, nationalNumber) => {
+    const digits = String(nationalNumber || '').replace(/\D/g, '');
+    if (!digits || !country?.iso) return false;
+    return validatePhoneNumberLength(digits, country.iso) === undefined
+        && parsePhoneNumberFromString(digits, country.iso)?.isPossible() === true;
+};
+
+const CountryFlagSwatch = ({ country, className }) => (
+    <span
+        aria-hidden="true"
+        className={cn("relative inline-flex h-4 w-6 shrink-0 items-center justify-center overflow-hidden rounded-[2px] border border-white/35 bg-muted text-[8px] font-black leading-none text-muted-foreground shadow-sm", className)}
+    >
+        <span>{country?.iso}</span>
+        {country?.flagUrl && (
+            <Image
+                src={country.flagUrl}
+                alt=""
+                width={40}
+                height={30}
+                loading="lazy"
+                unoptimized
+                className="absolute inset-0 h-full w-full object-cover"
+                onError={(event) => {
+                    event.currentTarget.style.display = 'none';
+                }}
+            />
+        )}
+    </span>
+);
 
 const normalizeExpectedWaitMinutes = (value, fallback = 0) => {
     const parsed = Number.parseInt(String(value), 10);
@@ -25,6 +87,8 @@ export default function PublicWaitlistPage({ params }) {
     const { restaurantId } = params;
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
+    const [phoneCountryIso, setPhoneCountryIso] = useState(DEFAULT_PHONE_COUNTRY_ISO);
+    const [countrySearch, setCountrySearch] = useState('');
     const [phoneTouched, setPhoneTouched] = useState(false);
     const [paxCount, setPaxCount] = useState('2');
     const [mode, setMode] = useState('waitlist'); // waitlist | booking
@@ -93,7 +157,9 @@ export default function PublicWaitlistPage({ params }) {
             if (!saved?.entryId || !saved?.waitlistToken || !saved?.arrivalCode) return;
             setMode('waitlist');
             if (saved.name) setName(saved.name);
-            if (saved.phone) setPhone(saved.phone);
+            if (saved.phoneCountryIso) setPhoneCountryIso(saved.phoneCountryIso);
+            if (saved.phoneNationalNumber) setPhone(saved.phoneNationalNumber);
+            else if (saved.phone) setPhone(String(saved.phone).replace(/\D/g, '').slice(-15));
             if (saved.paxCount) setPaxCount(String(saved.paxCount));
             setWaitlistToken(saved.waitlistToken);
             setArrivalCode(saved.arrivalCode);
@@ -119,6 +185,10 @@ export default function PublicWaitlistPage({ params }) {
             mode: 'waitlist',
             name,
             phone,
+            phoneCountryIso,
+            phoneCountryDialCode: getPhoneCountryOption(phoneCountryIso).dialCode,
+            phoneNationalNumber: phone,
+            phoneE164: buildPhoneE164Digits(getPhoneCountryOption(phoneCountryIso), phone),
             paxCount: Number.parseInt(String(paxCount || 1), 10) || 1,
             entryId,
             waitlistToken,
@@ -128,7 +198,7 @@ export default function PublicWaitlistPage({ params }) {
             noShowDeadlineAt,
             savedAt: new Date().toISOString(),
         }));
-    }, [restaurantId, mode, success, name, phone, paxCount, entryId, waitlistToken, arrivalCode, queueStatus, notifiedAt, noShowDeadlineAt]);
+    }, [restaurantId, mode, success, name, phone, phoneCountryIso, paxCount, entryId, waitlistToken, arrivalCode, queueStatus, notifiedAt, noShowDeadlineAt]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -229,14 +299,16 @@ export default function PublicWaitlistPage({ params }) {
 
         try {
             const trimmedName = String(name || '').trim();
-            const normalizedPhone = String(phone || '').replace(/\D/g, '');
+            const selectedPhoneCountry = getPhoneCountryOption(phoneCountryIso);
+            const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(0, MAX_INTERNATIONAL_PHONE_DIGITS);
+            const normalizedPhoneE164 = buildPhoneE164Digits(selectedPhoneCountry, normalizedPhone);
             const normalizedPaxCount = Number.parseInt(String(paxCount || ''), 10);
             if (!trimmedName) {
                 throw new Error('Please enter your name.');
             }
-            if (!/^\d{10}$/.test(normalizedPhone)) {
+            if (!isValidNationalPhoneForCountry(selectedPhoneCountry, normalizedPhone)) {
                 setPhoneTouched(true);
-                throw new Error('Please enter a valid phone number.');
+                throw new Error(`Please enter a valid phone number for ${selectedPhoneCountry.name}.`);
             }
             if (!Number.isInteger(normalizedPaxCount) || normalizedPaxCount < 1 || normalizedPaxCount > 20) {
                 throw new Error('Please enter guests between 1 and 20.');
@@ -254,6 +326,11 @@ export default function PublicWaitlistPage({ params }) {
                 restaurantId,
                 name: trimmedName,
                 phone: normalizedPhone,
+                phoneCountryIso: selectedPhoneCountry.iso,
+                phoneCountryName: selectedPhoneCountry.name,
+                phoneCountryDialCode: selectedPhoneCountry.dialCode,
+                phoneNationalNumber: normalizedPhone,
+                phoneE164: normalizedPhoneE164,
                 paxCount: normalizedPaxCount
             };
 
@@ -273,6 +350,11 @@ export default function PublicWaitlistPage({ params }) {
                     restaurantId,
                     name: trimmedName,
                     phone: normalizedPhone,
+                    phoneCountryIso: selectedPhoneCountry.iso,
+                    phoneCountryName: selectedPhoneCountry.name,
+                    phoneCountryDialCode: selectedPhoneCountry.dialCode,
+                    phoneNationalNumber: normalizedPhone,
+                    phoneE164: normalizedPhoneE164,
                     guests: normalizedPaxCount,
                     bookingDateTime: bookingDateTime.toISOString(),
                     occasion: String(bookingOccasion || '').trim(),
@@ -332,9 +414,18 @@ export default function PublicWaitlistPage({ params }) {
     const isCurrentModeEnabled = mode === 'booking' ? isBookingEnabled : isWaitlistEnabled;
     const isPublicIntakeDisabled = !isWaitlistEnabled && !isBookingEnabled;
     const restaurantName = restaurantData?.name || 'Restaurant';
-    const phoneDigitCount = String(phone || '').replace(/\D/g, '').length;
-    const phoneValidationMessage = phoneTouched && phoneDigitCount !== 10
-        ? 'Please enter a valid phone number.'
+    const selectedPhoneCountry = getPhoneCountryOption(phoneCountryIso);
+    const countrySearchQuery = countrySearch.trim().toLowerCase();
+    const filteredPhoneCountryOptions = countrySearchQuery
+        ? PHONE_COUNTRY_OPTIONS.filter((country) => {
+            const dialCode = String(country.dialCode || '');
+            return country.name.toLowerCase().includes(countrySearchQuery)
+                || country.iso.toLowerCase().includes(countrySearchQuery)
+                || dialCode.includes(countrySearchQuery.replace(/^\+/, ''));
+        })
+        : PHONE_COUNTRY_OPTIONS;
+    const phoneValidationMessage = phoneTouched && !isValidNationalPhoneForCountry(selectedPhoneCountry, phone)
+        ? `Enter a valid ${selectedPhoneCountry.name} number.`
         : '';
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const expectedWaitMinutes = normalizeExpectedWaitMinutes(restaurantData?.waitlistExpectedWaitMinutes, 0);
@@ -628,25 +719,89 @@ export default function PublicWaitlistPage({ params }) {
 
                                 <div className="space-y-2">
                                     <Label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-primary">Phone Number</Label>
-                                    <div className="relative group">
-                                        <Phone className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                    <div
+                                        className={cn(
+                                            "flex h-12 overflow-hidden rounded-md border border-border bg-muted/30 transition-colors focus-within:bg-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                                            phoneValidationMessage && "border-destructive focus-within:ring-destructive/30"
+                                        )}
+                                    >
+                                        <div className="relative flex h-full shrink-0 items-center border-r border-border/70 bg-background/40">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="flex h-full w-[88px] items-center justify-center gap-2 bg-transparent px-2 text-sm font-black text-foreground outline-none transition-colors hover:bg-muted/50 focus:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                        aria-label={`Country code: ${selectedPhoneCountry.name} +${selectedPhoneCountry.dialCode}`}
+                                                        disabled={loading}
+                                                    >
+                                                        <CountryFlagSwatch country={selectedPhoneCountry} />
+                                                        <span>+{selectedPhoneCountry.dialCode}</span>
+                                                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent
+                                                    align="start"
+                                                    sideOffset={6}
+                                                    className="w-[min(340px,calc(100vw-44px))] overflow-hidden border-primary/20 bg-[#17171b] p-1 text-foreground shadow-2xl"
+                                                >
+                                                    <div
+                                                        className="sticky top-0 z-10 border-b border-border/70 bg-[#17171b] p-2"
+                                                        onKeyDown={(event) => event.stopPropagation()}
+                                                    >
+                                                        <div className="relative">
+                                                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                                            <Input
+                                                                value={countrySearch}
+                                                                onChange={(event) => setCountrySearch(event.target.value)}
+                                                                placeholder="Search country or code"
+                                                                className="h-10 border-border/70 bg-background/70 pl-9 text-sm font-semibold"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="max-h-64 overflow-y-auto p-1">
+                                                        {filteredPhoneCountryOptions.length > 0 ? (
+                                                            filteredPhoneCountryOptions.map((country) => (
+                                                                <DropdownMenuItem
+                                                                    key={country.iso}
+                                                                    className={cn(
+                                                                        "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold text-foreground focus:bg-primary/15 focus:text-foreground",
+                                                                        country.iso === phoneCountryIso && "bg-primary/10 text-primary"
+                                                                    )}
+                                                                    onSelect={() => {
+                                                                        setPhoneCountryIso(country.iso);
+                                                                        setPhone((current) => String(current || '').replace(/\D/g, '').slice(0, MAX_INTERNATIONAL_PHONE_DIGITS));
+                                                                        setPhoneTouched(true);
+                                                                        setCountrySearch('');
+                                                                    }}
+                                                                >
+                                                                    <CountryFlagSwatch country={country} className="h-4 w-6" />
+                                                                    <span className="min-w-0 flex-1 truncate">{country.name}</span>
+                                                                    <span className="shrink-0 text-xs font-bold text-muted-foreground">+{country.dialCode}</span>
+                                                                </DropdownMenuItem>
+                                                            ))
+                                                        ) : (
+                                                            <div className="px-3 py-5 text-center text-xs font-semibold text-muted-foreground">
+                                                                No countries found
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
                                         <Input
                                             id="phone"
                                             name="tel"
                                             type="tel"
                                             placeholder="0000000000"
-                                            className={cn(
-                                                "pl-10 h-12 bg-muted/30 focus:bg-background border-border font-bold text-lg",
-                                                phoneValidationMessage && "border-destructive focus-visible:ring-destructive/30"
-                                            )}
+                                            className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 text-lg font-bold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
                                             value={phone}
                                             inputMode="numeric"
                                             autoComplete="tel-national"
-                                            maxLength={15}
+                                            maxLength={MAX_INTERNATIONAL_PHONE_DIGITS}
                                             aria-invalid={Boolean(phoneValidationMessage)}
                                             aria-describedby={phoneValidationMessage ? 'phone-error' : undefined}
                                             onChange={(e) => {
-                                                const digits = e.target.value.replace(/\D/g, '').slice(0, 15);
+                                                const digits = e.target.value.replace(/\D/g, '').slice(0, MAX_INTERNATIONAL_PHONE_DIGITS);
                                                 setPhone(digits);
                                                 setPhoneTouched(true);
                                             }}

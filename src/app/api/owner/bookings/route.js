@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 
 function assertRestaurantCollection(collectionName) {
     if (collectionName !== 'restaurants') {
@@ -29,6 +30,35 @@ function getCustomerNotificationTone(status, previousStatus) {
     }
     return {
         responseMessage: `Booking marked as ${status}.`,
+    };
+}
+
+function normalizePublicBookingPhonePayload(body = {}) {
+    const countryIso = String(body.phoneCountryIso || 'IN').trim().toUpperCase();
+    let dialCode = '';
+    try {
+        dialCode = getCountryCallingCode(countryIso);
+    } catch {
+        return null;
+    }
+
+    const rawNationalNumber = String(body.phoneNationalNumber || body.phone || '').replace(/\D/g, '');
+    const parsedPhone = parsePhoneNumberFromString(rawNationalNumber, countryIso);
+    if (!rawNationalNumber || validatePhoneNumberLength(rawNationalNumber, countryIso) !== undefined || parsedPhone?.isPossible() !== true) {
+        return null;
+    }
+
+    const nationalNumber = parsedPhone.nationalNumber;
+    const e164 = parsedPhone.number.replace(/\D/g, '');
+    const storedPhone = countryIso === 'IN' && /^\d{10}$/.test(nationalNumber) ? nationalNumber : e164;
+
+    return {
+        storedPhone,
+        phoneE164: e164,
+        phoneNationalNumber: nationalNumber,
+        phoneCountryDialCode: dialCode,
+        phoneCountryIso: countryIso,
+        phoneCountryName: String(body.phoneCountryName || '').trim(),
     };
 }
 
@@ -117,16 +147,18 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { restaurantId, name, phone, guests, bookingDateTime, occasion, source } = await req.json();
+        const body = await req.json();
+        const { restaurantId, name, phone, guests, bookingDateTime, occasion, source } = body;
 
         if (!restaurantId || !name || !phone || !guests || !bookingDateTime) {
             return NextResponse.json({ message: 'Missing required booking data.' }, { status: 400 });
         }
 
-        const normalizedPhone = String(phone || '').replace(/\D/g, '').slice(-10);
-        if (!/^\d{10}$/.test(normalizedPhone)) {
+        const normalizedPhonePayload = normalizePublicBookingPhonePayload(body);
+        if (!normalizedPhonePayload) {
             return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
         }
+        const normalizedPhone = normalizedPhonePayload.storedPhone;
 
         const normalizedGuests = Number.parseInt(String(guests), 10);
         if (!Number.isInteger(normalizedGuests) || normalizedGuests < 1 || normalizedGuests > 20) {
@@ -173,6 +205,11 @@ export async function POST(req) {
             id: newBookingRef.id,
             customerName: String(name || '').trim(),
             customerPhone: normalizedPhone,
+            customerPhoneE164: normalizedPhonePayload.phoneE164,
+            customerPhoneNationalNumber: normalizedPhonePayload.phoneNationalNumber,
+            customerPhoneDialCode: normalizedPhonePayload.phoneCountryDialCode,
+            customerPhoneCountryIso: normalizedPhonePayload.phoneCountryIso,
+            customerPhoneCountryName: normalizedPhonePayload.phoneCountryName,
             partySize: normalizedGuests,
             bookingDateTime: bookingAt,
             status: 'pending',
