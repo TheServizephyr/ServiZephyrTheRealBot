@@ -320,7 +320,8 @@ export async function POST(req) {
                 // Align with waiter board display: prefer live order-based occupancy,
                 // but do not undercount when there are fresh open tabs without orders yet.
                 let effectiveOccupiedPax = Math.max(occupiedByActiveOrders, occupiedByOpenTabs);
-                if (effectiveOccupiedPax <= 0 && dbCurrentPax > 0) {
+                const tableState = String(tableData.state || '').toLowerCase();
+                if (tableState === 'needs_cleaning' && effectiveOccupiedPax <= 0 && dbCurrentPax > 0) {
                     effectiveOccupiedPax = Math.min(maxCapacity || dbCurrentPax, dbCurrentPax);
                 }
 

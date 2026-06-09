@@ -544,7 +544,8 @@ export default function RestaurantPageClient({ restaurantData }) {
                                 <div className="mt-4 flex items-center justify-between">
                                   <span className="text-base font-black text-[#FAFAFA]">
                                     ₹{basePrice}
-                                                               {/* Mobile Add to Cart controls inside card */}
+                                  </span>
+                                  {/* Mobile Add to Cart controls inside card */}
                                   {hasBot && (
                                     <div className="sm:hidden flex items-center bg-[#1A1A24] border border-[#2c2c3c] rounded-lg p-0.5">
                                       {cartItem ? (
