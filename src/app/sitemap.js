@@ -29,7 +29,8 @@ export default async function sitemap() {
             .filter(doc => doc.data()?.isPublished !== false)
             .map((doc) => {
             const data = doc.data();
-            const slug = data.slug || doc.id;
+            const rawSlug = data.slug || doc.id;
+            const slug = rawSlug.split('/').map(encodeURIComponent).join('/');
             const lastModified = data.updatedAt?.toDate 
                 ? data.updatedAt.toDate() 
                 : (data.updatedAt ? new Date(data.updatedAt) : new Date());
