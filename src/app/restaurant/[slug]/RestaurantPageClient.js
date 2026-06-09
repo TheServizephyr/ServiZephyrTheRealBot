@@ -25,9 +25,39 @@ export default function RestaurantPageClient({ restaurantData }) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [vegOnly, setVegOnly] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [cart, setCart] = useState({});
   const [activeCategory, setActiveCategory] = useState(categories[0]?.id || '');
   const [likedItems, setLikedItems] = useState({});
+
+  // Load liked items from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(`liked_${business.id}`);
+        if (raw) {
+          setLikedItems(JSON.parse(raw));
+        }
+      } catch (e) {
+        console.error('Failed to load liked items:', e);
+      }
+    }
+  }, [business.id]);
+
+  // Sync liked items to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        if (Object.keys(likedItems).length === 0) {
+          localStorage.removeItem(`liked_${business.id}`);
+          return;
+        }
+        localStorage.setItem(`liked_${business.id}`, JSON.stringify(likedItems));
+      } catch (e) {
+        console.error('Failed to save liked items:', e);
+      }
+    }
+  }, [likedItems, business.id]);
 
   // 1. Load initial cart from localStorage on mount
   useEffect(() => {
@@ -218,6 +248,11 @@ export default function RestaurantPageClient({ restaurantData }) {
         items = items.filter((item) => item.isVeg === true);
       }
 
+      // Filter by Favorites
+      if (favoritesOnly) {
+        items = items.filter((item) => likedItems[item.id] === true);
+      }
+
       // Filter by Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -233,7 +268,7 @@ export default function RestaurantPageClient({ restaurantData }) {
       }
     });
     return result;
-  }, [categories, itemsByCategory, vegOnly, searchQuery]);
+  }, [categories, itemsByCategory, vegOnly, searchQuery, favoritesOnly, likedItems]);
 
   // Scroll handler to category sections
   const scrollToCategory = (catId) => {
@@ -454,22 +489,44 @@ export default function RestaurantPageClient({ restaurantData }) {
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block border border-emerald-300" />
                   Veg Only
                 </button>
+
+                <button
+                  onClick={() => setFavoritesOnly(!favoritesOnly)}
+                  className={`px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all flex items-center gap-2 ${
+                    favoritesOnly
+                      ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                      : 'bg-[#121216] text-neutral-400 border-[#1F1F27]/80 hover:text-white hover:bg-[#1a1a24]'
+                  }`}
+                >
+                  <Heart className={`w-4 h-4 ${favoritesOnly ? 'fill-rose-400 text-rose-400' : 'text-neutral-400'}`} />
+                  <span>Favorites ({Object.values(likedItems).filter(Boolean).length})</span>
+                </button>
               </div>
             </div>
 
             {/* Menu Items List */}
             {Object.keys(filteredMenu).length === 0 ? (
               <div className="bg-[#121216] border border-[#1F1F27]/80 rounded-2xl p-12 text-center">
-                <AlertCircle className="w-12 h-12 text-[#FDBA12] mx-auto mb-4" />
-                <h3 className="font-bold text-lg mb-1">No items found</h3>
+                {favoritesOnly ? (
+                  <Heart className="w-12 h-12 text-rose-500 mx-auto mb-4 fill-rose-500/20" />
+                ) : (
+                  <AlertCircle className="w-12 h-12 text-[#FDBA12] mx-auto mb-4" />
+                )}
+                <h3 className="font-bold text-lg mb-1">
+                  {favoritesOnly ? 'No favorites added' : 'No items found'}
+                </h3>
                 <p className="text-neutral-400 text-sm max-w-sm mx-auto">
-                  We couldn&apos;t find any matching dishes. Try searching for something else or clear the filters.
+                  {favoritesOnly 
+                    ? 'Tap the heart icon on any dish to add it to your favorites so you can quickly find it later.'
+                    : 'We couldn\'t find any matching dishes. Try searching for something else or clear the filters.'
+                  }
                 </p>
-                {(searchQuery || vegOnly) && (
+                {(searchQuery || vegOnly || favoritesOnly) && (
                   <button
                     onClick={() => {
                       setSearchQuery('');
                       setVegOnly(false);
+                      setFavoritesOnly(false);
                     }}
                     className="mt-4 px-4 py-2 bg-[#FDBA12] text-[#121216] font-bold rounded-lg hover:bg-[#e2a60a] transition-all text-sm"
                   >
