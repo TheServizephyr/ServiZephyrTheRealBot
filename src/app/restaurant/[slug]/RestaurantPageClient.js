@@ -602,37 +602,6 @@ export default function RestaurantPageClient({ restaurantData }) {
                                   <span className="text-base font-black text-[#FAFAFA]">
                                     ₹{basePrice}
                                   </span>
-                                  {/* Mobile Add to Cart controls inside card */}
-                                  {hasBot && (
-                                    <div className="sm:hidden flex items-center bg-[#1A1A24] border border-[#2c2c3c] rounded-lg p-0.5">
-                                      {cartItem ? (
-                                        <>
-                                          <button
-                                            onClick={() => removeFromCart(item)}
-                                            className="p-1 hover:text-[#FDBA12] transition-colors"
-                                          >
-                                            <Minus className="w-3.5 h-3.5" />
-                                          </button>
-                                          <span className="px-2 text-xs font-bold min-w-[16px] text-center">
-                                            {cartItem.qty}
-                                          </span>
-                                          <button
-                                            onClick={() => addToCart(item)}
-                                            className="p-1 hover:text-[#FDBA12] transition-colors"
-                                          >
-                                            <Plus className="w-3.5 h-3.5" />
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <button
-                                          onClick={() => addToCart(item)}
-                                          className="px-2.5 py-1 text-xs font-bold text-[#FDBA12] flex items-center gap-1"
-                                        >
-                                          <Plus className="w-3 h-3" /> Add
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
  
@@ -663,9 +632,9 @@ export default function RestaurantPageClient({ restaurantData }) {
                                   />
                                 </button>
  
-                                {/* Desktop Add to Cart overlay */}
+                                {/* Add to Cart overlay (Visible on both Mobile & Desktop) */}
                                 {hasBot && (
-                                  <div className="hidden sm:block absolute bottom-1 right-1 left-1 bg-black/85 backdrop-blur-md border border-[#2c2c3c] rounded-md p-0.5">
+                                  <div className="absolute bottom-1 right-1 left-1 bg-black/85 backdrop-blur-md border border-[#2c2c3c] rounded-md p-0.5 z-20">
                                     {cartItem ? (
                                       <div className="flex items-center justify-between text-[#FAFAFA]">
                                         <button
