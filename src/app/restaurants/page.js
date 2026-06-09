@@ -21,10 +21,11 @@ export default async function RestaurantsPage() {
   try {
     const snap = await firestore
       .collection('restaurants')
-      .where('isPublished', '==', true)
       .get();
 
-    restaurants = snap.docs.map(doc => {
+    restaurants = snap.docs
+      .filter(doc => doc.data()?.isPublished !== false)
+      .map(doc => {
       const data = doc.data() || {};
       return {
         id: doc.id,

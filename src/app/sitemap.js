@@ -23,11 +23,11 @@ export default async function sitemap() {
         // Fetch published restaurants with minimum fields to optimize Firestore reads
         const snap = await firestore
             .collection('restaurants')
-            .where('isPublished', '==', true)
-            .select('slug', 'updatedAt')
             .get();
 
-        const restaurantUrls = snap.docs.map((doc) => {
+        const restaurantUrls = snap.docs
+            .filter(doc => doc.data()?.isPublished !== false)
+            .map((doc) => {
             const data = doc.data();
             const slug = data.slug || doc.id;
             const lastModified = data.updatedAt?.toDate 
