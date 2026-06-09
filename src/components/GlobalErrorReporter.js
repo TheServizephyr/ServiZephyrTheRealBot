@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { auth } from '@/lib/firebase';
 import {
   isBrowserEventNoise,
+  isInjectedBrowserScriptNoise,
   isTransientBrowserStorageNoise,
   recoverFromTransientBrowserStorageError,
   recoverFromChunkLoadError,
@@ -31,6 +32,14 @@ export default function GlobalErrorReporter() {
         message: event?.message || 'Unhandled browser error',
         stack: '',
       };
+      if (isInjectedBrowserScriptNoise({
+        errorLike: error,
+        message: event?.message || '',
+        filename: event?.filename || '',
+        lineno: event?.lineno || null,
+        colno: event?.colno || null,
+      })) return;
+
       const isRecoveringChunk = recoverFromChunkLoadError(error);
 
       reportClientIncident({

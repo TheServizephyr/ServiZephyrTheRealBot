@@ -17,6 +17,7 @@ const Header = () => {
     { href: getSectionHref('product'), label: 'Product' },
     { href: getSectionHref('features'), label: 'Features' },
     { href: getSectionHref('pricing'), label: 'Pricing' },
+    { href: '/restaurants', label: 'Restaurants' },
     { href: '/career', label: 'Career' },
     { href: getSectionHref('faq'), label: 'FAQ' },
     { href: getSectionHref('contact'), label: 'Contact' },

@@ -1,8 +1,10 @@
-export default function sitemap() {
+import { getFirestore } from '@/lib/firebase-admin';
+
+export default async function sitemap() {
     const baseUrl = 'https://servizephyr.com';
 
     // Core static routes
-    const routes = [
+    const staticRoutes = [
         '',
         '/about',
         '/contact',
@@ -16,5 +18,33 @@ export default function sitemap() {
         priority: route === '' ? 1 : 0.8,
     }));
 
-    return [...routes];
+    try {
+        const firestore = await getFirestore();
+        // Fetch published restaurants with minimum fields to optimize Firestore reads
+        const snap = await firestore
+            .collection('restaurants')
+            .where('isPublished', '==', true)
+            .select('slug', 'updatedAt')
+            .get();
+
+        const restaurantUrls = snap.docs.map((doc) => {
+            const data = doc.data();
+            const slug = data.slug || doc.id;
+            const lastModified = data.updatedAt?.toDate 
+                ? data.updatedAt.toDate() 
+                : (data.updatedAt ? new Date(data.updatedAt) : new Date());
+
+            return {
+                url: `${baseUrl}/restaurant/${slug}`,
+                lastModified,
+                changeFrequency: 'daily',
+                priority: 0.9,
+            };
+        });
+
+        return [...staticRoutes, ...restaurantUrls];
+    } catch (error) {
+        console.error('[Sitemap] Failed to fetch dynamic restaurant slugs:', error);
+        return staticRoutes;
+    }
 }

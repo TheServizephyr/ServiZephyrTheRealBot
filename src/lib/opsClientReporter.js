@@ -134,6 +134,26 @@ export function isTransientBrowserStorageNoise(errorLike) {
     );
 }
 
+export function isInjectedBrowserScriptNoise({ errorLike, message, filename, lineno, colno } = {}) {
+    const serialized = serializeClientError(errorLike || message || '');
+    const text = String(message || serialized.message || '').trim().toLowerCase();
+    const source = String(filename || '').trim();
+    const line = Number(lineno || 0);
+    const column = Number(colno || 0);
+
+    if (text === 'script error.' && !source) return true;
+    if (text.includes('window.ethereum') || text.includes('ethereum.selectedaddress')) return true;
+    if (text.includes('__firefox__')) return true;
+
+    // Some mobile browsers/extensions inject tiny snippets at the top of the document.
+    // They are outside our app bundle and usually surface as line 1 global-code errors.
+    return line === 1 && column > 0 && (
+        text.includes('global code') ||
+        text.includes('undefined is not an object') ||
+        text.includes("can't find variable")
+    );
+}
+
 export function recoverFromTransientBrowserStorageError(errorLike) {
     if (typeof window === 'undefined' || !isTransientBrowserStorageNoise(errorLike)) return false;
 

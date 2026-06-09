@@ -1,4 +1,3 @@
-
 import Link from 'next/link'
 import { Twitter, Linkedin, Instagram } from 'lucide-react'
 import Image from 'next/image'
@@ -21,6 +20,7 @@ const Footer = () => {
               <li><Link href="/#features" className="text-sm text-muted-foreground hover:text-primary">Features</Link></li>
               <li><Link href="/#pricing" className="text-sm text-muted-foreground hover:text-primary">Pricing</Link></li>
               <li><Link href="/career" className="text-sm text-muted-foreground hover:text-primary">Career</Link></li>
+              <li><Link href="/restaurants" className="text-sm text-muted-foreground hover:text-primary">Restaurants</Link></li>
               <li><Link href="/#faq" className="text-sm text-muted-foreground hover:text-primary">FAQ</Link></li>
             </ul>
           </div>

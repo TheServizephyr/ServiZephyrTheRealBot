@@ -15,14 +15,15 @@ import {
   Bell,
   Sun,
   Moon,
-  Mail, // Changed from MessageSquare
-  List, // Import List for Waitlist
-  FileText, // Import FileText for Audit Logs
-  Hash, // Import Hash for Check IDs
+  Mail,
+  List,
+  FileText,
+  Hash,
   ShieldAlert,
   UserCog,
   BriefcaseBusiness,
   Handshake,
+  Trophy, // Achievements
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -203,6 +204,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/analytics" icon={BarChart2} isCollapsed={isCollapsed}>
                   Analytics
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/achievements" icon={Trophy} isCollapsed={isCollapsed}>
+                  Achievements
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/ops-analytics" icon={Activity} isCollapsed={isCollapsed}>
                   Ops Analytics

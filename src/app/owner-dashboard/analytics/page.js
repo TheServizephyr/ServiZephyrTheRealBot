@@ -742,12 +742,210 @@ const MenuAnalytics = ({ data, loading, isStoreBusiness = false }) => {
     );
 };
 
+const normalizeInsightPhone = (value) => {
+    const digits = String(value || '').replace(/\D/g, '');
+    return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
+const parseInsightDate = (value) => {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+};
+
+const formatInsightDateTime = (value) => {
+    const date = parseInsightDate(value);
+    if (!date) return '-';
+    return date.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
+
+const titleCaseStatus = (value) => String(value || 'unknown')
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ') || 'Unknown';
+
+const buildBookingWaitlistCustomerInsights = (rows = []) => {
+    const validRows = (Array.isArray(rows) ? rows : [])
+        .map((row, index) => {
+            const phone = normalizeInsightPhone(row.phone);
+            const activityAt = row.activityAt || row.bookingDateTime || row.createdAt || null;
+            return {
+                id: row.id || `${row.type || 'activity'}-${index}`,
+                type: row.type === 'booking' ? 'booking' : 'waitlist',
+                name: String(row.name || 'Guest').trim() || 'Guest',
+                phone,
+                partySize: Math.max(1, Number(row.partySize || 1) || 1),
+                status: String(row.status || 'unknown').trim().toLowerCase() || 'unknown',
+                source: String(row.source || row.type || 'unknown').trim(),
+                activityAt,
+                activityTs: parseInsightDate(activityAt)?.getTime() || 0,
+                token: row.token || null,
+            };
+        })
+        .sort((a, b) => b.activityTs - a.activityTs);
+
+    const customers = new Map();
+    let unidentifiedVisits = 0;
+    let totalCovers = 0;
+
+    validRows.forEach((row) => {
+        totalCovers += row.partySize || 1;
+        if (!/^\d{10}$/.test(row.phone)) {
+            unidentifiedVisits += 1;
+            return;
+        }
+
+        const key = row.phone;
+        if (!customers.has(key)) {
+            customers.set(key, {
+                customerKey: key,
+                name: row.name,
+                phone: row.phone,
+                waitlistCount: 0,
+                bookingCount: 0,
+                totalVisits: 0,
+                totalCovers: 0,
+                seated: 0,
+                completedBookings: 0,
+                cancelled: 0,
+                noShow: 0,
+                active: 0,
+                firstSeenAt: row.activityAt,
+                lastSeenAt: row.activityAt,
+                latestType: row.type,
+                latestStatus: row.status,
+                latestSource: row.source,
+                activities: [],
+            });
+        }
+
+        const customer = customers.get(key);
+        if (row.name && row.name !== 'Guest') customer.name = row.name;
+        customer.totalVisits += 1;
+        customer.totalCovers += row.partySize || 1;
+        if (row.type === 'waitlist') customer.waitlistCount += 1;
+        if (row.type === 'booking') customer.bookingCount += 1;
+        if (row.status === 'seated') customer.seated += 1;
+        if (row.status === 'completed') customer.completedBookings += 1;
+        if (row.status === 'cancelled') customer.cancelled += 1;
+        if (row.status === 'no_show') customer.noShow += 1;
+        if (['pending', 'ready_to_notify', 'notified', 'arrived', 'confirmed'].includes(row.status)) customer.active += 1;
+
+        const firstTs = parseInsightDate(customer.firstSeenAt)?.getTime() || Number.POSITIVE_INFINITY;
+        const lastTs = parseInsightDate(customer.lastSeenAt)?.getTime() || 0;
+        if (row.activityTs && row.activityTs < firstTs) customer.firstSeenAt = row.activityAt;
+        if (row.activityTs && row.activityTs >= lastTs) {
+            customer.lastSeenAt = row.activityAt;
+            customer.latestType = row.type;
+            customer.latestStatus = row.status;
+            customer.latestSource = row.source;
+        }
+        customer.activities.push(row);
+    });
+
+    const customerRows = Array.from(customers.values())
+        .map((customer) => ({
+            ...customer,
+            segment: customer.totalVisits > 1 ? 'repeat' : 'new',
+            conversionCount: customer.seated + customer.completedBookings,
+        }))
+        .sort((a, b) => {
+            if (b.totalVisits !== a.totalVisits) return b.totalVisits - a.totalVisits;
+            return (parseInsightDate(b.lastSeenAt)?.getTime() || 0) - (parseInsightDate(a.lastSeenAt)?.getTime() || 0);
+        });
+
+    const statusCounts = validRows.reduce((acc, row) => {
+        acc[row.status] = (acc[row.status] || 0) + 1;
+        return acc;
+    }, {});
+
+    const bookingCount = validRows.filter((row) => row.type === 'booking').length;
+    const waitlistCount = validRows.filter((row) => row.type === 'waitlist').length;
+    const repeatCustomers = customerRows.filter((row) => row.segment === 'repeat');
+    const newCustomers = customerRows.filter((row) => row.segment === 'new');
+    const customersWithNameAndPhone = customerRows.filter((row) => row.name && row.name !== 'Guest' && /^\d{10}$/.test(row.phone));
+    const conversionCount = (statusCounts.seated || 0) + (statusCounts.completed || 0);
+    const cancellationCount = statusCounts.cancelled || 0;
+    const noShowCount = statusCounts.no_show || 0;
+
+    const dayMap = new Map();
+    validRows.forEach((row) => {
+        const date = parseInsightDate(row.activityAt);
+        if (!date) return;
+        const dayKey = date.toISOString().slice(0, 10);
+        if (!dayMap.has(dayKey)) dayMap.set(dayKey, { date: dayKey, visits: 0, covers: 0 });
+        const bucket = dayMap.get(dayKey);
+        bucket.visits += 1;
+        bucket.covers += row.partySize || 1;
+    });
+    const peakDay = Array.from(dayMap.values()).sort((a, b) => b.visits - a.visits)[0] || null;
+
+    const insights = [];
+    if (validRows.length === 0) {
+        insights.push('Selected range mein booking ya waitlist customer activity nahi mili.');
+    } else {
+        insights.push(`${customerRows.length} unique phone-identified customers found from ${validRows.length} booking/waitlist entries.`);
+        if (repeatCustomers.length > 0) insights.push(`${repeatCustomers.length} repeat customers returned in this range; top repeat has ${repeatCustomers[0].totalVisits} interactions.`);
+        if (peakDay) insights.push(`Peak customer day ${formatDate(peakDay.date)} tha with ${peakDay.visits} entries and ${peakDay.covers} covers.`);
+        if (unidentifiedVisits > 0) insights.push(`${unidentifiedVisits} entries valid mobile number ke bina hain, repeat tracking weak ho sakti hai.`);
+    }
+
+    return {
+        rows: validRows,
+        customerRows,
+        repeatCustomers,
+        newCustomers,
+        topRepeatCustomers: repeatCustomers.slice(0, 8),
+        statusCounts,
+        insights,
+        summary: {
+            totalEntries: validRows.length,
+            waitlistCount,
+            bookingCount,
+            uniqueCustomers: customerRows.length,
+            customersWithNameAndPhone: customersWithNameAndPhone.length,
+            newCustomers: newCustomers.length,
+            repeatCustomers: repeatCustomers.length,
+            unidentifiedVisits,
+            totalCovers,
+            conversionCount,
+            cancellationCount,
+            noShowCount,
+            conversionRate: validRows.length ? Math.round((conversionCount / validRows.length) * 100) : 0,
+        },
+    };
+};
+
 const CustomerRelationshipHub = ({ data, loading }) => {
     const channelMix = data?.customerStats?.customerChannels || [];
     const spendBuckets = data?.customerStats?.spendBuckets || [];
     const callStats = data?.customerStats?.callCustomerStats || {};
     const customerOrderMix = useMemo(() => data?.customerStats?.customerOrderMix || [], [data?.customerStats?.customerOrderMix]);
     const customerOrderMixAll = useMemo(() => data?.customerStats?.customerOrderMixAll || customerOrderMix, [data?.customerStats?.customerOrderMixAll, customerOrderMix]);
+    const bookingWaitlistRows = useMemo(() => data?.customerStats?.bookingWaitlistRows || [], [data?.customerStats?.bookingWaitlistRows]);
+    const bookingWaitlistInsights = useMemo(() => buildBookingWaitlistCustomerInsights(bookingWaitlistRows), [bookingWaitlistRows]);
+    const [customerVisitSegment, setCustomerVisitSegment] = useState('all');
+    const [customerVisitSearch, setCustomerVisitSearch] = useState('');
+
+    const filteredVisitCustomers = useMemo(() => {
+        const search = customerVisitSearch.trim().toLowerCase();
+        return bookingWaitlistInsights.customerRows.filter((customer) => {
+            if (customerVisitSegment === 'new' && customer.segment !== 'new') return false;
+            if (customerVisitSegment === 'repeat' && customer.segment !== 'repeat') return false;
+            if (customerVisitSegment === 'booking' && customer.bookingCount <= 0) return false;
+            if (customerVisitSegment === 'waitlist' && customer.waitlistCount <= 0) return false;
+            if (!search) return true;
+            return (
+                String(customer.name || '').toLowerCase().includes(search) ||
+                String(customer.phone || '').includes(search)
+            );
+        });
+    }, [bookingWaitlistInsights.customerRows, customerVisitSearch, customerVisitSegment]);
 
     const exportCustomerInsights = useCallback(() => {
         if (!customerOrderMixAll.length) return;
@@ -763,6 +961,8 @@ const CustomerRelationshipHub = ({ data, loading }) => {
             'Counter Bills',
             'AOV',
             'Spend',
+            'Waitlist Joins',
+            'Bookings',
         ];
 
         const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -777,7 +977,26 @@ const CustomerRelationshipHub = ({ data, loading }) => {
             row.counterBills || 0,
             Math.round(row.avgOrderValue || 0),
             Math.round(row.totalSpent || 0),
+            0,
+            0,
         ].map(escapeCsv).join(',')));
+
+        bookingWaitlistInsights.customerRows.forEach((row) => {
+            rows.push([
+                row.name || 'Customer',
+                'BOOKING_WAITLIST',
+                row.phone || '',
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                row.waitlistCount || 0,
+                row.bookingCount || 0,
+            ].map(escapeCsv).join(','));
+        });
 
         const csv = [headers.map(escapeCsv).join(','), ...rows].join('\n');
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -789,7 +1008,7 @@ const CustomerRelationshipHub = ({ data, loading }) => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-    }, [customerOrderMixAll]);
+    }, [bookingWaitlistInsights.customerRows, customerOrderMixAll]);
 
     const CustomerStatCard = ({ title, value, icon: Icon, detail }) => (
         <div className={cn("bg-card border border-border p-5 rounded-xl")}>
@@ -813,6 +1032,140 @@ const CustomerRelationshipHub = ({ data, loading }) => {
 
     return (
         <div className="space-y-8">
+            <section>
+                <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                        <h3 className="text-xl font-bold">Booking & Waitlist Customer Insights</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Owner-only selected range data. Calculations below are grouped in-browser from the already-loaded analytics payload.
+                        </p>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                        Basis: waitlist join time + booking date/time
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                    <CustomerStatCard title="Unique Name + Mobile" value={bookingWaitlistInsights.summary.customersWithNameAndPhone} icon={ShieldAlert} detail={`${bookingWaitlistInsights.summary.uniqueCustomers} phone-identified customers`} loading={loading} />
+                    <CustomerStatCard title="New Customers" value={bookingWaitlistInsights.summary.newCustomers} icon={UserPlus} detail="Single interaction in selected range" loading={loading} />
+                    <CustomerStatCard title="Repeat Customers" value={bookingWaitlistInsights.summary.repeatCustomers} icon={GitCommitHorizontal} detail="2+ booking/waitlist interactions" loading={loading} />
+                    <CustomerStatCard title="Waitlist Joins" value={bookingWaitlistInsights.summary.waitlistCount} icon={Ticket} detail={`${bookingWaitlistInsights.summary.totalCovers} total covers`} loading={loading} />
+                    <CustomerStatCard title="Bookings" value={bookingWaitlistInsights.summary.bookingCount} icon={CalendarDays} detail={`${bookingWaitlistInsights.summary.conversionRate}% seated/completed`} loading={loading} />
+                </div>
+
+                {!loading && (
+                    <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
+                        <div className="bg-card border border-border rounded-xl p-5 xl:col-span-2">
+                            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                    <h4 className="font-semibold">Customer Visit List</h4>
+                                    <p className="text-xs text-muted-foreground">Full selected-range customer list with booking/waitlist repeat counts.</p>
+                                </div>
+                                <div className="flex flex-col gap-2 sm:flex-row">
+                                    <input
+                                        value={customerVisitSearch}
+                                        onChange={(event) => setCustomerVisitSearch(event.target.value)}
+                                        placeholder="Search name or phone"
+                                        className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                    />
+                                    <select
+                                        value={customerVisitSegment}
+                                        onChange={(event) => setCustomerVisitSegment(event.target.value)}
+                                        className="h-9 rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                    >
+                                        <option value="all">All Customers</option>
+                                        <option value="new">New</option>
+                                        <option value="repeat">Repeat</option>
+                                        <option value="waitlist">Waitlist Joined</option>
+                                        <option value="booking">Booked</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto rounded-lg border border-border">
+                                <table className="w-full min-w-[860px] text-left text-sm">
+                                    <thead className="bg-muted/40 border-b border-border">
+                                        <tr>
+                                            <th className="px-4 py-3 font-semibold">Customer</th>
+                                            <th className="px-4 py-3 font-semibold">Mobile</th>
+                                            <th className="px-4 py-3 text-center font-semibold">Waitlist</th>
+                                            <th className="px-4 py-3 text-center font-semibold">Bookings</th>
+                                            <th className="px-4 py-3 text-center font-semibold">Total</th>
+                                            <th className="px-4 py-3 text-center font-semibold">Covers</th>
+                                            <th className="px-4 py-3 font-semibold">Latest</th>
+                                            <th className="px-4 py-3 font-semibold">Last Seen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredVisitCustomers.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                                                    No booking/waitlist customer data for this filter.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredVisitCustomers.map((customer) => (
+                                                <tr key={customer.customerKey} className="border-b border-border/60">
+                                                    <td className="px-4 py-3">
+                                                        <div className="font-medium">{customer.name || 'Customer'}</div>
+                                                        <div className="text-xs text-muted-foreground">{customer.segment === 'repeat' ? 'Repeat customer' : 'New in range'}</div>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-muted-foreground">{customer.phone || '-'}</td>
+                                                    <td className="px-4 py-3 text-center">{customer.waitlistCount}</td>
+                                                    <td className="px-4 py-3 text-center">{customer.bookingCount}</td>
+                                                    <td className="px-4 py-3 text-center font-semibold">{customer.totalVisits}</td>
+                                                    <td className="px-4 py-3 text-center">{customer.totalCovers}</td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="capitalize">{customer.latestType}</span>
+                                                        <span className="text-muted-foreground"> · {titleCaseStatus(customer.latestStatus)}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-muted-foreground">{formatInsightDateTime(customer.lastSeenAt)}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="bg-card border border-border rounded-xl p-5">
+                                <h4 className="font-semibold mb-3">Repeat Customer Watchlist</h4>
+                                <div className="space-y-3">
+                                    {bookingWaitlistInsights.topRepeatCustomers.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No repeat booking/waitlist customers in this range.</p>
+                                    ) : bookingWaitlistInsights.topRepeatCustomers.map((customer) => (
+                                        <div key={customer.customerKey} className="rounded-lg border border-border p-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium">{customer.name}</p>
+                                                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                                </div>
+                                                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">{customer.totalVisits} visits</span>
+                                            </div>
+                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                Waitlist {customer.waitlistCount} · Bookings {customer.bookingCount} · Covers {customer.totalCovers}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-card border border-border rounded-xl p-5">
+                                <h4 className="font-semibold mb-3">Customer Signals</h4>
+                                <div className="space-y-3">
+                                    {bookingWaitlistInsights.insights.map((insight) => (
+                                        <div key={insight} className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
+                                            {insight}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </section>
+
             <section>
                 <h3 className="text-xl font-bold mb-4">Customer Snapshot</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">

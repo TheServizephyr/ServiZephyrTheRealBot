@@ -33,6 +33,11 @@ const timestampToDate = (value) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const timestampToIso = (value) => {
+    const date = timestampToDate(value);
+    return date ? date.toISOString() : null;
+};
+
 const isGuestUserId = (userId) => {
     const value = String(userId || '').trim();
     return !value || value.startsWith('g_') || value.startsWith('anon_');
@@ -341,6 +346,8 @@ export async function GET(req) {
             allMenuSnap,
             allCustomersSnap,
             ridersSnap,
+            currentWaitlistSnap,
+            currentBookingsSnap,
         ] = await Promise.all([
             ordersRef
                 .where('orderDate', '>=', startDate)
@@ -403,6 +410,41 @@ export async function GET(req) {
             businessRef.collection('menu').select('name', 'portions').get(),
             businessRef.collection('customers').select('name', 'joinedAt', 'totalOrders', 'totalSpend', 'phone').get(),
             businessRef.collection('deliveryBoys').select('name', 'displayName', 'phone').get(),
+            businessRef.collection('waitlist')
+                .where('createdAt', '>=', startDate)
+                .where('createdAt', '<=', endDate)
+                .select(
+                    'name',
+                    'phone',
+                    'paxCount',
+                    'status',
+                    'source',
+                    'queueType',
+                    'waitlistToken',
+                    'createdAt',
+                    'updatedAt',
+                    'arrivedAt',
+                    'seatedAt',
+                    'cancelledAt',
+                    'noShowAt'
+                )
+                .get(),
+            businessRef.collection('bookings')
+                .where('bookingDateTime', '>=', startDate)
+                .where('bookingDateTime', '<=', endDate)
+                .select(
+                    'customerName',
+                    'customerPhone',
+                    'partySize',
+                    'status',
+                    'source',
+                    'bookingDateTime',
+                    'createdAt',
+                    'confirmedAt',
+                    'cancelledAt',
+                    'completedAt'
+                )
+                .get(),
         ]);
 
         // ---- SALES METRICS ----
@@ -928,6 +970,54 @@ export async function GET(req) {
                 avgOrderValue: callOrders > 0 ? callRevenue / callOrders : 0,
                 avgSpendPerCustomer: callCustomers.length > 0 ? callRevenue / callCustomers.length : 0,
             },
+        };
+
+        const bookingWaitlistRows = [
+            ...currentWaitlistSnap.docs.map((doc) => {
+                const row = doc.data() || {};
+                return {
+                    id: doc.id,
+                    type: 'waitlist',
+                    name: String(row.name || 'Guest').trim() || 'Guest',
+                    phone: normalizePhone(row.phone || ''),
+                    partySize: Math.max(1, Number(row.paxCount || 1) || 1),
+                    status: String(row.status || 'pending').trim().toLowerCase() || 'pending',
+                    source: String(row.source || row.queueType || 'waitlist').trim() || 'waitlist',
+                    token: row.waitlistToken || null,
+                    activityAt: timestampToIso(row.createdAt),
+                    createdAt: timestampToIso(row.createdAt),
+                    arrivedAt: timestampToIso(row.arrivedAt),
+                    seatedAt: timestampToIso(row.seatedAt),
+                    cancelledAt: timestampToIso(row.cancelledAt),
+                    noShowAt: timestampToIso(row.noShowAt),
+                };
+            }),
+            ...currentBookingsSnap.docs.map((doc) => {
+                const row = doc.data() || {};
+                return {
+                    id: doc.id,
+                    type: 'booking',
+                    name: String(row.customerName || 'Guest').trim() || 'Guest',
+                    phone: normalizePhone(row.customerPhone || ''),
+                    partySize: Math.max(1, Number(row.partySize || 1) || 1),
+                    status: String(row.status || 'pending').trim().toLowerCase() || 'pending',
+                    source: String(row.source || 'booking').trim() || 'booking',
+                    token: null,
+                    activityAt: timestampToIso(row.bookingDateTime) || timestampToIso(row.createdAt),
+                    bookingDateTime: timestampToIso(row.bookingDateTime),
+                    createdAt: timestampToIso(row.createdAt),
+                    confirmedAt: timestampToIso(row.confirmedAt),
+                    cancelledAt: timestampToIso(row.cancelledAt),
+                    completedAt: timestampToIso(row.completedAt),
+                };
+            }),
+        ].sort((a, b) => new Date(b.activityAt || b.createdAt || 0).getTime() - new Date(a.activityAt || a.createdAt || 0).getTime());
+
+        customerStats.bookingWaitlistRows = bookingWaitlistRows;
+        customerStats.bookingWaitlistRange = {
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+            basis: 'waitlist.createdAt and bookings.bookingDateTime',
         };
 
         // ---- RIDER ANALYTICS ----
