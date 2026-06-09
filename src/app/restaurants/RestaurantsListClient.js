@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Star, MapPin, Clock, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { Search, Star, MapPin, Clock, ArrowRight, Sparkles, AlertCircle, ShoppingBag, MessageSquare } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -274,14 +274,26 @@ export default function RestaurantsListClient({ restaurants = [] }) {
                         {r.rating || '4.2'}
                       </span>
 
-                      {/* Open Now Badge */}
-                      <span className={`absolute top-4 left-4 px-2.5 py-1 text-[10px] font-bold rounded-lg border ${
-                        open
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                      }`}>
-                        {open ? 'Open Now' : 'Closed'}
-                      </span>
+                      {/* Top left Badges */}
+                      <div className="absolute top-4 left-4 flex items-center gap-2">
+                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border ${
+                          open
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                        }`}>
+                          {open ? 'Open Now' : 'Closed'}
+                        </span>
+
+                        {r.botDisplayNumber ? (
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-[#FDBA12]/15 text-[#FDBA12] border border-[#FDBA12]/20 flex items-center gap-1">
+                            <ShoppingBag className="w-3 h-3" /> Ordering Active
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-neutral-800/80 text-neutral-400 border border-neutral-700/50">
+                            Menu Only
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Logo & Content */}
@@ -341,7 +353,7 @@ export default function RestaurantsListClient({ restaurants = [] }) {
                         href={`/restaurant/${r.slug}`}
                         className="w-full py-3 bg-[#1A1A22] group-hover:bg-[#FDBA12] text-[#FAFAFA] group-hover:text-[#121216] font-extrabold rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
                       >
-                        <span>Browse Menu & Order</span>
+                        <span>{r.botDisplayNumber ? 'Browse Menu & Order' : 'View Menu & Details'}</span>
                         <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                       </Link>
                     </div>

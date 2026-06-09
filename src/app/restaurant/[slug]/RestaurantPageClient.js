@@ -21,6 +21,7 @@ export default function RestaurantPageClient({ restaurantData }) {
   const { business, overview, menuSnapshot } = restaurantData;
   const categories = menuSnapshot?.menu?.categories || [];
   const itemsByCategory = menuSnapshot?.menu?.itemsByCategory || {};
+  const hasBot = !!business.botDisplayNumber;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [vegOnly, setVegOnly] = useState(false);
@@ -340,14 +341,21 @@ export default function RestaurantPageClient({ restaurantData }) {
 
             {/* Quick Action Button */}
             <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleGeneralWhatsAppClick}
-                className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-[#121216] font-bold rounded-xl transition-all shadow-lg hover:shadow-emerald-500/10 flex items-center justify-center gap-2 group"
-              >
-                <MessageSquare className="w-5 h-5 fill-current" />
-                <span>Inquire on WhatsApp</span>
-                <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </button>
+              {hasBot ? (
+                <button
+                  onClick={handleGeneralWhatsAppClick}
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-[#121216] font-bold rounded-xl transition-all shadow-lg hover:shadow-emerald-500/10 flex items-center justify-center gap-2 group"
+                >
+                  <MessageSquare className="w-5 h-5 fill-current" />
+                  <span>Inquire on WhatsApp</span>
+                  <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </button>
+              ) : (
+                <div className="px-4 py-2.5 rounded-xl bg-neutral-800/60 border border-neutral-700/50 text-neutral-400 text-xs font-semibold flex items-center gap-2">
+                  <Info className="w-4 h-4 text-[#FDBA12] shrink-0" />
+                  <span>Catalog & Menu Only</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -401,6 +409,17 @@ export default function RestaurantPageClient({ restaurantData }) {
 
           {/* Main Menu Feed */}
           <div className="lg:col-span-3">
+            {!hasBot && (
+              <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3 text-sm text-amber-200">
+                <AlertCircle className="w-5 h-5 shrink-0 text-[#FDBA12] mt-0.5" />
+                <div>
+                  <h5 className="font-bold text-[#FDBA12] mb-0.5">Catalog & Menu Only</h5>
+                  <p className="text-xs text-neutral-400 leading-relaxed">
+                    Online ordering via WhatsApp is not enabled for this outlet. You can browse their menu, view pricing, and check operational timings here. Please visit them in-person for dine-in or local billing.
+                  </p>
+                </div>
+              </div>
+            )}
             {/* Sticky Search & Filter Bar */}
             <div className="sticky top-0 bg-[#0A0A0C]/90 backdrop-blur-md z-40 py-4 flex flex-col sm:flex-row gap-4 border-b border-[#1F1F27]/60 mb-6">
               <div className="relative flex-grow">
@@ -525,40 +544,40 @@ export default function RestaurantPageClient({ restaurantData }) {
                                 <div className="mt-4 flex items-center justify-between">
                                   <span className="text-base font-black text-[#FAFAFA]">
                                     ₹{basePrice}
-                                  </span>
-
-                                  {/* Mobile Add to Cart controls inside card */}
-                                  <div className="sm:hidden flex items-center bg-[#1A1A24] border border-[#2c2c3c] rounded-lg p-0.5">
-                                    {cartItem ? (
-                                      <>
-                                        <button
-                                          onClick={() => removeFromCart(item)}
-                                          className="p-1 hover:text-[#FDBA12] transition-colors"
-                                        >
-                                          <Minus className="w-3.5 h-3.5" />
-                                        </button>
-                                        <span className="px-2 text-xs font-bold min-w-[16px] text-center">
-                                          {cartItem.qty}
-                                        </span>
+                                                               {/* Mobile Add to Cart controls inside card */}
+                                  {hasBot && (
+                                    <div className="sm:hidden flex items-center bg-[#1A1A24] border border-[#2c2c3c] rounded-lg p-0.5">
+                                      {cartItem ? (
+                                        <>
+                                          <button
+                                            onClick={() => removeFromCart(item)}
+                                            className="p-1 hover:text-[#FDBA12] transition-colors"
+                                          >
+                                            <Minus className="w-3.5 h-3.5" />
+                                          </button>
+                                          <span className="px-2 text-xs font-bold min-w-[16px] text-center">
+                                            {cartItem.qty}
+                                          </span>
+                                          <button
+                                            onClick={() => addToCart(item)}
+                                            className="p-1 hover:text-[#FDBA12] transition-colors"
+                                          >
+                                            <Plus className="w-3.5 h-3.5" />
+                                          </button>
+                                        </>
+                                      ) : (
                                         <button
                                           onClick={() => addToCart(item)}
-                                          className="p-1 hover:text-[#FDBA12] transition-colors"
+                                          className="px-2.5 py-1 text-xs font-bold text-[#FDBA12] flex items-center gap-1"
                                         >
-                                          <Plus className="w-3.5 h-3.5" />
+                                          <Plus className="w-3 h-3" /> Add
                                         </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        onClick={() => addToCart(item)}
-                                        className="px-2.5 py-1 text-xs font-bold text-[#FDBA12] flex items-center gap-1"
-                                      >
-                                        <Plus className="w-3 h-3" /> Add
-                                      </button>
-                                    )}
-                                  </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-
+ 
                               {/* Right Image/Add Button */}
                               <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-[#1A1A24] border border-[#1F1F27]/60 flex-shrink-0 self-center">
                                 {item.imageUrl ? (
@@ -573,7 +592,7 @@ export default function RestaurantPageClient({ restaurantData }) {
                                     <ShoppingBag className="w-8 h-8 text-neutral-600 opacity-40" />
                                   </div>
                                 )}
-
+ 
                                 {/* Like Button */}
                                 <button
                                   onClick={() => toggleLike(item.id)}
@@ -585,36 +604,38 @@ export default function RestaurantPageClient({ restaurantData }) {
                                     }`}
                                   />
                                 </button>
-
+ 
                                 {/* Desktop Add to Cart overlay */}
-                                <div className="hidden sm:block absolute bottom-1 right-1 left-1 bg-black/85 backdrop-blur-md border border-[#2c2c3c] rounded-md p-0.5">
-                                  {cartItem ? (
-                                    <div className="flex items-center justify-between text-[#FAFAFA]">
-                                      <button
-                                        onClick={() => removeFromCart(item)}
-                                        className="p-1 hover:text-[#FDBA12] transition-colors rounded hover:bg-[#1a1a24]"
-                                      >
-                                        <Minus className="w-3 h-3" />
-                                      </button>
-                                      <span className="text-xs font-bold">
-                                        {cartItem.qty}
-                                      </span>
+                                {hasBot && (
+                                  <div className="hidden sm:block absolute bottom-1 right-1 left-1 bg-black/85 backdrop-blur-md border border-[#2c2c3c] rounded-md p-0.5">
+                                    {cartItem ? (
+                                      <div className="flex items-center justify-between text-[#FAFAFA]">
+                                        <button
+                                          onClick={() => removeFromCart(item)}
+                                          className="p-1 hover:text-[#FDBA12] transition-colors rounded hover:bg-[#1a1a24]"
+                                        >
+                                          <Minus className="w-3 h-3" />
+                                        </button>
+                                        <span className="text-xs font-bold">
+                                          {cartItem.qty}
+                                        </span>
+                                        <button
+                                          onClick={() => addToCart(item)}
+                                          className="p-1 hover:text-[#FDBA12] transition-colors rounded hover:bg-[#1a1a24]"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
                                       <button
                                         onClick={() => addToCart(item)}
-                                        className="p-1 hover:text-[#FDBA12] transition-colors rounded hover:bg-[#1a1a24]"
+                                        className="w-full py-1 text-xs font-bold text-[#FDBA12] flex items-center justify-center gap-1 hover:bg-[#1C1C24] rounded transition-all"
                                       >
-                                        <Plus className="w-3 h-3" />
+                                        <Plus className="w-3 h-3" /> Add
                                       </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => addToCart(item)}
-                                      className="w-full py-1 text-xs font-bold text-[#FDBA12] flex items-center justify-center gap-1 hover:bg-[#1C1C24] rounded transition-all"
-                                    >
-                                      <Plus className="w-3 h-3" /> Add
-                                    </button>
-                                  )}
-                                </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </motion.div>
                           );
