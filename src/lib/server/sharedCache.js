@@ -65,6 +65,7 @@ export async function getOrSetSharedCache(cacheKey, {
   parse = (value) => value,
   serialize = (value) => value,
   compute,
+  bypassKv = false,
 } = {}) {
   if (!cacheKey || typeof compute !== 'function') {
     return compute();
@@ -79,7 +80,7 @@ export async function getOrSetSharedCache(cacheKey, {
 
   const promise = (async () => {
     try {
-      if (isKvConfigured()) {
+      if (!bypassKv && isKvConfigured()) {
         try {
           const kvValue = await kv.get(cacheKey);
           if (kvValue !== null && kvValue !== undefined) {
@@ -95,7 +96,7 @@ export async function getOrSetSharedCache(cacheKey, {
       const computed = await compute();
       writeL1(cacheKey, computed, ttlMs);
 
-      if (isKvConfigured()) {
+      if (!bypassKv && isKvConfigured()) {
         try {
           const ex = Number.isFinite(Number(kvTtlSec))
             ? Math.max(1, Math.floor(Number(kvTtlSec)))

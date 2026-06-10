@@ -1,4 +1,4 @@
-import { kv as vercelKv } from '@vercel/kv';
+import { createClient } from '@vercel/kv';
 import { Redis } from '@upstash/redis';
 
 const DEFAULT_FAILOVER_COOLDOWN_MS = 5 * 60 * 1000;
@@ -7,6 +7,8 @@ const PRIMARY_TOKEN = String(process.env.KV_REST_API_TOKEN || '').trim();
 const SECONDARY_URL = String(process.env.KV_SECONDARY_REST_URL || '').trim();
 const SECONDARY_TOKEN = String(process.env.KV_SECONDARY_REST_TOKEN || '').trim();
 const FAILOVER_COOLDOWN_MS = Number(process.env.KV_FAILOVER_COOLDOWN_MS || DEFAULT_FAILOVER_COOLDOWN_MS);
+
+
 
 const READ_WRITE_METHODS = new Set(['set', 'del', 'incr', 'expire', 'hincrby', 'lpush', 'ltrim']);
 const READ_ONLY_METHODS = new Set(['get', 'hgetall', 'lrange']);
@@ -24,8 +26,6 @@ const STATE = globalThis.__servizephyrKvRoutingState || {
 
 globalThis.__servizephyrKvRoutingState = STATE;
 
-let secondaryClient = null;
-
 function isPrimaryConfigured() {
     return Boolean(PRIMARY_URL && PRIMARY_TOKEN);
 }
@@ -34,6 +34,19 @@ function isSecondaryConfigured() {
     return Boolean(SECONDARY_URL && SECONDARY_TOKEN);
 }
 
+let primaryClient = null;
+function getPrimaryClient() {
+    if (!isPrimaryConfigured()) return null;
+    if (!primaryClient) {
+        primaryClient = createClient({
+            url: PRIMARY_URL,
+            token: PRIMARY_TOKEN,
+        });
+    }
+    return primaryClient;
+}
+
+let secondaryClient = null;
 function getSecondaryClient() {
     if (!isSecondaryConfigured()) return null;
     if (!secondaryClient) {
@@ -46,7 +59,7 @@ function getSecondaryClient() {
 }
 
 function getClient(target) {
-    if (target === 'primary') return isPrimaryConfigured() ? vercelKv : null;
+    if (target === 'primary') return getPrimaryClient();
     if (target === 'secondary') return getSecondaryClient();
     return null;
 }

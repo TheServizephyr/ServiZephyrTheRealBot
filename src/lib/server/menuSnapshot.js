@@ -516,6 +516,7 @@ export async function getFreshMenuSnapshot({
   allowInlineRebuild = true,
   businessRef: providedBusinessRef = null,
   businessData: providedBusinessData = null,
+  bypassKv = false,
 } = {}) {
   const firestore = providedFirestore || await getFirestore();
 
@@ -540,6 +541,7 @@ export async function getFreshMenuSnapshot({
   const runtimeData = await getOrSetSharedCache(runtimeCacheKey, {
     ttlMs: 30 * 1000,
     kvTtlSec: 60,
+    bypassKv,
     compute: () => getBusinessRuntime(businessRef),
   });
 
@@ -555,6 +557,7 @@ export async function getFreshMenuSnapshot({
   return getOrSetSharedCache(`menu-snapshot:${businessId}:v${currentMenuVersion}`, {
     ttlMs: 60 * 1000,
     kvTtlSec: 24 * 60 * 60, // 24 hours TTL, cache key changes instantly upon menu mutation
+    bypassKv,
     compute: async () => {
       const snapshotSnap = await getMenuSnapshotRef(businessRef).get();
       const snapshotData = snapshotSnap.exists ? (snapshotSnap.data() || null) : null;

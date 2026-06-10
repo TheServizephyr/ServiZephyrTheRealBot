@@ -170,6 +170,7 @@ export default async function RestaurantPage({ params }) {
     businessData: business.data,
     collectionNameHint: business.collection,
     allowInlineRebuild: true,
+    bypassKv: true,
   });
 
   if (!menuSnapshot) {
