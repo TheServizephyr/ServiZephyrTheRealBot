@@ -33,6 +33,7 @@ const HIDE_LAYOUT_PREFIXES = [
   '/pre-order',
   '/split-pay',
   '/public',
+  '/search',
 ];
 
 const LayoutWrapper = ({ children }) => {
@@ -72,9 +73,6 @@ const LayoutWrapper = ({ children }) => {
     if (HIDE_LAYOUT_EXACT_PATHS.has(pathname)) return true;
     return HIDE_LAYOUT_PREFIXES.some((pathPrefix) => pathname.startsWith(pathPrefix));
   }, [pathname]);
-
-
-
 
   if (hideLayout) {
     return <main className="flex-grow">{children}</main>;

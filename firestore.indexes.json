@@ -265,6 +265,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "menu",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "isAvailable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isDeleted",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

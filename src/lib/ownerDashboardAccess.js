@@ -114,7 +114,7 @@ export function canAccessOwnerDashboardFeature({
   restrictedFeatures = [],
   lockedFeatures = [],
 } = {}) {
-  if (!featureId || featureId === 'dashboard') return true;
+  if (!featureId || featureId === 'dashboard' || featureId === 'claim') return true;
   if (isDisabledByBusinessType(featureId, businessType)) return false;
   if (isDisabledByAccountStatus(featureId, status, restrictedFeatures, lockedFeatures, businessType)) return false;
   return canAccessPage(role || ROLES.OWNER, featureId, customAllowedPages, businessType);

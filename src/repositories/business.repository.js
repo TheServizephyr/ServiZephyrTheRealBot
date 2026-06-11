@@ -91,6 +91,26 @@ export class BusinessRepository {
 
         console.log(`[BusinessRepository] Order token incremented for ${businessId}`);
     }
+
+    /**
+     * Increment B2C discovery analytics counters (profile views, search clicks, appearances)
+     */
+    async incrementMetric(businessId, businessType, metricField, incrementValue = 1) {
+        const firestore = await getFirestore();
+        const collectionName = getBusinessCollection(businessType);
+        const validMetrics = new Set(['profileViewCount', 'searchCount', 'appearanceCount']);
+        if (!validMetrics.has(metricField)) {
+            throw new Error(`Invalid metric field: ${metricField}`);
+        }
+
+        const docRef = firestore.collection(collectionName).doc(businessId);
+        await docRef.update({
+            [metricField]: FieldValue.increment(incrementValue),
+            updatedAt: FieldValue.serverTimestamp()
+        });
+
+        console.log(`[BusinessRepository] Increment ${metricField} by ${incrementValue} for ${businessId}`);
+    }
 }
 
 // Singleton export

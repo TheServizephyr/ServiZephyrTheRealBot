@@ -111,9 +111,9 @@ export async function generateMetadata({ params }) {
   const { slug } = await params;
   const firestore = await getFirestore();
   const business = await findBusinessById(firestore, slug);
-  if (!business || business.collection !== 'restaurants' || business.data.isPublished === false) {
+  if (!business || business.data.isPublished === false) {
     return {
-      title: 'Restaurant Not Found | ServiZephyr',
+      title: 'Outlet Not Found | ServiZephyr',
     };
   }
 
@@ -155,7 +155,7 @@ export default async function RestaurantPage({ params }) {
   const firestore = await getFirestore();
   
   const business = await findBusinessById(firestore, slug);
-  if (!business || business.collection !== 'restaurants' || business.data.isPublished === false) {
+  if (!business || business.data.isPublished === false) {
     notFound();
   }
 

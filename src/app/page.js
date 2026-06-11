@@ -2,10 +2,11 @@
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard, Truck, Hash, Bell, Clock, QrCode, PackageCheck, ShoppingBag } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard, Truck, Hash, Bell, Clock, QrCode, PackageCheck, ShoppingBag, Search, MapPin, Compass, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import {
   Accordion,
@@ -267,9 +268,64 @@ const UniqueFeatureCard = ({ icon, title, description, custom }) => (
 
 
 export default function Home() {
+  const router = useRouter();
   const [animationFinished, setAnimationFinished] = useState(true);
   const { theme, setTheme } = useTheme();
   const previousThemeRef = useRef(null);
+
+  // B2C Food Discovery States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [gpsStatus, setGpsStatus] = useState('idle'); // 'idle' | 'detecting' | 'granted' | 'denied'
+  const [gpsCoords, setGpsCoords] = useState(null);
+
+  const handleHomeSearch = (e) => {
+    if (e) e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    if (gpsCoords) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery)}&lat=${gpsCoords.lat}&lng=${gpsCoords.lng}`);
+    } else {
+      setGpsStatus('detecting');
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            setGpsCoords({ lat, lng });
+            setGpsStatus('granted');
+            router.push(`/search?q=${encodeURIComponent(searchQuery)}&lat=${lat}&lng=${lng}`);
+          },
+          (error) => {
+            console.warn('GPS denied:', error.message);
+            setGpsStatus('denied');
+            router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+          },
+          { timeout: 5000 }
+        );
+      } else {
+        setGpsStatus('denied');
+        router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Proactively fetch location on mount so it's ready when they search
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setGpsCoords({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          setGpsStatus('granted');
+        },
+        () => {
+          // Fail silently
+        }
+      );
+    }
+  }, []);
 
   useEffect(() => {
     previousThemeRef.current = theme || 'system';
@@ -318,9 +374,46 @@ export default function Home() {
                 All Yours.
               </h2>
 
-              <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl">
+                            <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl">
                 WhatsApp ordering platform for restaurants and food businesses. Zero commission. Full control.
               </h3>
+
+              {/* Premium B2C Search Bar */}
+              <div className="w-full max-w-md mt-10 px-4">
+                <form onSubmit={handleHomeSearch} className="flex flex-col sm:flex-row gap-2.5 p-2 bg-background/60 backdrop-blur-md border border-border/80 rounded-2xl sm:rounded-full shadow-xl shadow-primary/5">
+                  <div className="relative flex-grow flex items-center">
+                    <Search className="absolute left-4 h-5 w-5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search dishes near you (e.g. Biryani)..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-transparent border-0 py-3 pl-11 pr-4 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-extrabold px-6 py-3 rounded-xl sm:rounded-full text-sm transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    {gpsStatus === 'detecting' ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Pinpointing...
+                      </>
+                    ) : (
+                      <>
+                        Find Food <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+                <div className="mt-2.5 text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+                  <MapPin className={`h-3.5 w-3.5 ${gpsStatus === 'granted' ? 'text-green-500 animate-pulse' : 'text-muted-foreground'}`} />
+                  {gpsStatus === 'granted' && <span>Location active. Showing closest items first.</span>}
+                  {gpsStatus === 'detecting' && <span>Requesting GPS access...</span>}
+                  {gpsStatus === 'denied' && <span>Location disabled. Sorting standard.</span>}
+                  {gpsStatus === 'idle' && <span>Compare prices & distance from your location</span>}
+                </div>
+              </div>
 
               <motion.div
                 className="flex flex-col items-center w-full mt-6"
