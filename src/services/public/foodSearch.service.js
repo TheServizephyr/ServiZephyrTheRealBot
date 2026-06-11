@@ -288,7 +288,7 @@ function isFuzzyMatch(searchWord, targetWord) {
 /**
  * Searches food dishes using the L1 server cache, filtering and sorting by location.
  */
-export async function searchDishes(firestore, { query = '', lat = null, lng = null, filter = 'nearest', page = 1, limit = 15 } = {}) {
+export async function searchDishes(firestore, { query = '', lat = null, lng = null, filter = 'nearest', page = 1, limit = 15, city = null } = {}) {
     const cache = await getSearchCache(firestore);
     const searchTerms = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -298,6 +298,11 @@ export async function searchDishes(firestore, { query = '', lat = null, lng = nu
         let outletMatches = [];
 
         for (const business of businesses) {
+            // Filter by city if specified
+            if (city && business.city?.toLowerCase() !== city.toLowerCase()) {
+                continue;
+            }
+
             let distanceKm = null;
             const coords = business.coordinates;
             const bLat = coords ? coords.lat : null;
@@ -346,6 +351,11 @@ export async function searchDishes(firestore, { query = '', lat = null, lng = nu
     for (const item of cache.menuItems) {
         const business = cache.businesses.get(item.businessId);
         if (!business) continue;
+
+        // Filter by city if specified
+        if (city && business.city?.toLowerCase() !== city.toLowerCase()) {
+            continue;
+        }
 
         let isMatch = true;
         if (searchTerms.length > 0) {

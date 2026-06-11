@@ -43,7 +43,38 @@ export default async function sitemap() {
             };
         });
 
-        return [...staticRoutes, ...restaurantUrls];
+        // Dynamic Programmatic SEO Routes
+        const popularCuisines = ['momos', 'dosa', 'biryani', 'burger', 'chai'];
+        const popularCities = ['noida', 'delhi', 'gurugram', 'ghaziabad'];
+        const popularDishes = ['dosa', 'biryani', 'momos', 'burger', 'chai', 'pizza', 'pasta', 'paneer'];
+
+        const cuisineCityRoutes = [];
+        for (const cuisine of popularCuisines) {
+            for (const city of popularCities) {
+                cuisineCityRoutes.push({
+                    url: `${baseUrl}/search/cuisine/${cuisine}/${city}`,
+                    lastModified: new Date(),
+                    changeFrequency: 'daily',
+                    priority: 0.8,
+                });
+            }
+        }
+
+        const cityRoutes = popularCities.map(city => ({
+            url: `${baseUrl}/search/in/${city}`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.8,
+        }));
+
+        const dishRoutes = popularDishes.map(dish => ({
+            url: `${baseUrl}/dish/${dish}`,
+            lastModified: new Date(),
+            changeFrequency: 'weekly',
+            priority: 0.7,
+        }));
+
+        return [...staticRoutes, ...cuisineCityRoutes, ...cityRoutes, ...dishRoutes, ...restaurantUrls];
     } catch (error) {
         console.error('[Sitemap] Failed to fetch dynamic restaurant slugs:', error);
         return staticRoutes;

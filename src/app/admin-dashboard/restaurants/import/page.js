@@ -23,6 +23,8 @@ export default function AdminOnboardPage() {
     const [menuItems, setMenuItems] = useState([
         { name: '', description: '', price: '', isVeg: true, categoryId: 'general' }
     ]);
+    const [inputMode, setInputMode] = useState('manual'); // 'manual' or 'json'
+    const [jsonText, setJsonText] = useState('');
 
     // UI States
     const [loading, setLoading] = useState(false);
@@ -68,19 +70,48 @@ export default function AdminOnboardPage() {
 
         // Validate menu items
         const cleanedMenu = [];
-        for (let i = 0; i < menuItems.length; i++) {
-            const item = menuItems[i];
-            if (!item.name.trim()) return setError(`Menu Item ${i + 1} Name is required.`);
-            const priceNum = parseFloat(item.price);
-            if (isNaN(priceNum) || priceNum < 0) return setError(`Menu Item ${i + 1} Price must be a positive number.`);
+        if (inputMode === 'json') {
+            if (!jsonText.trim()) return setError('Please paste some JSON menu data or switch to Manual input.');
+            try {
+                const parsed = JSON.parse(jsonText);
+                if (!Array.isArray(parsed)) {
+                    throw new Error('JSON content must be an array of menu items.');
+                }
+                for (let i = 0; i < parsed.length; i++) {
+                    const item = parsed[i];
+                    if (!item.name || !String(item.name).trim()) {
+                        throw new Error(`Item at index ${i} requires a "name".`);
+                    }
+                    const priceNum = parseFloat(item.price);
+                    if (isNaN(priceNum) || priceNum < 0) {
+                        throw new Error(`Item "${item.name}" requires a valid positive number for "price".`);
+                    }
+                    cleanedMenu.push({
+                        name: String(item.name).trim(),
+                        description: String(item.description || '').trim(),
+                        price: priceNum,
+                        isVeg: item.isVeg === true,
+                        categoryId: String(item.categoryId || 'general').trim()
+                    });
+                }
+            } catch (err) {
+                return setError(`Invalid Menu JSON: ${err.message}`);
+            }
+        } else {
+            for (let i = 0; i < menuItems.length; i++) {
+                const item = menuItems[i];
+                if (!item.name.trim()) return setError(`Menu Item ${i + 1} Name is required.`);
+                const priceNum = parseFloat(item.price);
+                if (isNaN(priceNum) || priceNum < 0) return setError(`Menu Item ${i + 1} Price must be a positive number.`);
 
-            cleanedMenu.push({
-                name: item.name.trim(),
-                description: item.description.trim(),
-                price: priceNum,
-                isVeg: item.isVeg === true,
-                categoryId: item.categoryId.trim() || 'general'
-            });
+                cleanedMenu.push({
+                    name: item.name.trim(),
+                    description: item.description.trim(),
+                    price: priceNum,
+                    isVeg: item.isVeg === true,
+                    categoryId: item.categoryId.trim() || 'general'
+                });
+            }
         }
 
         setLoading(true);
@@ -168,6 +199,8 @@ export default function AdminOnboardPage() {
                                 setLat('');
                                 setLng('');
                                 setMenuItems([{ name: '', description: '', price: '', isVeg: true, categoryId: 'general' }]);
+                                setInputMode('manual');
+                                setJsonText('');
                             }}
                             className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold py-2.5 px-6 rounded-full transition-all"
                         >
@@ -296,81 +329,139 @@ export default function AdminOnboardPage() {
                 {/* Right side: Catalog Items details */}
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-sm flex flex-col justify-between">
                     <div>
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                             <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
                                 <Sparkles className="h-4 w-4" /> Menu Catalog
                             </h2>
-                            <button
-                                type="button"
-                                onClick={handleAddMenuItem}
-                                className="bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold py-1 px-3 rounded-full flex items-center gap-1 transition-all"
-                            >
-                                <Plus className="h-3 w-3" /> Add Item
-                            </button>
+                            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setInputMode('manual')}
+                                    className={`text-xs font-bold px-3 py-1 rounded-lg transition-all ${inputMode === 'manual' ? 'bg-emerald-50 text-slate-955' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    Manual
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setInputMode('json')}
+                                    className={`text-xs font-bold px-3 py-1 rounded-lg transition-all ${inputMode === 'json' ? 'bg-emerald-50 text-slate-955' : 'text-slate-400 hover:text-slate-200'}`}
+                                >
+                                    JSON Bulk
+                                </button>
+                            </div>
                         </div>
 
-                        <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
-                            {menuItems.map((item, index) => (
-                                <div key={index} className="bg-slate-950 border border-slate-850 p-3 rounded-2xl space-y-2 relative">
-                                    {menuItems.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveMenuItem(index)}
-                                            className="absolute top-2 right-2 text-slate-600 hover:text-red-400"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
-                                    )}
-
-                                    <div className="grid grid-cols-2 gap-2 pr-6">
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Item Name</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Butter Toast"
-                                                value={item.name}
-                                                onChange={(e) => handleMenuItemChange(index, 'name', e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Price (₹)</label>
-                                            <input
-                                                type="number"
-                                                placeholder="e.g. 50"
-                                                value={item.price}
-                                                onChange={(e) => handleMenuItemChange(index, 'price', e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Description (Opt)</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Toasted slices"
-                                                value={item.description}
-                                                onChange={(e) => handleMenuItemChange(index, 'description', e.target.value)}
-                                                className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-3 pt-2">
-                                            <label className="text-[9px] font-bold text-slate-500 flex items-center gap-1.5 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={item.isVeg}
-                                                    onChange={(e) => handleMenuItemChange(index, 'isVeg', e.target.checked)}
-                                                    className="rounded border-slate-800 text-emerald-500 bg-slate-900 focus:ring-0 cursor-pointer"
-                                                />
-                                                Veg Only
-                                            </label>
-                                        </div>
-                                    </div>
+                        {inputMode === 'manual' ? (
+                            <>
+                                <div className="flex justify-end mb-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleAddMenuItem}
+                                        className="bg-slate-850 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold py-1 px-3 rounded-full flex items-center gap-1 transition-all"
+                                    >
+                                        <Plus className="h-3 w-3" /> Add Item
+                                    </button>
                                 </div>
-                            ))}
-                        </div>
+                                <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+                                    {menuItems.map((item, index) => (
+                                        <div key={index} className="bg-slate-950 border border-slate-850 p-3 rounded-2xl space-y-2 relative">
+                                            {menuItems.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveMenuItem(index)}
+                                                    className="absolute top-2 right-2 text-slate-600 hover:text-red-400"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            )}
+
+                                            <div className="grid grid-cols-2 gap-2 pr-6">
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Item Name</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. Butter Toast"
+                                                        value={item.name}
+                                                        onChange={(e) => handleMenuItemChange(index, 'name', e.target.value)}
+                                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Price (₹)</label>
+                                                    <input
+                                                        type="number"
+                                                        placeholder="e.g. 50"
+                                                        value={item.price}
+                                                        onChange={(e) => handleMenuItemChange(index, 'price', e.target.value)}
+                                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Description (Opt)</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. Toasted slices"
+                                                        value={item.description}
+                                                        onChange={(e) => handleMenuItemChange(index, 'description', e.target.value)}
+                                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-slate-100 placeholder-slate-600 text-xs"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-3 pt-2">
+                                                    <label className="text-[9px] font-bold text-slate-500 flex items-center gap-1.5 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={item.isVeg}
+                                                            onChange={(e) => handleMenuItemChange(index, 'isVeg', e.target.checked)}
+                                                            className="rounded border-slate-800 text-emerald-500 bg-slate-900 focus:ring-0 cursor-pointer"
+                                                        />
+                                                        Veg Only
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[11px] font-bold text-slate-400">Paste Menu JSON Array</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setJsonText(JSON.stringify([
+                                                {
+                                                    "name": "Special Butter Dosa",
+                                                    "description": "Crispy golden dosa topped with pure butter",
+                                                    "price": 120,
+                                                    "isVeg": true,
+                                                    "categoryId": "dosa"
+                                                },
+                                                {
+                                                    "name": "Paneer Steamed Momos",
+                                                    "description": "Fresh paneer and vegetable dumplings",
+                                                    "price": 80,
+                                                    "isVeg": true,
+                                                    "categoryId": "momos"
+                                                }
+                                            ], null, 2));
+                                        }}
+                                        className="text-[10px] text-emerald-400 hover:underline"
+                                    >
+                                        Load Sample JSON
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={jsonText}
+                                    onChange={(e) => setJsonText(e.target.value)}
+                                    placeholder='[\n  {\n    "name": "Butter Chicken",\n    "price": 280,\n    "isVeg": false\n  }\n]'
+                                    className="w-full h-[320px] bg-slate-950 border border-slate-850 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl p-3 text-slate-100 placeholder-slate-700 text-xs font-mono focus:outline-none resize-y"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="pt-4 border-t border-slate-800">
