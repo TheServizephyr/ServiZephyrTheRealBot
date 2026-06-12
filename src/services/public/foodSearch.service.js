@@ -45,11 +45,27 @@ async function rebuildSearchCache(firestore, hasRedis) {
     const collectionPromises = collections.map(async (colName) => {
         try {
             const snap = await firestore.collection(colName).get();
-            snap.forEach(doc => {
+            const docPromises = snap.docs.map(async (doc) => {
                 const data = doc.data();
                 
                 // Allow search visibility unless explicitly unpublished
                 if (data.isPublished === false) return;
+
+                let deliveryEnabled = true;
+                let deliveryRadius = 5;
+                try {
+                    const dsSnap = await doc.ref.collection('delivery_settings').doc('config').get();
+                    if (dsSnap.exists) {
+                        const dsData = dsSnap.data();
+                        deliveryEnabled = dsData.deliveryEnabled ?? true;
+                        deliveryRadius = Number(dsData.deliveryRadius ?? 5);
+                    } else {
+                        deliveryEnabled = data.deliveryEnabled ?? true;
+                        deliveryRadius = Number(data.deliveryRadius ?? 5);
+                    }
+                } catch (err) {
+                    console.warn(`[food-search-service] Failed to fetch delivery subcollection for ${doc.id}:`, err.message);
+                }
 
                 const address = data.address || data.businessAddress || {};
                 const rawLat = data.coordinates?.lat ?? address.latitude ?? null;
@@ -79,8 +95,11 @@ async function rebuildSearchCache(firestore, hasRedis) {
                     type: colName === 'shops' ? 'store' : colName === 'street_vendors' ? 'street-vendor' : 'restaurant',
                     openingTime: data.openingTime || '09:00',
                     closingTime: data.closingTime || '22:00',
+                    deliveryEnabled,
+                    deliveryRadius,
                 });
             });
+            await Promise.all(docPromises);
         } catch (e) {
             console.error(`[food-search-service] Failed to fetch collection ${colName}:`, e.message || e);
         }
@@ -325,6 +344,8 @@ export async function searchDishes(firestore, { query = '', lat = null, lng = nu
                     coordinates: business.coordinates,
                     openingTime: business.openingTime,
                     closingTime: business.closingTime,
+                    deliveryEnabled: business.deliveryEnabled,
+                    deliveryRadius: business.deliveryRadius,
                 },
                 distanceKm,
             });
@@ -412,6 +433,8 @@ export async function searchDishes(firestore, { query = '', lat = null, lng = nu
                     coordinates: business.coordinates,
                     openingTime: business.openingTime,
                     closingTime: business.closingTime,
+                    deliveryEnabled: business.deliveryEnabled,
+                    deliveryRadius: business.deliveryRadius,
                 },
                 distanceKm,
             });

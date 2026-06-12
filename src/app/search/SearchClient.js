@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, Compass, Trash2, ArrowRight, ShoppingBag, Phone, Map as MapIcon, AlertTriangle, Check, Loader2, Sparkles, Sun, Moon } from 'lucide-react';
+import { Search, MapPin, Compass, Trash2, ArrowRight, ShoppingBag, Phone, Map as MapIcon, AlertTriangle, Check, Loader2, Sparkles, Sun, Moon, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 
@@ -35,6 +35,8 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
     const [lng, setLng] = useState(initialLng ? parseFloat(initialLng) : null);
     const [filter, setFilter] = useState(initialFilter);
     const [vegOnly, setVegOnly] = useState(false);
+    const [deliveryOnly, setDeliveryOnly] = useState(false);
+    const [maxDistance, setMaxDistance] = useState('all');
 
     // Results and pagination states
     const [results, setResults] = useState([]);
@@ -163,7 +165,35 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
             items = items.filter(item => item.dish?.isVeg === true || !item.dish);
         }
 
-        // 2. Apply Sorting
+        // 2. Apply Home Delivery filter (claimed outlets, deliveryEnabled, and within deliveryRadius if location is set)
+        if (deliveryOnly) {
+            items = items.filter(item => {
+                const r = item.restaurant;
+                if (!r) return false;
+                
+                const canDeliver = r.isClaimed === true && r.deliveryEnabled === true;
+                if (!canDeliver) return false;
+
+                if (lat !== null && lng !== null) {
+                    const radius = Number(r.deliveryRadius || 5);
+                    const distance = item.distanceKm !== null ? item.distanceKm : 9999;
+                    return distance <= radius;
+                }
+                return true;
+            });
+        }
+
+        // 3. Apply Max Distance filter
+        if (maxDistance !== 'all') {
+            const limit = Number(maxDistance);
+            items = items.filter(item => {
+                const distance = item.distanceKm;
+                if (distance === null || distance === undefined) return false;
+                return distance <= limit;
+            });
+        }
+
+        // 4. Apply Sorting
         if (query) {
             // Sorting for dish search
             if (filter === 'cheapest') {
@@ -187,7 +217,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         }
 
         return items;
-    }, [results, vegOnly, filter, query]);
+    }, [results, vegOnly, filter, query, deliveryOnly, maxDistance, lat, lng]);
 
     // Track search result appearances (impressions) once they render
     useEffect(() => {
@@ -442,7 +472,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
 
             <main className="max-w-md mx-auto px-4 mt-4">
                 {/* Filters Sticky Bar */}
-                <div className="sticky top-[68px] z-30 bg-slate-50/90 dark:bg-slate-900/90 py-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 gap-2 mb-4 backdrop-blur-md">
+                <div className="sticky top-[68px] z-30 bg-slate-50/90 dark:bg-slate-900/90 py-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 gap-2 mb-2 backdrop-blur-md">
                     <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-full border border-slate-200/60 dark:border-slate-850 text-xs">
                         <button
                             onClick={() => { setFilter('nearest'); setPage(1); }}
@@ -472,6 +502,31 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                         <span className={`h-2.5 w-2.5 rounded-full ${vegOnly ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-slate-400 dark:bg-slate-600'}`} />
                         Veg Only
                     </button>
+                </div>
+
+                {/* Secondary Filters Bar */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <button
+                        onClick={() => { setDeliveryOnly(prev => !prev); setPage(1); }}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${deliveryOnly ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-500 text-emerald-600 dark:text-emerald-300 shadow-sm' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'}`}
+                    >
+                        <Truck className="h-3.5 w-3.5" />
+                        Home Delivery
+                    </button>
+
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-full px-3.5 py-1 text-xs text-slate-600 dark:text-slate-400 font-semibold shadow-sm">
+                        <span>Range:</span>
+                        <select
+                            value={maxDistance}
+                            onChange={(e) => { setMaxDistance(e.target.value); setPage(1); }}
+                            className="bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1 font-bold text-xs"
+                        >
+                            <option value="all" className="bg-white dark:bg-slate-900 text-xs">Unlimited</option>
+                            <option value="5" className="bg-white dark:bg-slate-900 text-xs">5 km</option>
+                            <option value="10" className="bg-white dark:bg-slate-900 text-xs">10 km</option>
+                            <option value="20" className="bg-white dark:bg-slate-900 text-xs">20 km</option>
+                        </select>
+                    </div>
                 </div>
 
                 {/* Loading State */}
