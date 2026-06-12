@@ -479,7 +479,7 @@ export default function Home() {
                     Hyperlocal Discovery
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    Instantly pinpoint the best eats around you. Filter by dishes, cuisines, or find hidden street food gems that aggregators won't show you.
+                    Instantly pinpoint the best eats around you. Filter by dishes, cuisines, or find hidden street food gems that aggregators won&apos;t show you.
                   </p>
                 </div>
                 <div className="mt-6 flex items-center gap-2 text-xs text-primary font-bold">
@@ -548,7 +548,7 @@ export default function Home() {
                   Hungry? Discover Restaurants Near You Now
                 </h3>
                 <p className="text-muted-foreground max-w-2xl mx-auto mb-8 text-sm md:text-base">
-                  Get instant access to live menus, check operating hours, and compare pricing. See what's cooking right around your corner.
+                  Get instant access to live menus, check operating hours, and compare pricing. See what&apos;s cooking right around your corner.
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

@@ -38,33 +38,45 @@ async function rebuildSearchCache(firestore, hasRedis) {
     console.log('[food-search-service] L1 & L2 cache cold. Rebuilding search cache from Firestore...');
     const startTime = Date.now();
 
-    // 1. Fetch all published businesses from all collections
+    // 1. Fetch all delivery settings in one collection group query to avoid N+1 query problem
+    const deliverySettingsMap = new Map();
+    try {
+        const dsSnap = await firestore.collectionGroup('delivery_settings').get();
+        dsSnap.forEach(doc => {
+            if (doc.id === 'config') {
+                const parentRef = doc.ref.parent.parent;
+                if (parentRef) {
+                    deliverySettingsMap.set(parentRef.id, doc.data());
+                }
+            }
+        });
+    } catch (err) {
+        console.warn('[food-search-service] Failed to fetch delivery_settings collection group:', err.message);
+    }
+
+    // 2. Fetch all published businesses from all collections
     const collections = ['restaurants', 'shops', 'street_vendors'];
     const businessesMap = new Map();
 
     const collectionPromises = collections.map(async (colName) => {
         try {
             const snap = await firestore.collection(colName).get();
-            const docPromises = snap.docs.map(async (doc) => {
+            snap.docs.forEach((doc) => {
                 const data = doc.data();
                 
                 // Allow search visibility unless explicitly unpublished
                 if (data.isPublished === false) return;
 
+                const dsData = deliverySettingsMap.get(doc.id);
                 let deliveryEnabled = true;
                 let deliveryRadius = 5;
-                try {
-                    const dsSnap = await doc.ref.collection('delivery_settings').doc('config').get();
-                    if (dsSnap.exists) {
-                        const dsData = dsSnap.data();
-                        deliveryEnabled = dsData.deliveryEnabled ?? true;
-                        deliveryRadius = Number(dsData.deliveryRadius ?? 5);
-                    } else {
-                        deliveryEnabled = data.deliveryEnabled ?? true;
-                        deliveryRadius = Number(data.deliveryRadius ?? 5);
-                    }
-                } catch (err) {
-                    console.warn(`[food-search-service] Failed to fetch delivery subcollection for ${doc.id}:`, err.message);
+
+                if (dsData) {
+                    deliveryEnabled = dsData.deliveryEnabled ?? true;
+                    deliveryRadius = Number(dsData.deliveryRadius ?? 5);
+                } else {
+                    deliveryEnabled = data.deliveryEnabled ?? true;
+                    deliveryRadius = Number(data.deliveryRadius ?? 5);
                 }
 
                 const address = data.address || data.businessAddress || {};
@@ -99,7 +111,6 @@ async function rebuildSearchCache(firestore, hasRedis) {
                     deliveryRadius,
                 });
             });
-            await Promise.all(docPromises);
         } catch (e) {
             console.error(`[food-search-service] Failed to fetch collection ${colName}:`, e.message || e);
         }
@@ -245,13 +256,22 @@ async function getSearchCache(firestore) {
     // 3. L1 & L2 are cold -> Run Rebuild with timeout & offline mock fallback
     let rebuildTimeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-        rebuildTimeoutId = setTimeout(() => reject(new Error('Firestore cache rebuild timed out after 5000ms')), 5000);
+        rebuildTimeoutId = setTimeout(() => reject(new Error('Firestore cache rebuild timed out after 25000ms')), 25000);
     });
 
     rebuildPromise = rebuildSearchCache(firestore, hasRedis);
     try {
         await Promise.race([rebuildPromise, timeoutPromise]);
     } catch (err) {
+        // During Next.js static page prerendering (build phase), we allow falling back to mock/empty cache
+        // to prevent slow/throttled database queries from failing the entire site build.
+        // At runtime, we throw/propagate the error to prevent showing mock data to real users.
+        const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
+        if (!isBuildPhase && (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1')) {
+            console.error('[food-search-service] Rebuild failed or timed out in production. Propagating error:', err.message);
+            throw err;
+        }
+
         console.error('[food-search-service] Rebuild failed or timed out. Hydrating search index with local mock data:', err.message);
         
         // Define high-fidelity offline mock data to allow seamless testing of radius, filters, and searches
