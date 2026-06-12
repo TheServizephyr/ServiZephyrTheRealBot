@@ -24,6 +24,7 @@ import {
   BriefcaseBusiness,
   Handshake,
   Trophy, // Achievements
+  ClipboardList,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -183,6 +184,9 @@ function AdminLayoutContent({ children }) {
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/restaurants" icon={Store} isCollapsed={isCollapsed}>
                   Listings
+                </SidebarLink>
+                <SidebarLink href="/admin-dashboard/onboarding" icon={ClipboardList} isCollapsed={isCollapsed}>
+                  Onboarding
                 </SidebarLink>
                 <SidebarLink href="/admin-dashboard/users" icon={Users} isCollapsed={isCollapsed}>
                   Users

@@ -371,21 +371,64 @@ export default function Home() {
 
           <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
-              <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
+              <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground font-extrabold">
                 Business, Customer, and Control.
               </h1>
 
-              <h2 className="font-headline text-5xl sm:text-6xl md:text-8xl tracking-tighter leading-tight font-bold text-primary mt-6">
+              <h2 className="font-headline text-5xl sm:text-6xl md:text-8xl tracking-tighter leading-tight font-black text-primary mt-6">
                 All Yours.
               </h2>
 
-                            <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl">
+              <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl font-medium">
                 WhatsApp ordering platform for restaurants and food businesses. Zero commission. Full control.
               </h3>
 
+              <motion.div
+                className="flex flex-col items-center w-full mt-12"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              >
+                <h4 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+                  Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
+                </h4>
+                <MotionLink
+                  href="/onboard"
+                  className="mt-8 bg-primary text-primary-foreground font-black py-4 px-10 rounded-xl text-xl hover:bg-primary/95 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-xl shadow-primary/30 active:scale-95"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Store size={24} /> List Your Restaurant Now
+                </MotionLink>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        {/* Food Discovery Platform Section */}
+        <motion.section
+          id="food-discovery"
+          className="relative overflow-hidden py-24 bg-gradient-to-b from-background via-amber-50/30 to-background dark:from-background dark:via-neutral-900/40 dark:to-background border-y border-border/40"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+          variants={sectionVariants}
+        >
+          <div className="container mx-auto px-4 relative z-10">
+            <div className="text-center max-w-3xl mx-auto mb-12">
+              <span className="text-xs font-bold uppercase tracking-widest bg-primary/10 text-primary px-3 py-1.5 rounded-full">
+                For Food Lovers & Customers
+              </span>
+              <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl text-foreground">
+                Discover Nearby Food, Commission-Free
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+                Connect directly with local street vendors, premium cafes, and top-rated restaurants. Compare prices, browse live menus, and place orders directly on WhatsApp.
+              </p>
+
               {/* Premium B2C Search Bar */}
-              <div className="w-full max-w-md mt-10 px-4">
-                <form onSubmit={handleHomeSearch} className="flex flex-col sm:flex-row gap-2.5 p-2 bg-background/60 backdrop-blur-md border border-border/80 rounded-2xl sm:rounded-full shadow-xl shadow-primary/5">
+              <div className="w-full max-w-md mx-auto mt-10 px-4">
+                <form onSubmit={handleHomeSearch} className="flex flex-col sm:flex-row gap-2.5 p-2 bg-background/90 border border-border/85 rounded-2xl sm:rounded-full shadow-lg shadow-primary/5">
                   <div className="relative flex-grow flex items-center">
                     <Search className="absolute left-4 h-5 w-5 text-muted-foreground" />
                     <input
@@ -398,7 +441,7 @@ export default function Home() {
                   </div>
                   <button
                     type="submit"
-                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-extrabold px-6 py-3 rounded-xl sm:rounded-full text-sm transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 active:scale-95"
+                    className="bg-primary hover:bg-primary/95 text-primary-foreground font-extrabold px-6 py-3 rounded-xl sm:rounded-full text-sm transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
                   >
                     {gpsStatus === 'detecting' ? (
                       <>
@@ -419,49 +462,6 @@ export default function Home() {
                   {gpsStatus === 'idle' && <span>Compare prices & distance from your location</span>}
                 </div>
               </div>
-
-              <motion.div
-                className="flex flex-col items-center w-full mt-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-              >
-                <h4 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground">
-                  Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
-                </h4>
-                <MotionLink
-                  href="/join-waitlist"
-                  className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  <Feather size={24} /> Join the Waitlist Now
-                </MotionLink>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        {/* Food Discovery Platform Section */}
-        <motion.section
-          id="food-discovery"
-          className="relative overflow-hidden py-24 bg-gradient-to-b from-background via-amber-50/30 to-background dark:from-background dark:via-neutral-900/40 dark:to-background border-y border-border/40"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.2 }}
-          variants={sectionVariants}
-        >
-          <div className="container mx-auto px-4 relative z-10">
-            <div className="text-center max-w-3xl mx-auto mb-16">
-              <span className="text-xs font-bold uppercase tracking-widest bg-primary/10 text-primary px-3 py-1.5 rounded-full">
-                For Food Lovers & Customers
-              </span>
-              <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl text-foreground">
-                Discover Nearby Food, Commission-Free
-              </h2>
-              <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-                Connect directly with local street vendors, premium cafes, and top-rated restaurants. Compare prices, browse live menus, and place orders directly on WhatsApp.
-              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-16">
@@ -1021,12 +1021,12 @@ export default function Home() {
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Customer Hub (CRM)</li>
               </ul>
               <MotionLink
-                href="/join-waitlist"
+                href="/onboard"
                 className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/50 transition-transform duration-300 hover:scale-105"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Join the Waitlist
+                List Your Restaurant
               </MotionLink>
             </div>
           </div>
