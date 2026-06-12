@@ -8,6 +8,7 @@ import {
   AlertCircle, ChevronRight, X, Heart
 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 
 function formatWhatsAppNumber(phone) {
   let cleaned = String(phone || '').replace(/\D/g, '');
@@ -304,6 +305,22 @@ export default function RestaurantPageClient({ restaurantData }) {
           <div className="absolute inset-0 bg-gradient-to-r from-amber-950/80 via-[#1F1400]/90 to-neutral-900" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0C] via-transparent to-black/40" />
+        
+        {/* ServiZephyr Logo Brand Badge */}
+        <div className="absolute top-6 left-6 z-30">
+          <Link href="/" className="flex items-center gap-2 bg-[#121216]/80 backdrop-blur-md border border-[#1F1F27]/50 px-3.5 py-2 rounded-full hover:bg-[#1C1C24] transition-all shadow-lg">
+            <Image
+              src="/logo.png"
+              alt="ServiZephyr Logo"
+              width={20}
+              height={20}
+              className="h-5 w-auto object-contain"
+            />
+            <span className="text-xs font-bold tracking-wider text-[#FAFAFA] font-sans">
+              ServiZephyr
+            </span>
+          </Link>
+        </div>
       </div>
 
       {/* 2. Restaurant Profile Info Section */}

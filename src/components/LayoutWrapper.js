@@ -34,6 +34,7 @@ const HIDE_LAYOUT_PREFIXES = [
   '/split-pay',
   '/public',
   '/search',
+  '/restaurant/',
 ];
 
 const LayoutWrapper = ({ children }) => {
