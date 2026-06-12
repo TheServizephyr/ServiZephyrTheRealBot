@@ -38,7 +38,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
 
     // Results and pagination states
     const [results, setResults] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
@@ -65,6 +65,8 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         }
 
         setGpsStatus('detecting');
+        setResults([]);
+        setLoading(true);
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const newLat = position.coords.latitude;
@@ -218,11 +220,19 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
     const handleSearchSubmit = (e) => {
         if (e) e.preventDefault();
         setPage(1);
+        setResults([]);
+        setLoading(true);
         setQuery(searchInput);
 
         const searchParams = new URLSearchParams(window.location.search);
         searchParams.set('q', searchInput);
         router.push(`/search?${searchParams.toString()}`);
+    };
+
+    const handlePageChange = (newPage) => {
+        setResults([]);
+        setLoading(true);
+        setPage(newPage);
     };
 
     // Increment metrics for click actions (Call, Navigate, Order, Details)
@@ -785,7 +795,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                 {!loading && totalPages > 1 && (
                     <div className="flex items-center justify-between mt-6 px-2 text-xs">
                         <button
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            onClick={() => handlePageChange(Math.max(1, page - 1))}
                             disabled={page === 1}
                             className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 px-3.5 py-1.5 rounded-md disabled:opacity-50 transition-colors font-medium"
                         >
@@ -795,7 +805,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                             Page {page} of {totalPages}
                         </span>
                         <button
-                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                             disabled={page === totalPages}
                             className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 px-3.5 py-1.5 rounded-md disabled:opacity-50 transition-colors font-medium"
                         >
