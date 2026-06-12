@@ -53,4 +53,8 @@ export async function POST(req) {
         } finally {
             if (timeoutId) clearTimeout(timeoutId);
         }
+    } catch (error) {
+        console.error('search-log API error:', error);
+        return NextResponse.json({ error: 'Internal Server Error', message: error.message }, { status: 500 });
+    }
 }
