@@ -66,6 +66,8 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         if (!navigator.geolocation) {
             setGpsStatus('denied');
             setGpsError('Geolocation is not supported by your browser.');
+            setLat(null);
+            setLng(null);
             return;
         }
 
@@ -91,6 +93,8 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                 console.warn('[Search] Geolocation error:', error.message);
                 setGpsStatus('denied');
                 setGpsError('Location access denied. Items will show without distance sorting.');
+                setLat(null);
+                setLng(null);
             },
             { enableHighAccuracy: true, timeout: 8000 }
         );
@@ -107,6 +111,10 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
 
     // Fetch search results when parameters change
     useEffect(() => {
+        if (gpsStatus === 'idle' || gpsStatus === 'detecting') {
+            return;
+        }
+
         let isCancelled = false;
 
         async function fetchResults() {
@@ -141,7 +149,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                                 query,
                                 lat,
                                 lng,
-                                areaHint: results?.[0]?.restaurant?.city || ''
+                                areaHint: data.results?.[0]?.restaurant?.city || ''
                             })
                         }).catch(err => console.error('[Analytics] Failed to log search query:', err));
                     }
@@ -158,7 +166,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         return () => {
             isCancelled = true;
         };
-    }, [query, lat, lng, page, city]);
+    }, [query, lat, lng, page, city, gpsStatus]);
 
     // Filter and sort results client-side for instant responsive interaction
     const processedResults = useMemo(() => {
@@ -187,16 +195,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
             });
         }
 
-        // 3. Apply Max Distance filter (only if location coordinates are active)
-        if (lat !== null && lng !== null) {
-            const activeRange = parseFloat(maxDistance);
-            const limit = !isNaN(activeRange) && activeRange > 0 ? Math.min(100, activeRange) : 20;
-            items = items.filter(item => {
-                const distance = item.distanceKm;
-                if (distance === null || distance === undefined) return false;
-                return distance <= limit;
-            });
-        }
+
 
         // 4. Apply Sorting
         if (query) {
@@ -417,10 +416,9 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
     const activeFiltersCount = useMemo(() => {
         let count = 0;
         if (deliveryOnly) count++;
-        if (maxDistance !== '20' && maxDistance !== '') count++;
         if (city) count++;
         return count;
-    }, [deliveryOnly, maxDistance, city]);
+    }, [deliveryOnly, city]);
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-sans pb-24 transition-colors duration-200">
@@ -553,9 +551,8 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                         )}
                     </button>
                 </div>
-
                 {/* Compact Active Indicators (Mini Row) */}
-                {(city || (maxDistance !== '20' && maxDistance !== '') || deliveryOnly) && (
+                {(city || deliveryOnly) && (
                     <div 
                         onClick={() => setShowFilterDrawer(true)}
                         className="mb-4 flex items-center gap-1.5 text-[10px] font-black text-emerald-650 dark:text-emerald-400 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl px-3.5 py-2 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15 transition-all w-fit active:scale-95 shadow-sm"
@@ -563,10 +560,9 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                         <MapPin className="h-3.5 w-3.5" />
                         <span>
                             {city || 'Near Me'} 
-                            {maxDistance !== '' && ` • within ${maxDistance} km`} 
                             {deliveryOnly && ' • Home Delivery'}
                         </span>
-                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 ml-1 hover:underline">
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-550 ml-1 hover:underline">
                             (Tap to edit)
                         </span>
                     </div>
@@ -582,17 +578,30 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
 
                 {/* Empty State */}
                 {!loading && processedResults.length === 0 && (
-                    <div className="text-center py-16 px-4 bg-white dark:bg-slate-950/45 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-3" />
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
-                            {query ? "No Dishes Found" : "No Dishes Available"}
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-                            {query 
-                                ? `We couldn't find any active dishes matching "${query}". Try searching for "Biryani", "Chai", or "Dosa".`
-                                : "No active dishes or restaurants are currently onboarded in this region. If you are a restaurant owner, onboard your business and add dishes to start receiving orders!"
-                            }
-                        </p>
+                    <div className="text-center py-16 px-6 bg-white dark:bg-slate-950/45 rounded-3xl border border-slate-200 dark:border-slate-800/80 shadow-md max-w-sm mx-auto transition-all duration-300">
+                        {query ? (
+                            <>
+                                <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto mb-4 animate-bounce" />
+                                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2">
+                                    No Dishes Found
+                                </h3>
+                                <p className="text-xs text-slate-505 dark:text-slate-400 leading-relaxed">
+                                    We couldn&apos;t find any active dishes matching &quot;<span className="font-semibold text-slate-800 dark:text-slate-200">{query}</span>&quot; in this region. Try searching for other items like <strong className="text-emerald-500 dark:text-emerald-400">Biryani</strong>, <strong className="text-emerald-500 dark:text-emerald-400">Momos</strong>, <strong className="text-emerald-500 dark:text-emerald-400">Chai</strong>, or <strong className="text-emerald-500 dark:text-emerald-400">Dosa</strong>.
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <div className="h-16 w-16 bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4 shadow-inner">
+                                    <Compass className="h-8 w-8 animate-pulse" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">
+                                    We are reaching you very soon! 🚀
+                                </h3>
+                                <p className="text-xs text-slate-500 dark:text-slate-450 leading-relaxed font-medium">
+                                    Hum jald hi aapke area me aa rahe hain! Currently, there are no restaurants or street food vendors onboarded in your location. We are onboarding new partners daily and will start deliveries in your neighborhood very soon. Stay tuned! ✨
+                                </p>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -1026,81 +1035,6 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                                 }`}
                             />
                         </button>
-                    </div>
-
-                    {/* 2. Custom Search Radius (Distance Filter) */}
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <span className="flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-300">
-                                <Compass className="h-4 w-4 text-emerald-500 animate-spin-slow" /> Custom Search Radius
-                            </span>
-                            <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                                Max 100 km limit
-                            </span>
-                        </div>
-                        
-                        <div className="flex gap-2.5 items-center">
-                            {/* Numerical Input Box */}
-                            <div className="relative flex-shrink-0 w-24">
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    value={maxDistance}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === '') {
-                                            setMaxDistance('');
-                                            setPage(1);
-                                            return;
-                                        }
-                                        const num = parseInt(val, 10);
-                                        if (!isNaN(num)) {
-                                            const clamped = Math.max(1, Math.min(100, num));
-                                            setMaxDistance(String(clamped));
-                                            setPage(1);
-                                        }
-                                    }}
-                                    placeholder="20"
-                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl py-2.5 pl-3.5 pr-8 text-xs font-black text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-transparent transition-all shadow-inner"
-                                />
-                                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-550">
-                                    km
-                                </span>
-                            </div>
-
-                            {/* Preset range chips */}
-                            <div className="flex flex-wrap gap-1.5 flex-grow justify-start">
-                                {['5', '15', '25', '50', '100'].map((dist) => {
-                                    const isActive = maxDistance === dist;
-                                    return (
-                                        <button
-                                            key={dist}
-                                            type="button"
-                                            onClick={() => {
-                                                setMaxDistance(dist);
-                                                setPage(1);
-                                            }}
-                                            className={`px-3 py-2 rounded-xl text-[10px] font-black tracking-wide transition-all active:scale-95 border ${
-                                                isActive
-                                                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-extrabold shadow-sm'
-                                                    : 'bg-slate-50 dark:bg-slate-900 border-slate-205 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                            }`}
-                                        >
-                                            {dist} km
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        
-                        <p className="text-[10px] font-bold text-slate-450 dark:text-slate-550 leading-none">
-                            {maxDistance === '' ? (
-                                <span>Range: <strong className="text-slate-600 dark:text-slate-350">20 km (Default)</strong></span>
-                            ) : (
-                                <span>Range: <strong className="text-emerald-500 dark:text-emerald-450">{maxDistance} km</strong> (Custom limit)</span>
-                            )}
-                        </p>
                     </div>
 
                     {/* 3. City Search Section */}
