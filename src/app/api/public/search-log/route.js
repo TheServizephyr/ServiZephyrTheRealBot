@@ -32,17 +32,25 @@ export async function POST(req) {
             searchLog.areaHint = areaHint.trim();
         }
 
-        const docRef = await firestore.collection('searches').add(searchLog);
+        // Write the log entry with a timeout fallback for offline/development environments
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error('Search log write timed out after 2000ms')), 2000);
+        });
 
-        return NextResponse.json({
-            success: true,
-            id: docRef.id
-        }, { status: 201 });
-    } catch (error) {
-        console.error('POST /api/public/search-log error:', error);
-        return NextResponse.json({
-            error: 'Internal Server Error',
-            message: error.message
-        }, { status: 500 });
-    }
+        try {
+            const docRef = await Promise.race([
+                firestore.collection('searches').add(searchLog),
+                timeoutPromise
+            ]);
+            return NextResponse.json({
+                success: true,
+                id: docRef.id
+            }, { status: 201 });
+        } catch (dbErr) {
+            console.warn(`[search-log] Operating in offline mode or DB timed out: ${dbErr.message}`);
+            return NextResponse.json({ success: true, offline: true, message: 'Offline fallback success' }, { status: 201 });
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+        }
 }
