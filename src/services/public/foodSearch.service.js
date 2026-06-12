@@ -285,35 +285,6 @@ async function getSearchCache(firestore) {
                 closingTime: '22:00',
                 deliveryEnabled: true,
                 deliveryRadius: 8
-            },
-            {
-                id: 'delhi-durbar',
-                name: 'Delhi Durbar',
-                phone: '9777777777',
-                isClaimed: false,
-                coordinates: { lat: 28.6139, lng: 77.2090 }, // Connaught Place, Delhi
-                addressText: 'Connaught Place, New Delhi',
-                city: 'Delhi',
-                type: 'restaurant',
-                openingTime: '11:00',
-                closingTime: '23:30',
-                deliveryEnabled: false,
-                deliveryRadius: 5
-            },
-            {
-                id: 'gurugram-dhaba',
-                name: 'Gurugram Express Dhaba',
-                phone: '9666666666',
-                isClaimed: true,
-                botDisplayNumber: '919666666666',
-                coordinates: { lat: 28.4595, lng: 77.0266 }, // Sector 29, Gurugram
-                addressText: 'Sector 29, Gurugram, Haryana',
-                city: 'Gurugram',
-                type: 'street-vendor',
-                openingTime: '08:00',
-                closingTime: '22:00',
-                deliveryEnabled: true,
-                deliveryRadius: 25
             }
         ];
 
@@ -337,28 +308,6 @@ async function getSearchCache(firestore) {
                 isVeg: true,
                 categoryId: 'starters',
                 businessId: 'patel-restaurant',
-                portions: [],
-                imageUrl: ''
-            },
-            {
-                id: 'dish-dosa-1',
-                name: 'Masala Dosa',
-                description: 'Crispy rice crepe filled with spiced potato mash, served with sambar and coconut chutney.',
-                price: 150,
-                isVeg: true,
-                categoryId: 'south-indian',
-                businessId: 'delhi-durbar',
-                portions: [],
-                imageUrl: ''
-            },
-            {
-                id: 'dish-chai-1',
-                name: 'Masala Kadak Chai',
-                description: 'Traditional Indian milk tea brewed with fresh ginger and cardamom.',
-                price: 30,
-                isVeg: true,
-                categoryId: 'beverages',
-                businessId: 'gurugram-dhaba',
                 portions: [],
                 imageUrl: ''
             }
