@@ -280,10 +280,13 @@ export default function Home() {
 
   const handleHomeSearch = (e) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const queryTerm = searchQuery.trim();
+    const qParam = queryTerm ? `q=${encodeURIComponent(queryTerm)}` : '';
 
     if (gpsCoords) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery)}&lat=${gpsCoords.lat}&lng=${gpsCoords.lng}`);
+      const coordsPart = `lat=${gpsCoords.lat}&lng=${gpsCoords.lng}`;
+      const queryStr = [qParam, coordsPart].filter(Boolean).join('&');
+      router.push(`/search${queryStr ? `?${queryStr}` : ''}`);
     } else {
       setGpsStatus('detecting');
       if (navigator.geolocation) {
@@ -293,18 +296,20 @@ export default function Home() {
             const lng = position.coords.longitude;
             setGpsCoords({ lat, lng });
             setGpsStatus('granted');
-            router.push(`/search?q=${encodeURIComponent(searchQuery)}&lat=${lat}&lng=${lng}`);
+            const coordsPart = `lat=${lat}&lng=${lng}`;
+            const queryStr = [qParam, coordsPart].filter(Boolean).join('&');
+            router.push(`/search${queryStr ? `?${queryStr}` : ''}`);
           },
           (error) => {
             console.warn('GPS denied:', error.message);
             setGpsStatus('denied');
-            router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+            router.push(`/search${qParam ? `?${qParam}` : ''}`);
           },
           { timeout: 5000 }
         );
       } else {
         setGpsStatus('denied');
-        router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
+        router.push(`/search${qParam ? `?${qParam}` : ''}`);
       }
     }
   };
@@ -436,6 +441,165 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Food Discovery Platform Section */}
+        <motion.section
+          id="food-discovery"
+          className="relative overflow-hidden py-24 bg-gradient-to-b from-background via-amber-50/30 to-background dark:from-background dark:via-neutral-900/40 dark:to-background border-y border-border/40"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.2 }}
+          variants={sectionVariants}
+        >
+          <div className="container mx-auto px-4 relative z-10">
+            <div className="text-center max-w-3xl mx-auto mb-16">
+              <span className="text-xs font-bold uppercase tracking-widest bg-primary/10 text-primary px-3 py-1.5 rounded-full">
+                For Food Lovers & Customers
+              </span>
+              <h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl text-foreground">
+                Discover Nearby Food, Commission-Free
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+                Connect directly with local street vendors, premium cafes, and top-rated restaurants. Compare prices, browse live menus, and place orders directly on WhatsApp.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-16">
+              {/* Feature 1 */}
+              <motion.div
+                variants={cardVariants}
+                custom={1}
+                className="bg-card border border-border/80 rounded-2xl p-8 hover:shadow-xl hover:border-primary/40 transition-all duration-300 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary mb-6">
+                    <Compass className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-3">
+                    Hyperlocal Discovery
+                  </h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Instantly pinpoint the best eats around you. Filter by dishes, cuisines, or find hidden street food gems that aggregators won't show you.
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-2 text-xs text-primary font-bold">
+                  <span>Location-based search</span>
+                  <Check className="h-3.5 w-3.5" />
+                </div>
+              </motion.div>
+
+              {/* Feature 2 */}
+              <motion.div
+                variants={cardVariants}
+                custom={2}
+                className="bg-card border border-border/80 rounded-2xl p-8 hover:shadow-xl hover:border-primary/40 transition-all duration-300 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="h-12 w-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500 mb-6">
+                    <MessageSquare className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-3">
+                    Order Directly on WhatsApp
+                  </h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    No extra apps or account creations. Select items from our interactive menu, add them to your cart, and place your order straight in WhatsApp.
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-2 text-xs text-green-500 font-bold">
+                  <span>Zero app download required</span>
+                  <Check className="h-3.5 w-3.5" />
+                </div>
+              </motion.div>
+
+              {/* Feature 3 */}
+              <motion.div
+                variants={cardVariants}
+                custom={3}
+                className="bg-card border border-border/80 rounded-2xl p-8 hover:shadow-xl hover:border-primary/40 transition-all duration-300 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6">
+                    <Zap className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-xl font-bold text-foreground mb-3">
+                    Zero Commission Rates
+                  </h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    By bypassing delivery platforms, we pass the savings directly to you. Get authentic restaurant rates without high markups and hidden fee charges.
+                  </p>
+                </div>
+                <div className="mt-6 flex items-center gap-2 text-xs text-amber-500 font-bold">
+                  <span>Save 20-30% on every order</span>
+                  <Check className="h-3.5 w-3.5" />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Central Call-to-Action */}
+            <div className="flex flex-col items-center justify-center text-center">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                whileInView={{ scale: 1, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5 }}
+                className="bg-primary/[0.03] border border-primary/20 rounded-3xl p-8 md:p-12 max-w-4xl w-full shadow-inner"
+              >
+                <h3 className="text-2xl md:text-3xl font-extrabold text-foreground mb-4">
+                  Hungry? Discover Restaurants Near You Now
+                </h3>
+                <p className="text-muted-foreground max-w-2xl mx-auto mb-8 text-sm md:text-base">
+                  Get instant access to live menus, check operating hours, and compare pricing. See what's cooking right around your corner.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  <button
+                    onClick={() => {
+                      if (gpsCoords) {
+                        router.push(`/search?lat=${gpsCoords.lat}&lng=${gpsCoords.lng}`);
+                      } else {
+                        setGpsStatus('detecting');
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                              const lat = position.coords.latitude;
+                              const lng = position.coords.longitude;
+                              setGpsCoords({ lat, lng });
+                              setGpsStatus('granted');
+                              router.push(`/search?lat=${lat}&lng=${lng}`);
+                            },
+                            () => {
+                              setGpsStatus('denied');
+                              router.push('/search');
+                            },
+                            { timeout: 5000 }
+                          );
+                        } else {
+                          setGpsStatus('denied');
+                          router.push('/search');
+                        }
+                      }
+                    }}
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/95 text-primary-foreground font-black px-10 py-5 rounded-2xl text-lg transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-3 active:scale-98"
+                  >
+                    <Compass className="h-6 w-6" />
+                    <span>
+                      {gpsStatus === 'detecting' ? 'Locating Nearby Outlets...' : 'Explore Nearby Food & Outlets'}
+                    </span>
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="mt-4 text-xs text-muted-foreground flex items-center justify-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" />
+                  <span>No login or signup required to search & browse menus.</span>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+          
+          {/* Subtle Decorative Background Blobs */}
+          <div className="absolute top-1/4 left-0 w-72 h-72 bg-primary/5 rounded-full filter blur-3xl pointer-events-none" />
+          <div className="absolute bottom-1/4 right-0 w-80 h-80 bg-amber-500/5 rounded-full filter blur-3xl pointer-events-none" />
+        </motion.section>
 
         {/* How It Works Section */}
         <motion.section
