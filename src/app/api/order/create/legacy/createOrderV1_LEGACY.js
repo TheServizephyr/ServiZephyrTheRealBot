@@ -1150,7 +1150,7 @@ export async function processOrderV1(body, firestore) {
 
         // --- Post-paid Dine-In ---
         console.log(`[API /order/create] 🔍 Checking dine-in conditions: deliveryType='${deliveryType}', dineInModel='${businessData.dineInModel}'`);
-        if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
+        if (deliveryType === 'dine-in' && (businessData.dineInModel || 'post-paid') === 'post-paid') {
             console.log("[API /order/create] ✅ Handling post-paid dine-in order.");
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);

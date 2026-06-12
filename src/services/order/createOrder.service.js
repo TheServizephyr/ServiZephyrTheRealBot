@@ -193,8 +193,9 @@ const buildCarSessionTabId = ({ carSpot, normalizedPhone, userId }) => {
 };
 
 const shouldGeneratePhysicalToken = ({ deliveryType, businessType, dineInModel }) => {
+    const effectiveDineInModel = dineInModel || 'post-paid';
     return (
-        (deliveryType === 'dine-in' && dineInModel === 'post-paid') ||
+        (deliveryType === 'dine-in' && effectiveDineInModel === 'post-paid') ||
         deliveryType === 'car-order' ||
         businessType === 'street-vendor'
     );
@@ -1139,7 +1140,7 @@ export async function createOrderV2(req, options = {}) {
             requestRestaurantId: restaurantId,
             deliveryType,
             businessType: business.type,
-            dineInModel: business.data.dineInModel,
+            dineInModel: business.data.dineInModel || 'post-paid',
             dineInTabId: requestedSessionTabId,
             existingOrderId: finalExistingOrderId,
             // Optimization: Pass pre-fetched data
@@ -1559,7 +1560,7 @@ export async function createOrderV2(req, options = {}) {
         // Token counter already updated atomically in resolveDineInLikeToken transaction
         const tokenCounterPromise = Promise.resolve();
 
-        const tabUpdatePromise = (deliveryType === 'dine-in' && resolvedDineInTabId && business.data.dineInModel === 'post-paid') ? (async () => {
+        const tabUpdatePromise = (deliveryType === 'dine-in' && resolvedDineInTabId && (business.data.dineInModel || 'post-paid') === 'post-paid') ? (async () => {
             const dineInTabId = resolvedDineInTabId;
             try {
                 const tabRef = firestore.collection(business.collection).doc(business.id)
