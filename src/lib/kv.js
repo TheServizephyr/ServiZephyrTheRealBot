@@ -196,7 +196,16 @@ async function execute(method, args) {
         const fallbackTarget = targets[index + 1] || '';
 
         try {
-            const result = await runCommand(target, method, args);
+            let timeoutId;
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error(`KV ${target} query timed out after 2000ms`)), 2000);
+            });
+            const result = await Promise.race([
+                runCommand(target, method, args),
+                timeoutPromise
+            ]).finally(() => {
+                if (timeoutId) clearTimeout(timeoutId);
+            });
             if (STATE.forceTarget === target) {
                 STATE.forceTarget = '';
                 STATE.forceUntil = 0;

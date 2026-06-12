@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, Compass, Trash2, ArrowRight, ShoppingBag, Phone, Map as MapIcon, AlertTriangle, Check, Loader2, Sparkles, Sun, Moon, Truck } from 'lucide-react';
+import { Search, MapPin, Compass, Trash2, ArrowRight, ShoppingBag, Phone, Map as MapIcon, AlertTriangle, Check, Loader2, Sparkles, Sun, Moon, Truck, Sliders, X } from 'lucide-react';
 import Link from 'next/link';
 import { useTheme } from 'next-themes';
 
@@ -36,7 +36,10 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
     const [filter, setFilter] = useState(initialFilter);
     const [vegOnly, setVegOnly] = useState(false);
     const [deliveryOnly, setDeliveryOnly] = useState(false);
-    const [maxDistance, setMaxDistance] = useState('all');
+    const [maxDistance, setMaxDistance] = useState('20');
+    const [cityInput, setCityInput] = useState('');
+    const [city, setCity] = useState('');
+    const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
     // Results and pagination states
     const [results, setResults] = useState([]);
@@ -113,6 +116,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                 if (query) params.set('q', query);
                 if (lat !== null) params.set('lat', String(lat));
                 if (lng !== null) params.set('lng', String(lng));
+                if (city) params.set('city', city);
                 params.set('page', String(page));
                 if (query) {
                     params.set('limit', '100');
@@ -154,7 +158,7 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         return () => {
             isCancelled = true;
         };
-    }, [query, lat, lng, page]);
+    }, [query, lat, lng, page, city]);
 
     // Filter and sort results client-side for instant responsive interaction
     const processedResults = useMemo(() => {
@@ -183,9 +187,10 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
             });
         }
 
-        // 3. Apply Max Distance filter
-        if (maxDistance !== 'all') {
-            const limit = Number(maxDistance);
+        // 3. Apply Max Distance filter (only if location coordinates are active)
+        if (lat !== null && lng !== null) {
+            const activeRange = parseFloat(maxDistance);
+            const limit = !isNaN(activeRange) && activeRange > 0 ? Math.min(100, activeRange) : 20;
             items = items.filter(item => {
                 const distance = item.distanceKm;
                 if (distance === null || distance === undefined) return false;
@@ -409,6 +414,14 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
         window.open(url, '_blank');
     };
 
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (deliveryOnly) count++;
+        if (maxDistance !== '20' && maxDistance !== '') count++;
+        if (city) count++;
+        return count;
+    }, [deliveryOnly, maxDistance, city]);
+
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-sans pb-24 transition-colors duration-200">
             {/* Top Navigation / Search Bar Header */}
@@ -472,62 +485,92 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
 
             <main className="max-w-md mx-auto px-4 mt-4">
                 {/* Filters Sticky Bar */}
-                <div className="sticky top-[68px] z-30 bg-slate-50/90 dark:bg-slate-900/90 py-3 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 gap-2 mb-2 backdrop-blur-md">
-                    <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-full border border-slate-200/60 dark:border-slate-850 text-xs">
-                        <button
-                            onClick={() => { setFilter('nearest'); setPage(1); }}
-                            className={`px-3.5 py-1.5 rounded-full font-medium transition-all ${filter === 'nearest' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+                <div 
+                    className="sticky top-[68px] z-30 bg-slate-50/90 dark:bg-slate-900/90 py-3 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 mb-2 backdrop-blur-md overflow-x-auto scroll-smooth no-scrollbar"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                    <style jsx="true">{`
+                        .no-scrollbar::-webkit-scrollbar {
+                            display: none;
+                        }
+                        .no-scrollbar {
+                            -ms-overflow-style: none;
+                            scrollbar-width: none;
+                        }
+                    `}</style>
+
+                    {/* Sort Dropdown Selector */}
+                    <div className="relative flex-shrink-0">
+                        <select
+                            value={filter}
+                            onChange={(e) => { setFilter(e.target.value); setPage(1); }}
+                            className="appearance-none bg-white border border-slate-200 dark:bg-slate-950 dark:border-slate-800 rounded-full pl-7 pr-6 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer shadow-sm w-[110px]"
                         >
-                            Nearest
-                        </button>
-                        <button
-                            onClick={() => { setFilter('cheapest'); setPage(1); }}
-                            className={`px-3.5 py-1.5 rounded-full font-medium transition-all ${filter === 'cheapest' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-                        >
-                            Cheapest
-                        </button>
-                        <button
-                            onClick={() => { setFilter('cheapest-nearest'); setPage(1); }}
-                            className={`px-3.5 py-1.5 rounded-full font-medium transition-all ${filter === 'cheapest-nearest' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
-                            title="Sorts by distance weight + price weight"
-                        >
-                            Cheapest-Nearest
-                        </button>
+                            <option value="nearest">Nearest</option>
+                            <option value="cheapest">Cheapest</option>
+                            <option value="cheapest-nearest">Compound</option>
+                        </select>
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500 flex items-center justify-center">
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="m21 16-4 4-4-4"/>
+                                <path d="M17 20V4"/>
+                                <path d="m3 8 4-4 4 4"/>
+                                <path d="M7 4v16"/>
+                            </svg>
+                        </div>
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-slate-500 flex items-center justify-center">
+                            <svg className="h-2.5 w-2.5 fill-none stroke-current stroke-2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </div>
                     </div>
 
+                    {/* Veg Only Toggle Button */}
                     <button
                         onClick={() => { setVegOnly(prev => !prev); setPage(1); }}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${vegOnly ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-250 dark:border-emerald-500 text-emerald-600 dark:text-emerald-300' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'}`}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all flex-shrink-0 ${vegOnly ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-250 dark:border-emerald-500 text-emerald-600 dark:text-emerald-300' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-405 hover:bg-slate-50 dark:hover:bg-slate-900'}`}
                     >
                         <span className={`h-2.5 w-2.5 rounded-full ${vegOnly ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-slate-400 dark:bg-slate-600'}`} />
                         Veg Only
                     </button>
-                </div>
 
-                {/* Secondary Filters Bar */}
-                <div className="flex flex-wrap items-center gap-2 mb-4">
+                    {/* Premium Filters Trigger Button */}
                     <button
-                        onClick={() => { setDeliveryOnly(prev => !prev); setPage(1); }}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all ${deliveryOnly ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-500 text-emerald-600 dark:text-emerald-300 shadow-sm' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'}`}
+                        onClick={() => setShowFilterDrawer(true)}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all flex-shrink-0 ${
+                            activeFiltersCount > 0
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-md shadow-emerald-500/10 font-bold'
+                                : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-405 hover:bg-slate-50 dark:hover:bg-slate-900'
+                        }`}
+                        type="button"
                     >
-                        <Truck className="h-3.5 w-3.5" />
-                        Home Delivery
+                        <Sliders className="h-3.5 w-3.5" />
+                        <span>Filters</span>
+                        {activeFiltersCount > 0 && (
+                            <span className="flex items-center justify-center bg-slate-950 text-emerald-400 text-[9px] font-black h-4.5 w-4.5 rounded-full shadow-inner">
+                                {activeFiltersCount}
+                            </span>
+                        )}
                     </button>
-
-                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-full px-3.5 py-1 text-xs text-slate-600 dark:text-slate-400 font-semibold shadow-sm">
-                        <span>Range:</span>
-                        <select
-                            value={maxDistance}
-                            onChange={(e) => { setMaxDistance(e.target.value); setPage(1); }}
-                            className="bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-1 font-bold text-xs"
-                        >
-                            <option value="all" className="bg-white dark:bg-slate-900 text-xs">Unlimited</option>
-                            <option value="5" className="bg-white dark:bg-slate-900 text-xs">5 km</option>
-                            <option value="10" className="bg-white dark:bg-slate-900 text-xs">10 km</option>
-                            <option value="20" className="bg-white dark:bg-slate-900 text-xs">20 km</option>
-                        </select>
-                    </div>
                 </div>
+
+                {/* Compact Active Indicators (Mini Row) */}
+                {(city || (maxDistance !== '20' && maxDistance !== '') || deliveryOnly) && (
+                    <div 
+                        onClick={() => setShowFilterDrawer(true)}
+                        className="mb-4 flex items-center gap-1.5 text-[10px] font-black text-emerald-650 dark:text-emerald-400 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/15 dark:border-emerald-500/20 rounded-xl px-3.5 py-2 cursor-pointer hover:bg-emerald-500/10 dark:hover:bg-emerald-500/15 transition-all w-fit active:scale-95 shadow-sm"
+                    >
+                        <MapPin className="h-3.5 w-3.5" />
+                        <span>
+                            {city || 'Near Me'} 
+                            {maxDistance !== '' && ` • within ${maxDistance} km`} 
+                            {deliveryOnly && ' • Home Delivery'}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 ml-1 hover:underline">
+                            (Tap to edit)
+                        </span>
+                    </div>
+                )}
 
                 {/* Loading State */}
                 {loading && (
@@ -918,6 +961,236 @@ export default function SearchClient({ initialQuery = '', initialLat = '', initi
                     </div>
                 </div>
             )}
+
+            {/* Bottom Sheet Filter Drawer */}
+            <div 
+                className={`fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+                    showFilterDrawer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                }`}
+                onClick={() => setShowFilterDrawer(false)}
+            />
+            
+            <div 
+                className={`fixed bottom-0 left-0 right-0 max-w-md mx-auto z-[100] bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 rounded-t-[32px] shadow-2xl transform transition-transform duration-300 ease-out ${
+                    showFilterDrawer ? 'translate-y-0' : 'translate-y-full'
+                }`}
+                style={{ maxHeight: '85vh', overflowY: 'auto' }}
+            >
+                {/* Pull Bar Indicator */}
+                <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full mx-auto my-3" />
+
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 pb-4 border-b border-slate-100 dark:border-slate-900/60">
+                    <div className="flex items-center gap-2">
+                        <Sliders className="h-4 w-4 text-emerald-500" />
+                        <h3 className="text-xs font-black uppercase tracking-wider text-slate-850 dark:text-slate-200">
+                            Search & Radius Settings
+                        </h3>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowFilterDrawer(false)}
+                        className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-405 flex items-center justify-center transition-all active:scale-90"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                {/* Drawer Body (Settings) */}
+                <div className="p-6 space-y-6">
+                    {/* 1. Home Delivery Only Toggle Row */}
+                    <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-905/40 rounded-2xl border border-slate-150/70 dark:border-slate-800/30 transition-colors">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 rounded-xl">
+                                <Truck className="h-4.5 w-4.5" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-slate-800 dark:text-slate-100">
+                                    Home Delivery Only
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-405 dark:text-slate-500 leading-none mt-0.5">
+                                    Show claimed delivery-active outlets
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { setDeliveryOnly(prev => !prev); setPage(1); }}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-all duration-300 focus:outline-none ${
+                                deliveryOnly ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'
+                            }`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-slate-950 transition-all duration-300 ${
+                                    deliveryOnly ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                            />
+                        </button>
+                    </div>
+
+                    {/* 2. Custom Search Radius (Distance Filter) */}
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-300">
+                                <Compass className="h-4 w-4 text-emerald-500 animate-spin-slow" /> Custom Search Radius
+                            </span>
+                            <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                                Max 100 km limit
+                            </span>
+                        </div>
+                        
+                        <div className="flex gap-2.5 items-center">
+                            {/* Numerical Input Box */}
+                            <div className="relative flex-shrink-0 w-24">
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={maxDistance}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '') {
+                                            setMaxDistance('');
+                                            setPage(1);
+                                            return;
+                                        }
+                                        const num = parseInt(val, 10);
+                                        if (!isNaN(num)) {
+                                            const clamped = Math.max(1, Math.min(100, num));
+                                            setMaxDistance(String(clamped));
+                                            setPage(1);
+                                        }
+                                    }}
+                                    placeholder="20"
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl py-2.5 pl-3.5 pr-8 text-xs font-black text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-transparent transition-all shadow-inner"
+                                />
+                                <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 dark:text-slate-550">
+                                    km
+                                </span>
+                            </div>
+
+                            {/* Preset range chips */}
+                            <div className="flex flex-wrap gap-1.5 flex-grow justify-start">
+                                {['5', '15', '25', '50', '100'].map((dist) => {
+                                    const isActive = maxDistance === dist;
+                                    return (
+                                        <button
+                                            key={dist}
+                                            type="button"
+                                            onClick={() => {
+                                                setMaxDistance(dist);
+                                                setPage(1);
+                                            }}
+                                            className={`px-3 py-2 rounded-xl text-[10px] font-black tracking-wide transition-all active:scale-95 border ${
+                                                isActive
+                                                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-extrabold shadow-sm'
+                                                    : 'bg-slate-50 dark:bg-slate-900 border-slate-205 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            {dist} km
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        
+                        <p className="text-[10px] font-bold text-slate-450 dark:text-slate-550 leading-none">
+                            {maxDistance === '' ? (
+                                <span>Range: <strong className="text-slate-600 dark:text-slate-350">20 km (Default)</strong></span>
+                            ) : (
+                                <span>Range: <strong className="text-emerald-500 dark:text-emerald-450">{maxDistance} km</strong> (Custom limit)</span>
+                            )}
+                        </p>
+                    </div>
+
+                    {/* 3. City Search Section */}
+                    <div className="space-y-3 pt-1">
+                        <label className="flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-300">
+                            <MapPin className="h-4 w-4 text-emerald-500" /> City Location Search
+                        </label>
+                        
+                        <form 
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                setCity(cityInput);
+                                setPage(1);
+                                setResults([]);
+                                setLoading(true);
+                            }}
+                            className="flex gap-2"
+                        >
+                            <div className="relative flex-grow">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-405" />
+                                <input
+                                    type="text"
+                                    placeholder="Enter city (e.g. Noida, Delhi)..."
+                                    value={cityInput}
+                                    onChange={(e) => setCityInput(e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl py-2.5 pl-10 pr-4 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-transparent transition-all shadow-inner"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-700 dark:text-slate-200 font-extrabold text-xs px-4.5 rounded-2xl border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center shadow-sm"
+                            >
+                                Set
+                            </button>
+                        </form>
+
+                        {/* Popular Cities Preset Chips */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {['Noida', 'Gurugram', 'Delhi', 'Ghaziabad'].map((cityName) => {
+                                const isActive = city.toLowerCase() === cityName.toLowerCase();
+                                return (
+                                    <button
+                                        key={cityName}
+                                        type="button"
+                                        onClick={() => {
+                                            setCityInput(cityName);
+                                            setCity(cityName);
+                                            setPage(1);
+                                            setResults([]);
+                                            setLoading(true);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-full text-[10px] font-black transition-all active:scale-95 border ${
+                                            isActive
+                                                ? 'bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-extrabold'
+                                                : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-105 dark:hover:bg-slate-850'
+                                        }`}
+                                    >
+                                        {cityName}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Controls inside Drawer */}
+                <div className="p-6 pt-4 border-t border-slate-100 dark:border-slate-900/60 bg-slate-50/50 dark:bg-slate-950/50 flex gap-3">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setCityInput('');
+                            setCity('');
+                            setMaxDistance('20');
+                            setPage(1);
+                            setResults([]);
+                            setLoading(true);
+                        }}
+                        className="flex-1 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-95 text-slate-700 dark:text-slate-250 font-extrabold text-xs py-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 transition-all text-center"
+                    >
+                        Reset
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowFilterDrawer(false)}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-slate-950 font-black text-xs py-3.5 rounded-2xl transition-all text-center shadow-md shadow-emerald-500/15"
+                    >
+                        Apply Filters
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

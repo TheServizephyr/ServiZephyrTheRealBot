@@ -15,6 +15,8 @@ export async function GET(req) {
         const lat = latStr ? parseFloat(latStr) : null;
         const lng = lngStr ? parseFloat(lngStr) : null;
 
+        const city = searchParams.get('city') || null;
+
         const firestore = await getFirestore();
 
         const results = await searchDishes(firestore, {
@@ -23,7 +25,8 @@ export async function GET(req) {
             lng,
             filter,
             page,
-            limit
+            limit,
+            city
         });
 
         // Add Cache-Control header to allow browser caching if desired (optional)
