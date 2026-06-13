@@ -18,6 +18,7 @@ import {
   Share2
 } from 'lucide-react';
 import Link from 'next/link';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 
 export default function OnboardPage() {
   const router = useRouter();
@@ -56,6 +57,7 @@ export default function OnboardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   // Dropdown Reference for closing on click outside
   const dropdownRef = useRef(null);
@@ -110,6 +112,39 @@ export default function OnboardPage() {
     setLocationInput(address);
     setSuggestions([]);
     setShowDropdown(false);
+  };
+
+  const handleMapClick = async (event) => {
+    if (!event.detail.latLng) return;
+    const { lat, lng } = event.detail.latLng;
+    setIsGeocoding(true);
+    try {
+      const res = await fetch(`/api/public/location/geocode?lat=${lat}&lng=${lng}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedLocation((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng,
+          formattedAddress: data.formatted_address || prev.formattedAddress
+        }));
+      } else {
+        setSelectedLocation((prev) => ({
+          ...prev,
+          latitude: lat,
+          longitude: lng
+        }));
+      }
+    } catch (err) {
+      console.error('Reverse geocoding error:', err);
+      setSelectedLocation((prev) => ({
+        ...prev,
+        latitude: lat,
+        longitude: lng
+      }));
+    } finally {
+      setIsGeocoding(false);
+    }
   };
 
   const handleClearLocation = () => {
@@ -333,27 +368,76 @@ export default function OnboardPage() {
                 </label>
                 
                 {selectedLocation ? (
-                  /* Selected Location Display */
-                  <div className="flex items-center justify-between p-4 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                    <div className="flex items-start gap-2.5">
-                      <MapPin className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm font-bold text-emerald-500">Location Set Successfully</p>
-                        <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
-                          {selectedLocation.formattedAddress}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                          Coordinates: {selectedLocation.latitude.toFixed(4)}, {selectedLocation.longitude.toFixed(4)}
-                        </p>
+                  /* Selected Location Display & Interactive Map */
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                      <div className="flex items-start gap-2.5">
+                        <MapPin className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-bold text-emerald-500">Location Set Successfully</p>
+                          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
+                            {selectedLocation.formattedAddress}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                            Coordinates: {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
+                          </p>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={handleClearLocation}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 dark:text-neutral-400 dark:hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-all"
+                      >
+                        <X className="w-4.5 h-4.5" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleClearLocation}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 dark:text-neutral-400 dark:hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-all"
-                    >
-                      <X className="w-4.5 h-4.5" />
-                    </button>
+
+                    {/* Interactive Google Map Pinpoint */}
+                    <div className="h-64 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2a2a35] relative shadow-inner">
+                      {isGeocoding && (
+                        <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center backdrop-blur-[2px] transition-all">
+                          <div className="bg-[#121216]/95 border border-[#1f1f27] px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold text-white shadow-xl">
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                            Updating Pinpoint Address...
+                          </div>
+                        </div>
+                      )}
+                      
+                      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+                        <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} libraries={['marker']}>
+                          <Map
+                            mapId="onboard_restaurant_map"
+                            style={{ width: '100%', height: '100%' }}
+                            center={{ lat: selectedLocation.latitude, lng: selectedLocation.longitude }}
+                            zoom={16}
+                            gestureHandling="greedy"
+                            onClick={handleMapClick}
+                            options={{
+                              zoomControl: true,
+                              streetViewControl: false,
+                              mapTypeControl: false,
+                              fullscreenControl: false,
+                            }}
+                          >
+                            <AdvancedMarker
+                              position={{ lat: selectedLocation.latitude, lng: selectedLocation.longitude }}
+                              title={restaurantName || "My Restaurant"}
+                            >
+                              <div className="w-9 h-9 rounded-full bg-primary border-2 border-white flex items-center justify-center shadow-lg text-base animate-bounce select-none">
+                                📍
+                              </div>
+                            </AdvancedMarker>
+                          </Map>
+                        </APIProvider>
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 dark:bg-[#1A1A22] flex items-center justify-center">
+                          <p className="text-xs text-rose-500 font-bold">Google Maps API key is not configured.</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 text-center italic leading-relaxed px-2">
+                      📍 Aap map par click karke marker ko adjust kar sakte hain. Coordinate aur address automatically update ho jayenge.
+                    </p>
                   </div>
                 ) : (
                   /* Autocomplete Selector Input */
