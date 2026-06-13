@@ -33,6 +33,10 @@ export default function OnboardPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState(null); // { formattedAddress, latitude, longitude, placeId }
   const [showDropdown, setShowDropdown] = useState(false);
+  const [addressText, setAddressText] = useState('');
+  const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
+  const [mapZoom, setMapZoom] = useState(12);
+  const [gpsDetecting, setGpsDetecting] = useState(false);
 
   // Cuisines (Optional)
   const cuisineOptions = ['North Indian', 'Chinese', 'South Indian', 'Fast Food', 'Cafe'];
@@ -64,7 +68,7 @@ export default function OnboardPage() {
 
   // Debounced search for Google Places Autocomplete
   useEffect(() => {
-    if (!locationInput.trim() || selectedLocation) {
+    if (!locationInput.trim()) {
       setSuggestions([]);
       return;
     }
@@ -101,7 +105,7 @@ export default function OnboardPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelectLocation = (suggestion) => {
+    const handleSelectLocation = (suggestion) => {
     const address = `${suggestion.placeName}, ${suggestion.placeAddress}`;
     setSelectedLocation({
       formattedAddress: address,
@@ -109,7 +113,10 @@ export default function OnboardPage() {
       longitude: suggestion.longitude,
       placeId: suggestion.eLoc
     });
-    setLocationInput(address);
+    setMapCenter({ lat: suggestion.latitude, lng: suggestion.longitude });
+    setMapZoom(16);
+    setAddressText(address);
+    setLocationInput('');
     setSuggestions([]);
     setShowDropdown(false);
   };
@@ -117,39 +124,101 @@ export default function OnboardPage() {
   const handleMapClick = async (event) => {
     if (!event.detail.latLng) return;
     const { lat, lng } = event.detail.latLng;
+    
+    setSelectedLocation((prev) => ({
+      formattedAddress: prev?.formattedAddress || 'Pinpointed Location',
+      latitude: lat,
+      longitude: lng,
+      placeId: prev?.placeId || 'manual_click'
+    }));
+
     setIsGeocoding(true);
     try {
       const res = await fetch(`/api/public/location/geocode?lat=${lat}&lng=${lng}`);
       if (res.ok) {
         const data = await res.json();
-        setSelectedLocation((prev) => ({
-          ...prev,
+        const addr = data.formatted_address || 'Pinpointed Location';
+        setAddressText(addr);
+        setSelectedLocation({
+          formattedAddress: addr,
           latitude: lat,
           longitude: lng,
-          formattedAddress: data.formatted_address || prev.formattedAddress
-        }));
+          placeId: 'manual_click'
+        });
       } else {
-        setSelectedLocation((prev) => ({
-          ...prev,
-          latitude: lat,
-          longitude: lng
-        }));
+        setAddressText(`Pinpointed at (${lat.toFixed(6)}, ${lng.toFixed(6)})`);
       }
     } catch (err) {
       console.error('Reverse geocoding error:', err);
-      setSelectedLocation((prev) => ({
-        ...prev,
-        latitude: lat,
-        longitude: lng
-      }));
+      setAddressText(`Pinpointed at (${lat.toFixed(6)}, ${lng.toFixed(6)})`);
     } finally {
       setIsGeocoding(false);
     }
   };
 
+  const detectLocation = () => {
+    if (!navigator.geolocation) {
+      setErrorMessage('Geolocation is not supported by your browser.');
+      return;
+    }
+
+    setGpsDetecting(true);
+    setErrorMessage('');
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        setMapCenter({ lat, lng });
+        setMapZoom(16);
+        
+        setSelectedLocation({
+          formattedAddress: 'Pinpointed Location',
+          latitude: lat,
+          longitude: lng,
+          placeId: 'gps_detection'
+        });
+
+        setIsGeocoding(true);
+        try {
+          const res = await fetch(`/api/public/location/geocode?lat=${lat}&lng=${lng}`);
+          if (res.ok) {
+            const data = await res.json();
+            const addr = data.formatted_address || 'Pinpointed Location';
+            setAddressText(addr);
+            setSelectedLocation({
+              formattedAddress: addr,
+              latitude: lat,
+              longitude: lng,
+              placeId: 'gps_detection'
+            });
+          } else {
+            setAddressText(`Pinpointed at (${lat.toFixed(6)}, ${lng.toFixed(6)})`);
+          }
+        } catch (err) {
+          console.error('Reverse geocoding error:', err);
+          setAddressText(`Pinpointed at (${lat.toFixed(6)}, ${lng.toFixed(6)})`);
+        } finally {
+          setIsGeocoding(false);
+          setGpsDetecting(false);
+        }
+      },
+      (error) => {
+        console.warn('GPS detection error:', error);
+        setErrorMessage('Failed to detect your location. Please select it on the map or search manually.');
+        setGpsDetecting(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  };
+
   const handleClearLocation = () => {
     setSelectedLocation(null);
+    setAddressText('');
     setLocationInput('');
+    setMapZoom(12);
+    setMapCenter({ lat: 28.6139, lng: 77.2090 });
   };
 
   const handleCuisineToggle = (cuisine) => {
@@ -184,8 +253,12 @@ export default function OnboardPage() {
       setErrorMessage('A valid 10-digit WhatsApp number is required.');
       return;
     }
-    if (!selectedLocation) {
-      setErrorMessage('Please search and select a Google Maps location.');
+    if (!selectedLocation || !selectedLocation.latitude || !selectedLocation.longitude) {
+      setErrorMessage('Please pinpoint your restaurant location on the Google Map.');
+      return;
+    }
+    if (!addressText.trim()) {
+      setErrorMessage('Please verify or enter your restaurant address.');
       return;
     }
     if (stagedFiles.length === 0) {
@@ -218,7 +291,12 @@ export default function OnboardPage() {
       const requestPayload = {
         restaurantName,
         whatsappNumber,
-        location: selectedLocation,
+        location: {
+          formattedAddress: addressText.trim(),
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+          placeId: selectedLocation.placeId || 'manual_pinpoint'
+        },
         cuisines: selectedCuisines,
         referralSource,
         menuUrls: urls
@@ -362,90 +440,18 @@ export default function OnboardPage() {
               </div>
 
               {/* 3. Google Maps Location */}
-              <div ref={dropdownRef} className="relative">
-                <label className="block text-sm font-bold mb-2 text-slate-600 dark:text-neutral-300">
+              <div ref={dropdownRef} className="space-y-4">
+                <label className="block text-sm font-bold text-slate-600 dark:text-neutral-300">
                   Google Maps Location <span className="text-rose-500">*</span>
                 </label>
                 
-                {selectedLocation ? (
-                  /* Selected Location Display & Interactive Map */
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                      <div className="flex items-start gap-2.5">
-                        <MapPin className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="text-sm font-bold text-emerald-500">Location Set Successfully</p>
-                          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5 leading-relaxed">
-                            {selectedLocation.formattedAddress}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1 font-mono">
-                            Coordinates: {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleClearLocation}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 dark:text-neutral-400 dark:hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-lg transition-all"
-                      >
-                        <X className="w-4.5 h-4.5" />
-                      </button>
-                    </div>
-
-                    {/* Interactive Google Map Pinpoint */}
-                    <div className="h-64 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2a2a35] relative shadow-inner">
-                      {isGeocoding && (
-                        <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center backdrop-blur-[2px] transition-all">
-                          <div className="bg-[#121216]/95 border border-[#1f1f27] px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold text-white shadow-xl">
-                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                            Updating Pinpoint Address...
-                          </div>
-                        </div>
-                      )}
-                      
-                      {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
-                        <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} libraries={['marker']}>
-                          <Map
-                            mapId="onboard_restaurant_map"
-                            style={{ width: '100%', height: '100%' }}
-                            center={{ lat: selectedLocation.latitude, lng: selectedLocation.longitude }}
-                            zoom={16}
-                            gestureHandling="greedy"
-                            onClick={handleMapClick}
-                            options={{
-                              zoomControl: true,
-                              streetViewControl: false,
-                              mapTypeControl: false,
-                              fullscreenControl: false,
-                            }}
-                          >
-                            <AdvancedMarker
-                              position={{ lat: selectedLocation.latitude, lng: selectedLocation.longitude }}
-                              title={restaurantName || "My Restaurant"}
-                            >
-                              <div className="w-9 h-9 rounded-full bg-primary border-2 border-white flex items-center justify-center shadow-lg text-base animate-bounce select-none">
-                                📍
-                              </div>
-                            </AdvancedMarker>
-                          </Map>
-                        </APIProvider>
-                      ) : (
-                        <div className="w-full h-full bg-slate-100 dark:bg-[#1A1A22] flex items-center justify-center">
-                          <p className="text-xs text-rose-500 font-bold">Google Maps API key is not configured.</p>
-                        </div>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-400 text-center italic leading-relaxed px-2">
-                      📍 Aap map par click karke marker ko adjust kar sakte hain. Coordinate aur address automatically update ho jayenge.
-                    </p>
-                  </div>
-                ) : (
-                  /* Autocomplete Selector Input */
-                  <div className="relative">
+                {/* Search Bar and GPS Detect Button Row */}
+                <div className="flex gap-2">
+                  <div className="relative flex-grow">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="📍 Search location (e.g. Indirapuram, Ghaziabad)..."
+                      placeholder="Search city, area or street..."
                       value={locationInput}
                       onChange={(e) => {
                         setLocationInput(e.target.value);
@@ -478,10 +484,89 @@ export default function OnboardPage() {
                       </div>
                     )}
                   </div>
-                )}
-                <p className="mt-1.5 text-xs text-slate-400">
-                  Address is not editable manually. Google Maps Places search results must be clicked.
-                </p>
+
+                  <button
+                    type="button"
+                    onClick={detectLocation}
+                    disabled={gpsDetecting}
+                    className="px-4 py-3 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shrink-0 shadow-lg shadow-primary/15 disabled:opacity-50 active:scale-95"
+                  >
+                    {gpsDetecting ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <MapPin className="w-5 h-5" />
+                        <span className="hidden sm:inline">GPS Detect</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Always-on Interactive Google Map */}
+                <div className="h-72 w-full rounded-2xl overflow-hidden border border-slate-200 dark:border-[#2a2a35] relative shadow-inner">
+                  {isGeocoding && (
+                    <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center backdrop-blur-[2px] transition-all">
+                      <div className="bg-[#121216]/95 border border-[#1f1f27] px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs font-bold text-white shadow-xl">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        Pinpointing Address...
+                      </div>
+                    </div>
+                  )}
+                  
+                  {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
+                    <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} libraries={['marker']}>
+                      <Map
+                        mapId="onboard_restaurant_map"
+                        style={{ width: '100%', height: '100%' }}
+                        center={mapCenter}
+                        zoom={mapZoom}
+                        gestureHandling="greedy"
+                        onClick={handleMapClick}
+                        options={{
+                          zoomControl: true,
+                          streetViewControl: false,
+                          mapTypeControl: false,
+                          fullscreenControl: false,
+                        }}
+                      >
+                        {selectedLocation && (
+                          <AdvancedMarker
+                            position={{ lat: selectedLocation.latitude, lng: selectedLocation.longitude }}
+                            title={restaurantName || "My Restaurant"}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-primary border-2 border-white flex items-center justify-center shadow-lg text-lg animate-bounce select-none">
+                              📍
+                            </div>
+                          </AdvancedMarker>
+                        )}
+                      </Map>
+                    </APIProvider>
+                  ) : (
+                    <div className="w-full h-full bg-slate-100 dark:bg-[#1A1A22] flex items-center justify-center">
+                      <p className="text-xs text-rose-500 font-bold">Google Maps API key is not configured.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Editable Address Text Input Field */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-neutral-400 uppercase tracking-wider mb-2">
+                    Verify & Edit Restaurant Address (Type details like shop number, floor, etc. manually)
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="📍 Map par click karein ya location search karein to address automatically yahan fill ho jayega. Fir aap edit kar sakte hain."
+                    value={addressText}
+                    onChange={(e) => setAddressText(e.target.value)}
+                    className="w-full p-3 bg-slate-50 dark:bg-[#1A1A22] border border-slate-200 dark:border-[#2a2a35] focus:border-primary focus:ring-1 focus:ring-primary rounded-xl text-sm focus:outline-none transition-all text-foreground resize-none"
+                  />
+                  {selectedLocation && (
+                    <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                      <span>Lat: {selectedLocation.latitude.toFixed(6)}</span>
+                      <span>Lng: {selectedLocation.longitude.toFixed(6)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 4. Cuisine Type (Optional Checkboxes) */}
