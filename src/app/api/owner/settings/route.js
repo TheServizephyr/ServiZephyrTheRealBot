@@ -16,6 +16,7 @@ import { invalidateSharedCache } from '@/lib/server/sharedCache';
 import { bumpBusinessRuntimeVersions } from '@/lib/server/businessRuntime';
 import { filterCouponsForAudience, resolveCouponAudienceContext } from '@/lib/server/couponEligibility';
 import { invalidatePublicRestaurantOverview } from '@/services/business/publicRestaurantOverview.service';
+import { getBusinessCoordinates } from '@/lib/server/proximityVerification';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -24,6 +25,9 @@ const RESERVED_OPEN_ITEMS_CATEGORY_ID = 'open-items';
 const WAITLIST_SETTINGS_PATCH_FIELDS = new Set([
     'isWaitlistEnabled',
     'isBookingEnabled',
+    'bookingLocationVerificationEnabled',
+    'waitlistLocationVerificationEnabled',
+    'bookingWaitlistLocation',
     'waitlistMenuExploreEnabled',
     'waitlistSeatingMode',
     'waitlistManualCapacity',
@@ -210,6 +214,9 @@ function shouldBumpPublicMenuVersion({
         'dineInPayAtCounterEnabled',
         'isWaitlistEnabled',
         'isBookingEnabled',
+        'bookingLocationVerificationEnabled',
+        'waitlistLocationVerificationEnabled',
+        'bookingWaitlistLocation',
         'waitlistSeatingMode',
         'waitlistManualCapacity',
         'waitlistNoShowTimeoutMinutes',
@@ -675,6 +682,45 @@ export async function PATCH(req) {
         if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
         if (updates.isWaitlistEnabled !== undefined) businessUpdateData.isWaitlistEnabled = updates.isWaitlistEnabled;
         if (updates.isBookingEnabled !== undefined) businessUpdateData.isBookingEnabled = updates.isBookingEnabled === true;
+        const requestedIntakeLocation = updates.bookingWaitlistLocation && typeof updates.bookingWaitlistLocation === 'object'
+            ? {
+                latitude: Number(updates.bookingWaitlistLocation.latitude),
+                longitude: Number(updates.bookingWaitlistLocation.longitude),
+                accuracy: Number(updates.bookingWaitlistLocation.accuracy),
+            }
+            : null;
+        const hasValidRequestedIntakeLocation = requestedIntakeLocation
+            && Number.isFinite(requestedIntakeLocation.latitude)
+            && Number.isFinite(requestedIntakeLocation.longitude)
+            && Number.isFinite(requestedIntakeLocation.accuracy)
+            && Math.abs(requestedIntakeLocation.latitude) <= 90
+            && Math.abs(requestedIntakeLocation.longitude) <= 180
+            && requestedIntakeLocation.accuracy >= 0
+            && requestedIntakeLocation.accuracy <= 50;
+        if (updates.bookingWaitlistLocation !== undefined && !hasValidRequestedIntakeLocation) {
+            return NextResponse.json({ message: 'A precise outlet location (50 meter accuracy or better) is required.' }, { status: 400 });
+        }
+        if (hasValidRequestedIntakeLocation) {
+            businessUpdateData.coordinates = {
+                lat: requestedIntakeLocation.latitude,
+                lng: requestedIntakeLocation.longitude,
+            };
+            businessUpdateData.bookingWaitlistLocationAccuracy = requestedIntakeLocation.accuracy;
+            businessUpdateData.bookingWaitlistLocationUpdatedAt = FieldValue.serverTimestamp();
+        }
+        const hasAvailableIntakeLocation = hasValidRequestedIntakeLocation || Boolean(getBusinessCoordinates(businessData));
+        if (updates.bookingLocationVerificationEnabled !== undefined) {
+            if (updates.bookingLocationVerificationEnabled === true && !hasAvailableIntakeLocation) {
+                return NextResponse.json({ message: 'Set the restaurant map location before enabling booking location verification.' }, { status: 400 });
+            }
+            businessUpdateData.bookingLocationVerificationEnabled = updates.bookingLocationVerificationEnabled === true;
+        }
+        if (updates.waitlistLocationVerificationEnabled !== undefined) {
+            if (updates.waitlistLocationVerificationEnabled === true && !hasAvailableIntakeLocation) {
+                return NextResponse.json({ message: 'Set the restaurant map location before enabling waitlist location verification.' }, { status: 400 });
+            }
+            businessUpdateData.waitlistLocationVerificationEnabled = updates.waitlistLocationVerificationEnabled === true;
+        }
         if (updates.waitlistMenuExploreEnabled !== undefined) {
             const nextWaitlistMenuExploreEnabled = Boolean(updates.waitlistMenuExploreEnabled);
             if (nextWaitlistMenuExploreEnabled) {
@@ -869,6 +915,9 @@ export async function PATCH(req) {
             upiPayeeName: finalBusinessData?.upiPayeeName || finalBusinessData?.name || '',
             isWaitlistEnabled: finalBusinessData?.isWaitlistEnabled || false,
             isBookingEnabled: finalBusinessData?.isBookingEnabled !== false,
+            bookingLocationVerificationEnabled: finalBusinessData?.bookingLocationVerificationEnabled === true,
+            waitlistLocationVerificationEnabled: finalBusinessData?.waitlistLocationVerificationEnabled === true,
+            coordinates: finalBusinessData?.coordinates || null,
             waitlistMenuExploreEnabled: finalBusinessData?.waitlistMenuExploreEnabled === true,
             waitlistSeatingMode: normalizeWaitlistSeatingMode(finalBusinessData?.waitlistSeatingMode, 'table_assign'),
             waitlistManualCapacity: Math.max(1, Number(finalBusinessData?.waitlistManualCapacity || 40)),

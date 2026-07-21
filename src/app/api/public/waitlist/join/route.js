@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
+import { verifyPublicIntakeProximity } from '@/lib/server/proximityVerification';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -142,6 +143,10 @@ export async function POST(req) {
         }
         if (!restaurantData.isWaitlistEnabled) {
             return NextResponse.json({ message: 'Waitlist is currently disabled for this restaurant.' }, { status: 403 });
+        }
+        if (restaurantData.waitlistLocationVerificationEnabled === true) {
+            const proximity = verifyPublicIntakeProximity(restaurantData, body);
+            if (!proximity.ok) return NextResponse.json({ message: proximity.message }, { status: 403 });
         }
 
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);

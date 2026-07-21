@@ -1,5 +1,6 @@
 
 import { NextResponse } from 'next/server';
+import { verifyPublicIntakeProximity } from '@/lib/server/proximityVerification';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 
@@ -185,6 +186,10 @@ export async function POST(req) {
         }
         if (businessData?.isBookingEnabled === false) {
             return NextResponse.json({ message: 'Bookings are currently disabled for this restaurant.' }, { status: 403 });
+        }
+        if (businessData?.bookingLocationVerificationEnabled === true) {
+            const proximity = verifyPublicIntakeProximity(businessData, body);
+            if (!proximity.ok) return NextResponse.json({ message: proximity.message }, { status: 403 });
         }
 
         // Prevent duplicate active booking request for same phone and slot.

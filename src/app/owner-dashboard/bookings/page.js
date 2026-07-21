@@ -2758,6 +2758,8 @@ function BookingsPageContent() {
     const [activeTab, setActiveTab] = useState(() => getInitialBookingsTab(employeeOfOwnerId));
     const [isWaitlistEnabled, setIsWaitlistEnabled] = useState(false);
     const [isBookingEnabled, setIsBookingEnabled] = useState(true);
+    const [bookingLocationVerificationEnabled, setBookingLocationVerificationEnabled] = useState(false);
+    const [waitlistLocationVerificationEnabled, setWaitlistLocationVerificationEnabled] = useState(false);
     const [waitlistMenuExploreEnabled, setWaitlistMenuExploreEnabled] = useState(false);
     const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
     const [isBookingLoading, setIsBookingLoading] = useState(false);
@@ -2956,6 +2958,8 @@ function BookingsPageContent() {
                         setBusinessInfo(bData);
                         setIsWaitlistEnabled(bData.isWaitlistEnabled || false);
                         setIsBookingEnabled(bData.isBookingEnabled !== false);
+                        setBookingLocationVerificationEnabled(bData.bookingLocationVerificationEnabled === true);
+                        setWaitlistLocationVerificationEnabled(bData.waitlistLocationVerificationEnabled === true);
                         setWaitlistMenuExploreEnabled(bData.waitlistMenuExploreEnabled === true);
                         setWaitlistSeatingMode(
                             bData.waitlistSeatingMode === 'manual_seat' ? 'manual_seat' : 'table_assign'
@@ -3137,6 +3141,68 @@ function BookingsPageContent() {
             toast({ title: "Failed", description: err.message, variant: "destructive" });
         } finally {
             setIsBookingLoading(false);
+        }
+    };
+
+    const handleToggleLocationVerification = async (type, enabled) => {
+        const isBooking = type === 'booking';
+        const field = isBooking ? 'bookingLocationVerificationEnabled' : 'waitlistLocationVerificationEnabled';
+        setWaitlistConfigLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            let bookingWaitlistLocation;
+            const savedLatitude = Number(businessInfo?.coordinates?.lat ?? businessInfo?.address?.latitude ?? businessInfo?.businessAddress?.latitude);
+            const savedLongitude = Number(businessInfo?.coordinates?.lng ?? businessInfo?.address?.longitude ?? businessInfo?.businessAddress?.longitude);
+            const hasSavedLocation = Number.isFinite(savedLatitude) && Number.isFinite(savedLongitude);
+            if (enabled && !hasSavedLocation) {
+                if (!navigator.geolocation) throw new Error('Location is not supported on this device.');
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(
+                        resolve,
+                        (locationError) => reject(new Error(locationError.code === 1
+                            ? 'Allow precise location access, then turn the toggle on again.'
+                            : 'Could not capture precise outlet location. Move outdoors and try again.')),
+                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                    );
+                });
+                if (position.coords.accuracy > 50) {
+                    throw new Error('Outlet location accuracy is above 50 meters. Move near an open area and try once more.');
+                }
+                bookingWaitlistLocation = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                };
+            }
+            const res = await fetch(getSettingsApiUrl(), {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: enabled, ...(bookingWaitlistLocation ? { bookingWaitlistLocation } : {}) }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || 'Failed to update location verification.');
+            const nextEnabled = data[field] === true;
+            if (isBooking) setBookingLocationVerificationEnabled(nextEnabled);
+            else setWaitlistLocationVerificationEnabled(nextEnabled);
+            setBusinessInfo((prev) => prev ? { ...prev, [field]: nextEnabled } : prev);
+            if (bookingWaitlistLocation) {
+                setBusinessInfo((prev) => prev ? {
+                    ...prev,
+                    coordinates: { lat: bookingWaitlistLocation.latitude, lng: bookingWaitlistLocation.longitude },
+                } : prev);
+            }
+            toast({
+                title: `${isBooking ? 'Booking' : 'Waitlist'} Location Check ${nextEnabled ? 'Enabled' : 'Disabled'}`,
+                description: nextEnabled
+                    ? `${bookingWaitlistLocation ? 'Outlet location saved. ' : ''}Guests must be within 50 meters with precise live location.`
+                    : undefined,
+            });
+        } catch (err) {
+            toast({ title: 'Failed', description: err.message, variant: 'destructive' });
+        } finally {
+            setWaitlistConfigLoading(false);
         }
     };
 
@@ -3483,6 +3549,31 @@ function BookingsPageContent() {
                                 <p className="text-xs text-muted-foreground mt-1">Enable or disable public waitlist joins.</p>
                             </div>
                             <Switch checked={isWaitlistEnabled} disabled={isWaitlistLoading} onCheckedChange={handleToggleWaitlist} />
+                        </div>
+
+                        <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                            <div className="flex items-center justify-between gap-4 p-3">
+                                <div className="min-w-0">
+                                    <Label className="font-semibold flex items-center gap-2"><MapPin size={15} /> Booking Location Check</Label>
+                                    <p className="text-xs text-muted-foreground mt-1">Require precise live location within 50 meters for public bookings.</p>
+                                </div>
+                                <Switch
+                                    checked={bookingLocationVerificationEnabled}
+                                    disabled={waitlistConfigLoading}
+                                    onCheckedChange={(enabled) => handleToggleLocationVerification('booking', enabled)}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between gap-4 p-3">
+                                <div className="min-w-0">
+                                    <Label className="font-semibold flex items-center gap-2"><MapPin size={15} /> Live Waitlist Location Check</Label>
+                                    <p className="text-xs text-muted-foreground mt-1">Require precise live location within 50 meters before joining.</p>
+                                </div>
+                                <Switch
+                                    checked={waitlistLocationVerificationEnabled}
+                                    disabled={waitlistConfigLoading}
+                                    onCheckedChange={(enabled) => handleToggleLocationVerification('waitlist', enabled)}
+                                />
+                            </div>
                         </div>
 
                         <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3">

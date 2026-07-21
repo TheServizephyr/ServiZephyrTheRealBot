@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen, ChevronDown, Search } from 'lucide-react';
+import { Users, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen, ChevronDown, Search, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -110,6 +110,29 @@ export default function PublicWaitlistPage({ params }) {
     const [timerNowMs, setTimerNowMs] = useState(Date.now());
     const [restaurantData, setRestaurantData] = useState(null);
     const [menuExploreEnabled, setMenuExploreEnabled] = useState(false);
+    const [isLocating, setIsLocating] = useState(false);
+
+    const getPreciseLocation = useCallback(() => new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+            reject(new Error('Location is not supported on this device.'));
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => resolve({
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                capturedAt: new Date(position.timestamp).toISOString(),
+            }),
+            (locationError) => {
+                const message = locationError.code === 1
+                    ? 'Please allow precise location access to continue.'
+                    : 'Could not get an accurate live location. Move outdoors and try again.';
+                reject(new Error(message));
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }), []);
 
     useEffect(() => {
         const fetchStatus = async () => {
@@ -315,6 +338,9 @@ export default function PublicWaitlistPage({ params }) {
             }
 
             const isBookingMode = mode === 'booking';
+            const locationRequired = isBookingMode
+                ? restaurantData?.services?.bookingLocationVerification === true
+                : restaurantData?.services?.waitlistLocationVerification === true;
             if (isBookingMode && restaurantData?.services?.booking === false) {
                 throw new Error('Bookings are currently disabled for this restaurant.');
             }
@@ -333,6 +359,15 @@ export default function PublicWaitlistPage({ params }) {
                 phoneE164: normalizedPhoneE164,
                 paxCount: normalizedPaxCount
             };
+
+            let preciseLocation = null;
+            if (locationRequired) {
+                setIsLocating(true);
+                preciseLocation = await getPreciseLocation();
+                if (preciseLocation.accuracy > 50) {
+                    throw new Error('Location accuracy must be within 50 meters. Enable precise location or move outdoors and try again.');
+                }
+            }
 
             if (isBookingMode) {
                 if (!bookingDate || !bookingTime) {
@@ -360,6 +395,7 @@ export default function PublicWaitlistPage({ params }) {
                     occasion: String(bookingOccasion || '').trim(),
                 };
             }
+            if (preciseLocation) payload.location = preciseLocation;
 
             const res = await fetch(endpoint, {
                 method: 'POST',
@@ -386,6 +422,7 @@ export default function PublicWaitlistPage({ params }) {
         } catch (err) {
             setError(err.message);
         } finally {
+            setIsLocating(false);
             setLoading(false);
         }
     };
@@ -429,6 +466,9 @@ export default function PublicWaitlistPage({ params }) {
         : '';
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const expectedWaitMinutes = normalizeExpectedWaitMinutes(restaurantData?.waitlistExpectedWaitMinutes, 0);
+    const isLocationRequired = mode === 'booking'
+        ? restaurantData?.services?.bookingLocationVerification === true
+        : restaurantData?.services?.waitlistLocationVerification === true;
     const waitlistExpectedWaitMessage = expectedWaitMinutes > 0
         ? `Your expected waiting time is ${expectedWaitMinutes} minutes, but it may vary. We will notify you on WhatsApp or call before ${noShowTimeoutMinutes} minutes.`
         : 'We will notify you on WhatsApp and call when your table is ready.';
@@ -898,11 +938,16 @@ export default function PublicWaitlistPage({ params }) {
                             disabled={loading || statusUnavailable || !isOpen || !isCurrentModeEnabled}
                         >
                             {loading ? (
-                                <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+                                <><Loader2 className="mr-2 h-6 w-6 animate-spin" />{isLocating ? 'Checking Location' : 'Please Wait'}</>
                             ) : (
                                 <>{mode === 'booking' ? 'Request Booking' : 'Join Queue'} <ArrowRight className="ml-2 h-6 w-6" /></>
                             )}
                         </Button>
+                        {isLocationRequired && (
+                            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                                <MapPin size={13} /> Precise live location within 50 meters is required.
+                            </p>
+                        )}
                     </CardFooter>
                 </Card>
             </motion.div>
