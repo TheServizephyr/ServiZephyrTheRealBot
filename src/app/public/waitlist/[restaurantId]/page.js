@@ -5,12 +5,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen, ChevronDown, Search, MapPin } from 'lucide-react';
+import { Users, User, CheckCircle2, Loader2, AlertCircle, ArrowRight, CalendarClock, ArrowLeft, PartyPopper, BookOpen, ChevronDown, Search, MapPinOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
@@ -111,10 +112,13 @@ export default function PublicWaitlistPage({ params }) {
     const [restaurantData, setRestaurantData] = useState(null);
     const [menuExploreEnabled, setMenuExploreEnabled] = useState(false);
     const [isLocating, setIsLocating] = useState(false);
+    const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
 
     const getPreciseLocation = useCallback(() => new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
-            reject(new Error('Location is not supported on this device.'));
+            const error = new Error('Location access is unavailable in this browser.');
+            error.showLocationHelp = true;
+            reject(error);
             return;
         }
         navigator.geolocation.getCurrentPosition(
@@ -125,10 +129,11 @@ export default function PublicWaitlistPage({ params }) {
                 capturedAt: new Date(position.timestamp).toISOString(),
             }),
             (locationError) => {
-                const message = locationError.code === 1
-                    ? 'Please allow precise location access to continue.'
-                    : 'Could not get an accurate live location. Move outdoors and try again.';
-                reject(new Error(message));
+                const error = new Error(locationError.code === 1
+                    ? 'Location permission is turned off.'
+                    : 'Could not get an accurate live location. Move outdoors and try again.');
+                error.showLocationHelp = locationError.code === 1 || locationError.code === 2;
+                reject(error);
             },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
@@ -420,7 +425,8 @@ export default function PublicWaitlistPage({ params }) {
             }
             setSuccess(true);
         } catch (err) {
-            setError(err.message);
+            if (err?.showLocationHelp) setIsLocationHelpOpen(true);
+            else setError(err.message);
         } finally {
             setIsLocating(false);
             setLoading(false);
@@ -466,9 +472,6 @@ export default function PublicWaitlistPage({ params }) {
         : '';
     const noShowTimeoutMinutes = Math.max(1, Number(restaurantData?.waitlistNoShowTimeoutMinutes || 10));
     const expectedWaitMinutes = normalizeExpectedWaitMinutes(restaurantData?.waitlistExpectedWaitMinutes, 0);
-    const isLocationRequired = mode === 'booking'
-        ? restaurantData?.services?.bookingLocationVerification === true
-        : restaurantData?.services?.waitlistLocationVerification === true;
     const waitlistExpectedWaitMessage = expectedWaitMinutes > 0
         ? `Your expected waiting time is ${expectedWaitMinutes} minutes, but it may vary. We will notify you on WhatsApp or call before ${noShowTimeoutMinutes} minutes.`
         : 'We will notify you on WhatsApp and call when your table is ready.';
@@ -943,14 +946,28 @@ export default function PublicWaitlistPage({ params }) {
                                 <>{mode === 'booking' ? 'Request Booking' : 'Join Queue'} <ArrowRight className="ml-2 h-6 w-6" /></>
                             )}
                         </Button>
-                        {isLocationRequired && (
-                            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                                <MapPin size={13} /> Precise live location within 50 meters is required.
-                            </p>
-                        )}
                     </CardFooter>
                 </Card>
             </motion.div>
+
+            <Dialog open={isLocationHelpOpen} onOpenChange={setIsLocationHelpOpen}>
+                <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
+                    <DialogHeader className="text-left">
+                        <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                            <MapPinOff size={22} />
+                        </div>
+                        <DialogTitle>Location Access Off Hai</DialogTitle>
+                        <DialogDescription className="space-y-3 pt-2 text-left">
+                            <span className="block">Booking ya waitlist continue karne ke liye precise location allow karein:</span>
+                            <span className="block"><strong>Android / Chrome:</strong> Address bar ke lock/settings icon par tap karein → Permissions → Location → Allow, phir page reload karein.</span>
+                            <span className="block"><strong>iPhone / Safari:</strong> Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using App aur Precise Location ON karein.</span>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button type="button" onClick={() => setIsLocationHelpOpen(false)}>Samajh Gaya</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <footer className="mt-auto py-8 text-center text-xs text-muted-foreground font-black uppercase tracking-[0.2em]">
                 Powered by <span className="text-primary">ServiZephyr</span>
