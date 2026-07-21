@@ -3522,7 +3522,7 @@ function BookingsPageContent() {
             </Tabs>
 
             <Dialog open={isWaitlistSettingsOpen} onOpenChange={setIsWaitlistSettingsOpen}>
-                <DialogContent className="sm:max-w-xl">
+                <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-y-auto overscroll-contain p-4 sm:max-w-xl sm:p-6">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Settings size={18} /> Booking & Waitlist Settings
