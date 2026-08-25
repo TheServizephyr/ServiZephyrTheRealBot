@@ -216,6 +216,7 @@ export async function GET(req, { params }) {
     const orderingPayload = {
       ...(menuSnapshot?.ordering || fallbackOrderingPayload),
       isBookingEnabled: businessData?.isBookingEnabled !== false,
+      bookingLocationVerificationEnabled: businessData?.bookingLocationVerificationEnabled === true,
     };
     let couponCatalog = Array.isArray(menuSnapshot?.couponCatalog) ? menuSnapshot.couponCatalog : [];
     let hasAssignedCoupons = couponCatalog.some((coupon) => String(coupon?.customerId || '').trim());

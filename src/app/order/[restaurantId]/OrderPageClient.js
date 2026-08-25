@@ -59,12 +59,14 @@ import {
 } from '@/lib/client/runtimeFetchers';
 import { useCustomerFlowSafeMode } from '@/lib/browser/customerFlowSafeMode';
 import { calculateClientDeliveryValidation } from '@/lib/delivery/clientValidation';
+import { getLocationErrorDetails, getPreciseBrowserLocation, getServerLocationErrorDetails } from '@/lib/browser/preciseLocation';
 
 const getDefaultRestaurantData = () => ({
     name: '', status: null, logoUrl: '', bannerUrls: ['/order_banner.jpg'],
     deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
     pickupEnabled: false, dineInEnabled: true, businessAddress: null,
     isBookingEnabled: true,
+    bookingLocationVerificationEnabled: false,
     customCategories: [],
     autoScheduleEnabled: false, openingTime: '09:00', closingTime: '22:00', timeZone: 'Asia/Kolkata',
     dineInModel: 'post-paid',
@@ -123,6 +125,7 @@ const mapRestaurantDataFromBootstrap = (bootstrapData) => {
         pickupEnabled: ordering.pickupEnabled === true,
         dineInEnabled: ordering.dineInEnabled !== false,
         isBookingEnabled: ordering.isBookingEnabled !== false,
+        bookingLocationVerificationEnabled: ordering.bookingLocationVerificationEnabled === true,
         businessAddress: business.address || null,
         businessType: business.type || 'restaurant',
         customCategories: menu.categories || [],
@@ -999,7 +1002,12 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             await onBookTable(bookingDetails);
             setActiveModal('success');
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Booking Failed", message: error.message });
+            setInfoDialog({
+                isOpen: true,
+                title: error.userTitle || "Booking Failed",
+                message: error.message,
+                type: error.userTitle ? 'warning' : 'error',
+            });
         } finally {
             setIsSaving(false);
         }
@@ -3852,8 +3860,27 @@ const OrderPageInternal = ({ initialBootstrap = null, initialSearchParams = {} }
             return;
         }
         const payload = { restaurantId, name: bookingDetails.name, phone: bookingDetails.phone, guests: bookingDetails.guests, bookingDateTime: localDate.toISOString() };
+        if (restaurantData.bookingLocationVerificationEnabled === true) {
+            try {
+                payload.location = await getPreciseBrowserLocation();
+            } catch (locationError) {
+                const details = getLocationErrorDetails(locationError);
+                const error = new Error(details.message);
+                error.userTitle = details.title;
+                throw error;
+            }
+        }
         const res = await fetch('/api/owner/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!res.ok) throw new Error((await res.json()).message || "Failed to create booking.");
+        if (!res.ok) {
+            const data = await res.json();
+            const locationDetails = getServerLocationErrorDetails(data?.code, data);
+            if (locationDetails) {
+                const locationError = new Error(locationDetails.message);
+                locationError.userTitle = locationDetails.title;
+                throw locationError;
+            }
+            throw new Error(data.message || "Failed to create booking.");
+        }
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);

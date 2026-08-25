@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
+import { getLocationErrorDetails, getPreciseBrowserLocation, getServerLocationErrorDetails } from '@/lib/browser/preciseLocation';
 
 const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
 const getWaitlistMenuCredentialKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
@@ -112,32 +113,7 @@ export default function PublicWaitlistPage({ params }) {
     const [restaurantData, setRestaurantData] = useState(null);
     const [menuExploreEnabled, setMenuExploreEnabled] = useState(false);
     const [isLocating, setIsLocating] = useState(false);
-    const [isLocationHelpOpen, setIsLocationHelpOpen] = useState(false);
-
-    const getPreciseLocation = useCallback(() => new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            const error = new Error('Location access is unavailable in this browser.');
-            error.showLocationHelp = true;
-            reject(error);
-            return;
-        }
-        navigator.geolocation.getCurrentPosition(
-            (position) => resolve({
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                capturedAt: new Date(position.timestamp).toISOString(),
-            }),
-            (locationError) => {
-                const error = new Error(locationError.code === 1
-                    ? 'Location permission is turned off.'
-                    : 'Could not get an accurate live location. Move outdoors and try again.');
-                error.showLocationHelp = locationError.code === 1 || locationError.code === 2;
-                reject(error);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-    }), []);
+    const [locationIssue, setLocationIssue] = useState(null);
 
     useEffect(() => {
         const fetchStatus = async () => {
@@ -368,10 +344,7 @@ export default function PublicWaitlistPage({ params }) {
             let preciseLocation = null;
             if (locationRequired) {
                 setIsLocating(true);
-                preciseLocation = await getPreciseLocation();
-                if (preciseLocation.accuracy > 50) {
-                    throw new Error('Location accuracy must be within 50 meters. Enable precise location or move outdoors and try again.');
-                }
+                preciseLocation = await getPreciseBrowserLocation();
             }
 
             if (isBookingMode) {
@@ -411,6 +384,14 @@ export default function PublicWaitlistPage({ params }) {
             const data = await res.json();
 
             if (!res.ok) {
+                const locationDetails = getServerLocationErrorDetails(data?.code, data);
+                if (locationDetails) {
+                    const locationError = new Error(locationDetails.message);
+                    locationError.name = 'PreciseLocationError';
+                    locationError.kind = locationDetails.kind;
+                    locationError.userTitle = locationDetails.title;
+                    throw locationError;
+                }
                 throw new Error(data.message || `Failed to ${isBookingMode ? 'book table' : 'join waitlist'}`);
             }
 
@@ -425,8 +406,11 @@ export default function PublicWaitlistPage({ params }) {
             }
             setSuccess(true);
         } catch (err) {
-            if (err?.showLocationHelp) setIsLocationHelpOpen(true);
-            else setError(err.message);
+            if (err?.name === 'PreciseLocationError') {
+                setLocationIssue(getLocationErrorDetails(err));
+            } else {
+                setError(err.message);
+            }
         } finally {
             setIsLocating(false);
             setLoading(false);
@@ -950,21 +934,34 @@ export default function PublicWaitlistPage({ params }) {
                 </Card>
             </motion.div>
 
-            <Dialog open={isLocationHelpOpen} onOpenChange={setIsLocationHelpOpen}>
+            <Dialog open={Boolean(locationIssue)} onOpenChange={(open) => { if (!open) setLocationIssue(null); }}>
                 <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
                     <DialogHeader className="text-left">
                         <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
                             <MapPinOff size={22} />
                         </div>
-                        <DialogTitle>Location Access Off Hai</DialogTitle>
+                        <DialogTitle>{locationIssue?.title || 'Location Check Failed'}</DialogTitle>
                         <DialogDescription className="space-y-3 pt-2 text-left">
-                            <span className="block">Booking ya waitlist continue karne ke liye precise location allow karein:</span>
-                            <span className="block"><strong>Android / Chrome:</strong> Address bar ke lock/settings icon par tap karein → Permissions → Location → Allow, phir page reload karein.</span>
-                            <span className="block"><strong>iPhone / Safari:</strong> Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using App aur Precise Location ON karein.</span>
+                            <span className="block whitespace-pre-line">{locationIssue?.message}</span>
+                            {locationIssue?.kind === 'permission_denied' && (
+                                <>
+                                    <span className="block"><strong>Android / Chrome:</strong> Select the site settings icon in the address bar, then select Permissions → Location → Allow.</span>
+                                    <span className="block"><strong>iPhone / Safari:</strong> Settings → Privacy &amp; Security → Location Services → Safari Websites → While Using App; Precise Location ON.</span>
+                                </>
+                            )}
                         </DialogDescription>
                     </DialogHeader>
-                    <DialogFooter>
-                        <Button type="button" onClick={() => setIsLocationHelpOpen(false)}>Samajh Gaya</Button>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button type="button" variant="outline" onClick={() => setLocationIssue(null)}>Close</Button>
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                setLocationIssue(null);
+                                window.setTimeout(() => document.getElementById('waitlist-form')?.requestSubmit(), 0);
+                            }}
+                        >
+                            Retry Location
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

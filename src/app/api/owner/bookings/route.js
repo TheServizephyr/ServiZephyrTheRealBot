@@ -150,6 +150,7 @@ export async function POST(req) {
         const firestore = await getFirestore();
         const body = await req.json();
         const { restaurantId, name, phone, guests, bookingDateTime, occasion, source } = body;
+        const isManualQuickAdd = String(source || '').trim() === 'manual_quick_add';
 
         if (!restaurantId || !name || !phone || !guests || !bookingDateTime) {
             return NextResponse.json({ message: 'Missing required booking data.' }, { status: 400 });
@@ -187,9 +188,23 @@ export async function POST(req) {
         if (businessData?.isBookingEnabled === false) {
             return NextResponse.json({ message: 'Bookings are currently disabled for this restaurant.' }, { status: 403 });
         }
-        if (businessData?.bookingLocationVerificationEnabled === true) {
+        if (isManualQuickAdd) {
+            const auth = await getAuth();
+            const ownerContext = await verifyOwnerAndGetBusiness(req, auth, firestore);
+            assertRestaurantCollection(ownerContext.collectionName);
+            if (ownerContext.businessId !== restaurantId) {
+                return NextResponse.json({ message: 'Access Denied: This booking belongs to another restaurant.' }, { status: 403 });
+            }
+        }
+        if (!isManualQuickAdd && businessData?.bookingLocationVerificationEnabled === true) {
             const proximity = verifyPublicIntakeProximity(businessData, body);
-            if (!proximity.ok) return NextResponse.json({ message: proximity.message }, { status: 403 });
+            if (!proximity.ok) {
+                return NextResponse.json({
+                    message: proximity.message,
+                    code: proximity.code,
+                    distanceMeters: proximity.distanceMeters,
+                }, { status: 403 });
+            }
         }
 
         // Prevent duplicate active booking request for same phone and slot.
@@ -221,7 +236,7 @@ export async function POST(req) {
             createdAt: FieldValue.serverTimestamp(),
             notes: String(occasion || '').trim(),
             occasion: String(occasion || '').trim(),
-            source: String(source || '').trim() === 'manual_quick_add' ? 'manual_quick_add' : 'public_booking',
+            source: isManualQuickAdd ? 'manual_quick_add' : 'public_booking',
         };
 
         await newBookingRef.set(newBookingData);

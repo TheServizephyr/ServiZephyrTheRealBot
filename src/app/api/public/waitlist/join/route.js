@@ -146,7 +146,13 @@ export async function POST(req) {
         }
         if (restaurantData.waitlistLocationVerificationEnabled === true) {
             const proximity = verifyPublicIntakeProximity(restaurantData, body);
-            if (!proximity.ok) return NextResponse.json({ message: proximity.message }, { status: 403 });
+            if (!proximity.ok) {
+                return NextResponse.json({
+                    message: proximity.message,
+                    code: proximity.code,
+                    distanceMeters: proximity.distanceMeters,
+                }, { status: 403 });
+            }
         }
 
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
