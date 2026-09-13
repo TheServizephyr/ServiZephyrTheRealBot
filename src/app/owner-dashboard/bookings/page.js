@@ -885,12 +885,7 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
         setLoading(true);
         try {
             const user = auth.currentUser;
-            if (!user) {
-                if (whatsappWindow && !whatsappWindow.closed) {
-                    whatsappWindow.close();
-                }
-                return;
-            }
+            if (!user) return;
             const idToken = await user.getIdToken();
             let url = new URL('/api/owner/waitlist', window.location.origin);
             url.searchParams.append('history', 'true');
@@ -3533,22 +3528,28 @@ function BookingsPageContent() {
                     </DialogHeader>
 
                     <div className="space-y-5 py-2">
-                        <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 p-3">
-                            <div className="min-w-0">
-                                <Label className="font-semibold flex items-center gap-2">
-                                    <CalendarClock size={15} /> Booking Status
-                                </Label>
-                                <p className="text-xs text-muted-foreground mt-1">Enable or disable new table booking requests.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3">
+                                <div className="min-w-0 pr-2">
+                                    <Label className="font-semibold flex items-center gap-2 text-sm">
+                                        <CalendarClock size={15} className="text-primary shrink-0" />
+                                        <span className="truncate">Booking Status</span>
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">Enable or disable new table booking requests.</p>
+                                </div>
+                                <Switch checked={isBookingEnabled} disabled={isBookingLoading} onCheckedChange={handleToggleBooking} />
                             </div>
-                            <Switch checked={isBookingEnabled} disabled={isBookingLoading} onCheckedChange={handleToggleBooking} />
-                        </div>
 
-                        <div className="flex items-center justify-between gap-4">
-                            <div>
-                                <Label className="font-semibold">Waitlist Status</Label>
-                                <p className="text-xs text-muted-foreground mt-1">Enable or disable public waitlist joins.</p>
+                            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3">
+                                <div className="min-w-0 pr-2">
+                                    <Label className="font-semibold flex items-center gap-2 text-sm">
+                                        <ListOrdered size={15} className="text-primary shrink-0" />
+                                        <span className="truncate">Waitlist Status</span>
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">Enable or disable public waitlist joins.</p>
+                                </div>
+                                <Switch checked={isWaitlistEnabled} disabled={isWaitlistLoading} onCheckedChange={handleToggleWaitlist} />
                             </div>
-                            <Switch checked={isWaitlistEnabled} disabled={isWaitlistLoading} onCheckedChange={handleToggleWaitlist} />
                         </div>
 
                         <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
@@ -3590,30 +3591,6 @@ function BookingsPageContent() {
                                 disabled={waitlistConfigLoading}
                                 onCheckedChange={handleToggleWaitlistMenuExplore}
                             />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label className="font-semibold">Seating Mode</Label>
-                            <div className="inline-flex rounded-lg border border-border overflow-hidden">
-                                <Button
-                                    type="button"
-                                    variant={canUseDineInTables && waitlistSeatingMode === 'table_assign' ? 'default' : 'ghost'}
-                                    className="rounded-none"
-                                    disabled={waitlistConfigLoading || !canUseDineInTables}
-                                    onClick={() => handleWaitlistSeatingModeChange('table_assign')}
-                                >
-                                    Table
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant={waitlistSeatingMode === 'manual_seat' ? 'default' : 'ghost'}
-                                    className="rounded-none"
-                                    disabled={waitlistConfigLoading}
-                                    onClick={() => handleWaitlistSeatingModeChange('manual_seat')}
-                                >
-                                    Manual
-                                </Button>
-                            </div>
                         </div>
 
                         <div className="space-y-2">

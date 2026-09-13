@@ -368,6 +368,7 @@ function SettingsPageContent() {
                     serviceFeeApplyOnManualOrders: data.serviceFeeApplyOnManualOrders || false,
                     autoPrintBillsEnabled: data.autoPrintBillsEnabled === true,
                     ownerPersonalWhatsappNumber: data.ownerPersonalWhatsappNumber || '',
+                    waitlistSeatingMode: data.waitlistSeatingMode || 'table_assign',
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -552,6 +553,7 @@ function SettingsPageContent() {
                 autoPrintBillsEnabled: editedUser.autoPrintBillsEnabled === true,
                 upiId: editedUser.upiId || '',
                 upiPayeeName: editedUser.upiPayeeName || '',
+                waitlistSeatingMode: editedUser.waitlistSeatingMode || 'table_assign',
             }
         } else if (section === 'gst') {
             payload = {
@@ -603,6 +605,7 @@ function SettingsPageContent() {
                 serviceFeeApplyOnManualOrders: updatedUser.serviceFeeApplyOnManualOrders || false,
                 autoPrintBillsEnabled: updatedUser.autoPrintBillsEnabled === true,
                 ownerPersonalWhatsappNumber: updatedUser.ownerPersonalWhatsappNumber || '',
+                waitlistSeatingMode: updatedUser.waitlistSeatingMode || 'table_assign',
             };
             setUser(finalUser);
             setEditedUser(finalUser);
@@ -1117,6 +1120,51 @@ function SettingsPageContent() {
                                                 disabled={!isEditingPayment}
                                             />
                                         </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isRestaurantBusiness && (
+                                <div className="border-t border-border pt-6">
+                                    <Label className="font-semibold text-lg">Waitlist Seating Mode</Label>
+                                    <p className="text-sm text-muted-foreground mb-4">
+                                        Choose how walk-in waitlist guests are seated at your restaurant.
+                                    </p>
+                                    <div className="grid md:grid-cols-2 gap-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, waitlistSeatingMode: 'table_assign' }))}
+                                            className={cn(
+                                                "p-4 border-2 rounded-lg text-left transition-all",
+                                                (editedUser.waitlistSeatingMode || 'table_assign') === 'table_assign' ? 'border-primary bg-primary/10' : 'border-border',
+                                                isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70'
+                                            )}
+                                            disabled={!isEditingPayment}
+                                        >
+                                            <h4 className="font-bold flex items-center gap-2">
+                                                <ConciergeBell size={16} /> Table Allocation
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Assign specific dine-in tables to guests from the live waitlist and automatically open a table tab.
+                                            </p>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => isEditingPayment && setEditedUser(prev => ({ ...prev, waitlistSeatingMode: 'manual_seat' }))}
+                                            className={cn(
+                                                "p-4 border-2 rounded-lg text-left transition-all",
+                                                editedUser.waitlistSeatingMode === 'manual_seat' ? 'border-primary bg-primary/10' : 'border-border',
+                                                isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70'
+                                            )}
+                                            disabled={!isEditingPayment}
+                                        >
+                                            <h4 className="font-bold flex items-center gap-2">
+                                                <User size={16} /> Manual Seating
+                                            </h4>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Mark guests as seated directly without selecting or allocating a table in the system.
+                                            </p>
+                                        </button>
                                     </div>
                                 </div>
                             )}
