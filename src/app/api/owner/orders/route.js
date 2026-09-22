@@ -49,7 +49,26 @@ const VALID_STATUSES = new Set([
     'Ready',
 ]);
 
-function getAllowedNextStatuses(orderData = {}) {
+function getAllowedNextStatuses(orderData = {}, isStreetVendor = false) {
+    const isStreetVendorOutlet = isStreetVendor ||
+        orderData.deliveryType === 'street-vendor-pre-order' ||
+        orderData.businessType === 'street-vendor' ||
+        orderData.restaurantType === 'street-vendor';
+
+    if (isStreetVendorOutlet) {
+        return {
+            awaiting_payment: new Set(['ready', 'Ready', 'ready_for_pickup', 'prepared', 'confirmed', 'preparing', 'delivered', 'rejected']),
+            pending: new Set(['ready', 'Ready', 'ready_for_pickup', 'prepared', 'confirmed', 'preparing', 'delivered', 'rejected']),
+            placed: new Set(['ready', 'Ready', 'ready_for_pickup', 'prepared', 'confirmed', 'preparing', 'delivered', 'rejected']),
+            confirmed: new Set(['ready', 'Ready', 'ready_for_pickup', 'prepared', 'preparing', 'delivered', 'rejected']),
+            preparing: new Set(['ready', 'Ready', 'ready_for_pickup', 'prepared', 'delivered', 'rejected']),
+            ready: new Set(['delivered', 'picked_up', 'pending', 'awaiting_payment', 'rejected']),
+            Ready: new Set(['delivered', 'picked_up', 'pending', 'awaiting_payment', 'rejected']),
+            ready_for_pickup: new Set(['delivered', 'picked_up', 'pending', 'awaiting_payment', 'rejected']),
+            prepared: new Set(['delivered', 'picked_up', 'pending', 'awaiting_payment', 'rejected']),
+        };
+    }
+
     const isPickup = orderData.deliveryType === 'pickup';
     const isDelivery = orderData.deliveryType === 'delivery';
     const isDineIn = orderData.deliveryType === 'dine-in'
@@ -60,29 +79,38 @@ function getAllowedNextStatuses(orderData = {}) {
 
     if (isPickup) {
         return {
-            pending: new Set(['confirmed', 'rejected']),
-            confirmed: new Set(['preparing']),
-            preparing: new Set(['ready_for_pickup']),
-            ready_for_pickup: new Set(['picked_up']),
+            awaiting_payment: new Set(['confirmed', 'ready_for_pickup', 'ready', 'Ready', 'rejected']),
+            pending: new Set(['confirmed', 'ready_for_pickup', 'ready', 'Ready', 'rejected']),
+            placed: new Set(['confirmed', 'ready_for_pickup', 'ready', 'Ready', 'rejected']),
+            confirmed: new Set(['preparing', 'ready_for_pickup', 'ready', 'Ready']),
+            preparing: new Set(['ready_for_pickup', 'ready', 'Ready']),
+            ready_for_pickup: new Set(['picked_up', 'delivered']),
+            ready: new Set(['picked_up', 'delivered']),
+            Ready: new Set(['picked_up', 'delivered']),
         };
     }
 
     if (isDineIn) {
         return {
-            pending: new Set(['confirmed', 'rejected']),
-            confirmed: new Set(['preparing']),
-            preparing: new Set(['ready', 'ready_for_pickup']),
+            awaiting_payment: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+            pending: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+            placed: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+            confirmed: new Set(['preparing', 'ready', 'Ready', 'ready_for_pickup']),
+            preparing: new Set(['ready', 'Ready', 'ready_for_pickup']),
             ready: new Set(['delivered']),
+            Ready: new Set(['delivered']),
             ready_for_pickup: new Set(['delivered']),
         };
     }
 
     if (isDelivery) {
         return {
+            awaiting_payment: new Set(['confirmed', 'rejected']),
             pending: new Set(['confirmed', 'rejected']),
-            confirmed: new Set(['preparing']),
-            preparing: new Set(['prepared']),
-            prepared: new Set(['ready_for_pickup']),
+            placed: new Set(['confirmed', 'rejected']),
+            confirmed: new Set(['preparing', 'rejected']),
+            preparing: new Set(['prepared', 'ready_for_pickup', 'rejected']),
+            prepared: new Set(['ready_for_pickup', 'rejected']),
             ready_for_pickup: new Set(['dispatched']),
             dispatched: new Set(['delivered']),
         };
@@ -90,30 +118,52 @@ function getAllowedNextStatuses(orderData = {}) {
 
     // Dine-in / other internal flows remain backward-compatible.
     return {
-        pending: new Set(['confirmed', 'rejected']),
-        confirmed: new Set(['preparing']),
-        preparing: new Set(['ready', 'ready_for_pickup']),
+        awaiting_payment: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+        pending: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+        placed: new Set(['confirmed', 'preparing', 'ready', 'Ready', 'ready_for_pickup', 'delivered', 'rejected']),
+        confirmed: new Set(['preparing', 'ready', 'Ready', 'ready_for_pickup']),
+        preparing: new Set(['ready', 'Ready', 'ready_for_pickup']),
         ready: new Set(['delivered']),
+        Ready: new Set(['delivered']),
         ready_for_pickup: new Set(['delivered']),
     };
 }
 
-function canTransition(orderData, fromStatus, toStatus) {
-    if (fromStatus === toStatus) return true;
-    if (toStatus === 'rejected') return fromStatus === 'pending';
+function canTransition(orderData, fromStatus, toStatus, isStreetVendor = false) {
+    const from = String(fromStatus || '').trim();
+    const to = String(toStatus || '').trim();
+    const fromLower = from.toLowerCase();
+    const toLower = to.toLowerCase();
+
+    if (fromLower === toLower) return true;
+
     // Do not allow reopening finalized orders through status rollback.
-    if (['delivered', 'rejected', 'picked_up', 'cancelled'].includes(fromStatus)) return false;
+    if (['delivered', 'rejected', 'picked_up', 'cancelled'].includes(fromLower)) return false;
 
-    const allowedNextStatuses = getAllowedNextStatuses(orderData);
-    if (allowedNextStatuses[fromStatus]?.has(toStatus)) return true;
+    // Any non-finalized active order can be rejected or cancelled.
+    if (toLower === 'rejected' || toLower === 'cancelled') return true;
 
-    // Allow controlled one-step rollback for dashboard "Revert" action.
-    // Example: preparing -> confirmed, prepared -> preparing, dispatched -> ready_for_pickup.
-    const previousStatuses = Object.entries(allowedNextStatuses)
-        .filter(([, nextSet]) => nextSet?.has(fromStatus))
-        .map(([status]) => status);
+    const allowedNextStatuses = getAllowedNextStatuses(orderData, isStreetVendor);
 
-    return previousStatuses.includes(toStatus);
+    // Direct check (supports exact match or case-insensitive match)
+    const nextSet = allowedNextStatuses[from] || allowedNextStatuses[fromLower];
+    if (nextSet) {
+        if (nextSet.has(to)) return true;
+        for (const allowed of nextSet) {
+            if (allowed.toLowerCase() === toLower) return true;
+        }
+    }
+
+    // Allow controlled one-step rollback for dashboard "Revert" / "Undo" action.
+    for (const [status, nextSet] of Object.entries(allowedNextStatuses)) {
+        if (status.toLowerCase() === toLower) {
+            for (const next of nextSet) {
+                if (next.toLowerCase() === fromLower) return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function hasValidGeoLocation(location) {
@@ -995,7 +1045,7 @@ export async function PATCH(req) {
                 requiredPermission = PERMISSIONS.MARK_ORDER_PREPARING;
             } else if (newStatus === 'prepared') {
                 requiredPermission = PERMISSIONS.MARK_ORDER_READY;
-            } else if (newStatus === 'ready_for_pickup' || newStatus === 'Ready') {
+            } else if (newStatus === 'ready_for_pickup' || newStatus === 'Ready' || newStatus === 'ready') {
                 requiredPermission = deliveryBoyId ? PERMISSIONS.ASSIGN_RIDER : PERMISSIONS.MARK_ORDER_READY;
             }
 
@@ -1048,7 +1098,12 @@ export async function PATCH(req) {
                     }, { status: 400 });
                 }
 
-                if (!canTransition(orderData, currentStatus, newStatus)) {
+                const isStreetVendorOutlet = collectionName === 'street_vendors' ||
+                    businessSnap?.data()?.businessType === 'street-vendor' ||
+                    orderData.deliveryType === 'street-vendor-pre-order' ||
+                    orderData.businessType === 'street-vendor';
+
+                if (!canTransition(orderData, currentStatus, newStatus, isStreetVendorOutlet)) {
                     return NextResponse.json({
                         message: `Invalid status transition for order ${id}: ${currentStatus} -> ${newStatus}.`
                     }, { status: 400 });
