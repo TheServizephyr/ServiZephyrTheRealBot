@@ -18,6 +18,15 @@ import { useToast } from '@/components/ui/use-toast';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
+const parseDateSafe = (val) => {
+    if (!val) return new Date();
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (val.seconds) return new Date(val.seconds * 1000);
+    if (val._seconds) return new Date(val._seconds * 1000);
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? new Date() : d;
+};
+
 export default function OrderHistoryPage() {
     const { user, loading: isUserLoading } = useUser();
     const { toast } = useToast();
@@ -192,7 +201,7 @@ export default function OrderHistoryPage() {
         if (remainingRefundable <= 0) return false;
 
         // Check 7-day limit
-        const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+        const orderDate = parseDateSafe(order.orderDate);
         const daysSinceOrder = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSinceOrder > 7) return false;
 
@@ -206,15 +215,24 @@ export default function OrderHistoryPage() {
             const lowerQuery = searchQuery.toLowerCase();
             items = items.filter(order =>
                 order.customerName?.toLowerCase().includes(lowerQuery) ||
+                order.customerPhone?.includes(lowerQuery) ||
+                order.dineInToken?.toLowerCase().includes(lowerQuery) ||
                 order.trackingToken?.toLowerCase().includes(lowerQuery) ||
-                order.id.toLowerCase().includes(lowerQuery)
+                order.id?.toLowerCase().includes(lowerQuery)
             );
         }
         return items;
     }, [orders, searchQuery]);
 
-    const completedOrders = useMemo(() => filteredOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)), [filteredOrders]);
-    const cancelledOrders = useMemo(() => filteredOrders.filter(o => ['rejected', 'cancelled'].includes(o.status)), [filteredOrders]);
+    const isNewOrActiveStatus = (status) => {
+        const s = String(status || '').toLowerCase();
+        return ['pending', 'placed', 'confirmed', 'preparing', 'ready', 'ready_for_pickup', 'prepared', 'awaiting_payment'].includes(s);
+    };
+
+    const allOrders = filteredOrders;
+    const activeOrders = useMemo(() => filteredOrders.filter(o => isNewOrActiveStatus(o.status)), [filteredOrders]);
+    const completedOrders = useMemo(() => filteredOrders.filter(o => ['delivered', 'picked_up', 'completed'].includes(String(o.status || '').toLowerCase())), [filteredOrders]);
+    const cancelledOrders = useMemo(() => filteredOrders.filter(o => ['rejected', 'cancelled'].includes(String(o.status || '').toLowerCase())), [filteredOrders]);
 
     const OrderList = ({ items, emptyMessage }) => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -226,13 +244,17 @@ export default function OrderHistoryPage() {
             <AnimatePresence>
                 {items.map((order) => {
                     const token = order.dineInToken || order.trackingToken || 'N/A';
+                    const s = String(order.status || '').toLowerCase();
 
                     let statusClass = 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
                     let borderClass = 'border-yellow-500';
-                    if (order.status === 'delivered' || order.status === 'picked_up') {
+                    if (s === 'ready' || s === 'ready_for_pickup' || s === 'prepared') {
+                        statusClass = 'text-green-500 bg-green-500/10 border-green-500/20';
+                        borderClass = 'border-green-500';
+                    } else if (s === 'delivered' || s === 'picked_up' || s === 'completed') {
                         statusClass = 'text-blue-500 bg-blue-500/10 border-blue-500/20';
                         borderClass = 'border-blue-500';
-                    } else if (order.status === 'rejected' || order.status === 'cancelled') {
+                    } else if (s === 'rejected' || s === 'cancelled') {
                         statusClass = 'text-red-500 bg-red-500/10 border-red-500/20';
                         borderClass = 'border-red-500';
                     }
@@ -271,12 +293,11 @@ export default function OrderHistoryPage() {
                                 <div className="flex justify-between items-start">
                                     <p className="text-4xl font-bold text-foreground">{token}</p>
                                     <div className="text-right">
-                                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
+                                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>
+                                            {s === 'awaiting_payment' ? 'Awaiting Payment' : (s === 'ready' || s === 'ready_for_pickup' ? 'Ready' : (order.status || '').replace(/_/g, ' '))}
+                                        </div>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            {order.orderDate ? format(
-                                                order.orderDate.toDate ? order.orderDate.toDate() : new Date(order.orderDate.seconds * 1000 || order.orderDate),
-                                                'dd/MM, p'
-                                            ) : ''}
+                                            {order.orderDate ? format(parseDateSafe(order.orderDate), 'dd/MM, p') : ''}
                                         </p>
                                     </div>
                                 </div>
@@ -513,11 +534,19 @@ export default function OrderHistoryPage() {
 
             {
                 !loading && !error && (
-                    <Tabs defaultValue="completed" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <Tabs defaultValue="all" className="w-full">
+                        <TabsList className="grid w-full grid-cols-4 mb-4">
+                            <TabsTrigger value="all">All ({allOrders.length})</TabsTrigger>
+                            <TabsTrigger value="active">Active ({activeOrders.length})</TabsTrigger>
                             <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
                             <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
                         </TabsList>
+                        <TabsContent value="all">
+                            <OrderList items={allOrders} emptyMessage="No orders found for this period." />
+                        </TabsContent>
+                        <TabsContent value="active">
+                            <OrderList items={activeOrders} emptyMessage="No active orders found." />
+                        </TabsContent>
                         <TabsContent value="completed">
                             <OrderList items={completedOrders} emptyMessage="No completed orders found." />
                         </TabsContent>

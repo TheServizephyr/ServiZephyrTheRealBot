@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike, Map, Check } from 'lucide-react';
+import { User, Store, ShoppingCart, Phone, ArrowRight, MapPin, HelpCircle, Bike, Map, Check } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
@@ -30,7 +30,6 @@ export default function CompleteProfile() {
     country: 'IN'
   });
   const [phone, setPhone] = useState('');
-  const [secretKey, setSecretKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -42,7 +41,6 @@ export default function CompleteProfile() {
     { id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: true },
     { id: 'shop-owner', label: 'Store Owner', icon: ShoppingCart, enabled: true },
     { id: 'rider', label: 'Rider', icon: Bike, enabled: true },
-    { id: 'admin', label: 'Admin', icon: Shield, enabled: true }
   ];
 
   const handleRoleClick = (roleConfig) => {
@@ -177,12 +175,6 @@ export default function CompleteProfile() {
 
     if (!validatePhoneNumber(normalizedPhone)) {
       setError('Please enter a valid 10-digit mobile number.');
-      setLoading(false);
-      return;
-    }
-
-    if (role === 'admin' && secretKey.trim() !== "admin123") {
-      setError('Invalid Admin Secret Key. Try: admin123');
       setLoading(false);
       return;
     }
@@ -345,25 +337,6 @@ export default function CompleteProfile() {
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
-              </div>
-            </div>
-          </motion.div>
-        );
-      case 'admin':
-        return (
-          <motion.div variants={cardVariants} initial="hidden" animate="visible" className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Mobile Number (10 digits)</label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Secret Key</label>
-              <div className="relative">
-                <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input type="password" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
               </div>
             </div>
           </motion.div>

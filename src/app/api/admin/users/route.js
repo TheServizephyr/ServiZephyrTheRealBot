@@ -203,11 +203,37 @@ export async function PATCH(req) {
                     updatedAt: new Date()
                 }, { merge: true });
 
-                const auth = await getAuth();
-                await auth.updateUser(userId, { disabled: true });
+                try {
+                    const auth = await getAuth();
+                    await auth.updateUser(userId, { disabled: true });
+                    await auth.setCustomUserClaims(userId, { isAdmin: null });
+                    await auth.revokeRefreshTokens(userId);
+                } catch (authErr) {
+                    console.error('Failed to revoke auth credentials on remove:', authErr);
+                }
                 return NextResponse.json({ message: 'User removed successfully' }, { status: 200 });
             }
             return NextResponse.json({ message: 'Invalid user type for remove action.' }, { status: 400 });
+        }
+
+        if (action === 'demote') {
+            const userRef = firestore.collection('users').doc(userId);
+            const { FieldValue } = await import('firebase-admin/firestore');
+            await userRef.set({
+                role: 'customer',
+                isAdmin: FieldValue.delete(),
+                demotedAt: new Date(),
+                updatedAt: new Date()
+            }, { merge: true });
+
+            try {
+                const auth = await getAuth();
+                await auth.setCustomUserClaims(userId, { isAdmin: null });
+                await auth.revokeRefreshTokens(userId);
+            } catch (authErr) {
+                console.error('Failed to clear custom claims on demote:', authErr);
+            }
+            return NextResponse.json({ message: 'Admin privileges revoked and user demoted to customer successfully.' }, { status: 200 });
         }
 
         const validStatuses = ['Active', 'Blocked'];
@@ -227,10 +253,19 @@ export async function PATCH(req) {
         const userRef = firestore.collection('users').doc(userId);
         await userRef.update({ status });
 
-        const auth = await getAuth();
-        await auth.updateUser(userId, {
-            disabled: status === 'Blocked'
-        });
+        try {
+            const auth = await getAuth();
+            const isBlocked = status === 'Blocked';
+            await auth.updateUser(userId, {
+                disabled: isBlocked
+            });
+            if (isBlocked) {
+                await auth.setCustomUserClaims(userId, { isAdmin: null });
+                await auth.revokeRefreshTokens(userId);
+            }
+        } catch (authErr) {
+            console.error('Failed to update auth status or revoke tokens:', authErr);
+        }
 
         return NextResponse.json({ message: 'User status updated successfully' }, { status: 200 });
 

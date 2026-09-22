@@ -7,6 +7,14 @@ import { generateDisplayId } from '@/lib/id-utils';
 import { migrateGuestToUser } from '@/lib/guest-utils';
 
 const CUSTOMER_ROLES = new Set(['customer']);
+const ALLOWED_SIGNUP_ROLES = new Set([
+    'customer',
+    'rider',
+    'restaurant-owner',
+    'shop-owner',
+    'store-owner',
+    'street-vendor'
+]);
 
 const shouldAssignCustomerId = (role) => CUSTOMER_ROLES.has(String(role || '').toLowerCase());
 
@@ -22,11 +30,17 @@ export async function POST(req) {
             return NextResponse.json({ message: 'User role and phone are missing in payload.' }, { status: 400 });
         }
 
+        const requestedRole = String(finalUserData.role || '').trim().toLowerCase();
+        if (!ALLOWED_SIGNUP_ROLES.has(requestedRole)) {
+            console.warn(`[SECURITY ALERT] Blocked unauthorized role registration attempt: '${finalUserData.role}' for UID: ${uid}`);
+            return NextResponse.json({ message: 'Forbidden: Unauthorized or invalid role selection.' }, { status: 403 });
+        }
+
         const isBusinessOwner =
-            finalUserData.role === 'restaurant-owner' ||
-            finalUserData.role === 'shop-owner' ||
-            finalUserData.role === 'store-owner' ||
-            finalUserData.role === 'street-vendor';
+            requestedRole === 'restaurant-owner' ||
+            requestedRole === 'shop-owner' ||
+            requestedRole === 'store-owner' ||
+            requestedRole === 'street-vendor';
 
         if (isBusinessOwner && !businessData) {
             return NextResponse.json({ message: 'Business data is required for owners.' }, { status: 400 });
@@ -40,22 +54,40 @@ export async function POST(req) {
 
         // CRITICAL: Create user document FIRST before migration
         // Migration needs the user document to exist to update it
-        let mergedUserData = { ...finalUserData };
         const nowForId = new Date();
+        const safeUserData = {
+            uid,
+            name: String(finalUserData.name || 'User').trim().slice(0, 100),
+            phone: normalizedPhone,
+            role: requestedRole,
+            businessType: finalUserData.businessType || null,
+            profilePictureUrl: String(finalUserData.profilePictureUrl || '').trim() || null,
+            notifications: {
+                newOrders: Boolean(finalUserData.notifications?.newOrders ?? true),
+                dailySummary: Boolean(finalUserData.notifications?.dailySummary ?? false),
+                marketing: Boolean(finalUserData.notifications?.marketing ?? true),
+            },
+            // Strip any privilege escalation fields
+            isAdmin: FieldValue.delete(),
+        };
+
+        if (finalUserData.email) {
+            safeUserData.email = String(finalUserData.email).trim().toLowerCase();
+        }
 
         // Customer IDs belong only to customer profiles. Owner, rider, and admin
         // accounts are identified by UID plus their role-specific records.
-        if (shouldAssignCustomerId(mergedUserData.role) && !mergedUserData.customerId) {
-            mergedUserData.customerId = generateDisplayId('CS_', nowForId);
-        } else if (!shouldAssignCustomerId(mergedUserData.role)) {
-            mergedUserData.customerId = FieldValue.delete();
+        if (shouldAssignCustomerId(requestedRole) && !finalUserData.customerId) {
+            safeUserData.customerId = generateDisplayId('CS_', nowForId);
+        } else if (!shouldAssignCustomerId(requestedRole)) {
+            safeUserData.customerId = FieldValue.delete();
         }
 
-        mergedUserData.createdAt = FieldValue.serverTimestamp();
+        safeUserData.createdAt = FieldValue.serverTimestamp();
 
         // Create user document immediately (not in batch)
-        await masterUserRef.set(mergedUserData, { merge: true });
-        console.log(`[PROFILE COMPLETION] User document created for UID ${uid}`);
+        await masterUserRef.set(safeUserData, { merge: true });
+        console.log(`[PROFILE COMPLETION] User document created for UID ${uid} with role: ${requestedRole}`);
 
         // --- NOW MIGRATE GUEST PROFILE TO UID ---
         // User document exists, migration can update it
@@ -130,7 +162,7 @@ export async function POST(req) {
         await batch.commit();
 
         console.log(`[PROFILE COMPLETION] Successfully completed profile for user ${uid}`);
-        return NextResponse.json({ message: 'Profile completed successfully!', role: finalUserData.role }, { status: 200 });
+        return NextResponse.json({ message: 'Profile completed successfully!', role: requestedRole }, { status: 200 });
 
     } catch (error) {
         console.error('COMPLETE PROFILE API ERROR:', error);

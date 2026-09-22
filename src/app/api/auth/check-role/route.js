@@ -169,6 +169,15 @@ export async function POST(req) {
         if (userDoc.exists) {
             const userData = userDoc.data();
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
+
+            if (userData.status === 'Blocked' || userData.blocked === true || userData.isDeleted === true) {
+                try {
+                    const auth = await getAuth();
+                    await auth.setCustomUserClaims(uid, { isAdmin: null });
+                } catch (_) {}
+                return finalize({ role: 'blocked', status: 'Blocked', error: 'Account is blocked or deactivated.' }, 403, { outcome: 'blocked' });
+            }
+
             const role = userData.role;
             const businessType = await resolveBusinessType(firestore, uid, role, userData.businessType || null);
             const linkedOutlets = userData.linkedOutlets || [];
@@ -215,24 +224,45 @@ export async function POST(req) {
                 }
             }
 
-            // This custom claim logic can be simplified, but let's keep it for now
+            // Verify admin against configured admin registry if configured
+            let isAuthorizedAdmin = (role === 'admin');
+            if (isAuthorizedAdmin) {
+                try {
+                    const adminConfigSnap = await firestore.collection('admins').doc('servizephyr').get();
+                    if (adminConfigSnap.exists) {
+                        const adminConfig = adminConfigSnap.data() || {};
+                        const configuredAdminIds = Array.isArray(adminConfig.adminUserIds)
+                            ? adminConfig.adminUserIds.map((id) => String(id || '').trim()).filter(Boolean)
+                            : [];
+                        if (configuredAdminIds.length > 0 && !configuredAdminIds.includes(uid)) {
+                            console.warn(`[SECURITY ALERT] UID ${uid} claims admin role but is not in admins/servizephyr adminUserIds registry.`);
+                            isAuthorizedAdmin = false;
+                        }
+                    }
+                } catch (configErr) {
+                    console.error('[SECURITY ERROR] Failed checking admin registry:', configErr);
+                }
+            }
+
             const auth = await getAuth();
             const { customClaims } = await auth.getUser(uid);
 
-            if (role === 'admin' && !customClaims?.isAdmin) {
+            if (isAuthorizedAdmin && !customClaims?.isAdmin) {
                 await auth.setCustomUserClaims(uid, { isAdmin: true });
                 console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
-            } else if (role !== 'admin' && customClaims?.isAdmin) {
+            } else if (!isAuthorizedAdmin && customClaims?.isAdmin) {
                 await auth.setCustomUserClaims(uid, { isAdmin: null });
-                console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
+                console.log(`[DEBUG] /api/auth/check-role: Revoked custom claim 'isAdmin' for UID: ${uid}.`);
             }
 
-            if (role) {
-                console.log(`[DEBUG] /api/auth/check-role: Role found in 'users': '${role}'. Returning 200.`);
-                if (role === 'sales-partner' || role === 'growth-partner') {
+            const effectiveRole = (role === 'admin' && !isAuthorizedAdmin) ? 'customer' : role;
+
+            if (effectiveRole) {
+                console.log(`[DEBUG] /api/auth/check-role: Role found in 'users': '${effectiveRole}'. Returning 200.`);
+                if (effectiveRole === 'sales-partner' || effectiveRole === 'growth-partner') {
                     return finalize({ role: 'sales-partner', businessType: null, redirectTo: '/sales-dashboard' }, 200, { outcome: 'resolved', role: 'sales-partner' });
                 }
-                return finalize({ role, businessType }, 200, { outcome: 'resolved', role });
+                return finalize({ role: effectiveRole, businessType }, 200, { outcome: 'resolved', role: effectiveRole });
             }
         }
 

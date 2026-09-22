@@ -508,7 +508,16 @@ export async function GET(req) {
                             statusHistory,
                         }, canViewCustomerDetails, canViewPaymentDetails);
                     })
-                    .filter((order) => activeStatuses.has(String(order.status || '').toLowerCase()));
+                    .filter((order) => {
+                        const s = String(order.status || '').toLowerCase();
+                        if (activeStatuses.has(s)) return true;
+                        const isStreetVendor = collectionName === 'street_vendors' ||
+                            businessSnap?.data()?.businessType === 'street-vendor' ||
+                            order.businessType === 'street-vendor' ||
+                            order.deliveryType === 'street-vendor-pre-order';
+                        if (isStreetVendor && s === 'awaiting_payment') return true;
+                        return false;
+                    });
 
                 return {
                     orders: nextOrders,

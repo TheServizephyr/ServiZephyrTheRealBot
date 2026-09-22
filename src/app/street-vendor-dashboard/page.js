@@ -30,8 +30,24 @@ import { usePolling } from '@/lib/usePolling';
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDateTime = (timestamp) => {
     if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return format(date, 'dd/MM, p'); // e.g., 25/12, 1:33 PM
+    try {
+        const date = timestamp.toDate 
+            ? timestamp.toDate() 
+            : (timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp));
+        return Number.isNaN(date.getTime()) ? '' : format(date, 'dd/MM, p');
+    } catch {
+        return '';
+    }
+};
+
+const isNewOrder = (status) => {
+    const s = String(status || '').toLowerCase();
+    return s === 'pending' || s === 'placed' || s === 'confirmed' || s === 'preparing' || s === 'awaiting_payment';
+};
+
+const isReadyOrder = (status) => {
+    const s = String(status || '').toLowerCase();
+    return s === 'ready' || s === 'ready_for_pickup' || s === 'prepared';
 };
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock, showInfoDialog }) => {
@@ -270,19 +286,20 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
 }
 
 const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending, onMarkCashRefunded, userRole }) => {
-    const token = order.dineInToken;
-    const isPending = order.status === 'pending';
-    const isReady = order.status === 'Ready';
+    const token = order.dineInToken || order.trackingToken || 'N/A';
+    const s = String(order.status || '').toLowerCase();
+    const isPending = isNewOrder(order.status);
+    const isReady = isReadyOrder(order.status);
 
     let statusClass = 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
     let borderClass = 'border-yellow-500';
     if (isReady) {
         statusClass = 'text-green-500 bg-green-500/10 border-green-500/20';
         borderClass = 'border-green-500';
-    } else if (order.status === 'delivered' || order.status === 'picked_up') {
+    } else if (s === 'delivered' || s === 'picked_up') {
         statusClass = 'text-blue-500 bg-blue-500/10 border-blue-500/20';
         borderClass = 'border-blue-500';
-    } else if (order.status === 'rejected') {
+    } else if (s === 'rejected' || s === 'cancelled') {
         statusClass = 'text-red-500 bg-red-500/10 border-red-500/20';
         borderClass = 'border-red-500';
     }
@@ -336,7 +353,9 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                         )}
                     </div>
                     <div className="text-right">
-                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
+                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>
+                            {s === 'awaiting_payment' ? 'Awaiting Payment' : (s === 'ready' || s === 'ready_for_pickup' ? 'Ready' : order.status)}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
@@ -664,33 +683,13 @@ const StreetVendorDashboardContent = () => {
                 throw new Error('This QR code does not contain a valid order ID.');
             }
 
-            // If impersonating, use API to fetch order details
-            if (impersonatedOwnerId) {
-                const orderData = await handleApiCall(`/api/owner/orders?id=${orderId}`, 'GET');
-                if (!orderData || !orderData.order) throw new Error('Order not found or access denied.');
-                setScannedOrder({ id: orderId, ...orderData.order });
-                return;
-            }
-
-            const orderRef = doc(db, 'orders', orderId);
-            const orderSnap = await getDoc(orderRef);
-            if (!orderSnap.exists()) {
-                throw new Error('Order not found in the system.');
-            }
-
-            if (!vendorId) {
-                throw new Error('Vendor information not yet loaded. Please try again in a moment.');
-            }
-
-            if (orderSnap.data().restaurantId !== vendorId) {
-                throw new Error('This order does not belong to your stall.');
-            }
-            setScannedOrder({ id: orderSnap.id, ...orderSnap.data() });
+            const orderData = await handleApiCall(`/api/owner/orders?id=${orderId}`, 'GET');
+            if (!orderData || !orderData.order) throw new Error('Order not found or access denied.');
+            setScannedOrder({ id: orderId, ...orderData.order });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
-    }, [vendorId, impersonatedOwnerId, handleApiCall]);
-
+    }, [handleApiCall]);
 
     useEffect(() => {
         const orderToCollect = searchParams.get('collect_order');
@@ -700,6 +699,25 @@ const StreetVendorDashboardContent = () => {
         }
     }, [searchParams, handleScanSuccess]);
 
+    const fetchOrdersViaApi = useCallback(async (showLoading = false) => {
+        if (!user) return;
+        if (showLoading) setLoading(true);
+        try {
+            const data = await handleApiCall('/api/owner/orders?context=live_orders', 'GET');
+            const fetchedOrders = data.orders || [];
+            setOrders(fetchedOrders);
+            if (fetchedOrders.length > 0 && fetchedOrders[0].restaurantId) {
+                setVendorId((prev) => prev || fetchedOrders[0].restaurantId);
+            }
+            setError(null);
+        } catch (error) {
+            console.error("Error fetching orders via API:", error);
+            if (showLoading) setError(error.message || "Failed to fetch orders");
+        } finally {
+            if (showLoading) setLoading(false);
+        }
+    }, [user, handleApiCall]);
+
     const confirmCollection = async () => {
         if (!scannedOrder) return;
         const tempOrder = { ...scannedOrder };
@@ -707,124 +725,61 @@ const StreetVendorDashboardContent = () => {
             await handleUpdateStatus(tempOrder.id, 'delivered');
             setInfoDialog({ isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!` });
             setScannedOrder(null);
-            // Refresh orders if impersonating (since no listener)
-            if (impersonatedOwnerId) fetchOrdersViaApi();
+            fetchOrdersViaApi(false);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
         }
     };
 
-    // Fetch Vendor ID (or use impersonated/employee ID)
+    // Fetch Vendor ID (fallback for menu and role operations)
     useEffect(() => {
-        if (isUserLoading || !user) {
-            if (!isUserLoading) setLoading(false);
-            return;
-        }
+        if (isUserLoading || !user) return;
 
-        // For impersonation or employee access, use the target owner ID directly
         if (effectiveOwnerId) {
             setVendorId(effectiveOwnerId);
             return;
         }
 
-        // Only for owner's own access - use Firestore
         const q = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             if (!querySnapshot.empty) {
                 const vendorDoc = querySnapshot.docs[0];
                 setVendorId(vendorDoc.id);
-            } else {
-                setLoading(false);
             }
         }, (err) => {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
-            errorEmitter.emit('permission-error', contextualError);
-            console.error("Error fetching vendor ID:", err);
-            setLoading(false);
+            console.warn("Could not fetch vendor doc from client Firestore:", err.message);
         });
 
         return () => unsubscribe();
     }, [user, isUserLoading, effectiveOwnerId]);
 
-    const fetchOrdersViaApi = useCallback(async () => {
-        if (!effectiveOwnerId) return;
-        setLoading(true);
-        try {
-            const data = await handleApiCall('/api/owner/orders', 'GET');
-            setOrders(data.orders || []);
-        } catch (error) {
-            console.error("Error fetching orders via API:", error);
-            // Don't show dialog on every poll, maybe just log
-        } finally {
-            setLoading(false);
+    // Initial load when user is ready
+    useEffect(() => {
+        if (user && !isUserLoading) {
+            fetchOrdersViaApi(true);
         }
-    }, [effectiveOwnerId, handleApiCall]);
+    }, [user, isUserLoading, fetchOrdersViaApi]);
 
-    // POLL: For impersonation/employee access (Optimized)
-    usePolling(fetchOrdersViaApi, {
-        interval: 30000,
-        enabled: !!effectiveOwnerId,
-        deps: [effectiveOwnerId]
+    // Live background polling every 10 seconds for real-time responsiveness
+    usePolling(() => fetchOrdersViaApi(false), {
+        interval: 10000,
+        enabled: !!user,
+        deps: [user]
     });
 
-    // LISTENER: For owner's own access (Real-time)
-    useEffect(() => {
-        if (effectiveOwnerId) return; // Handled by polling above
-
-        if (!vendorId) {
-            console.log('[Orders Debug] No vendorId yet, skipping Firestore query');
-            return;
-        }
-
-        setLoading(true);
-        let isInitialLoad = true;
-
-        const ordersQuery = query(
-            collection(db, "orders"),
-            where("restaurantId", "==", vendorId),
-            where("status", "in", ['pending', 'confirmed', 'preparing', 'Ready', 'awaiting_payment']),
-            orderBy("orderDate", "desc")
-        );
-
-        const unsubscribe = onSnapshot(ordersQuery, (querySnapshot) => {
-            const fetchedOrders = [];
-
-            querySnapshot.forEach((doc) => {
-                fetchedOrders.push({ id: doc.id, ...doc.data() });
-            });
-
-            setOrders(fetchedOrders);
-            setLoading(false);
-            isInitialLoad = false;
-        }, (err) => {
-            const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
-            errorEmitter.emit('permission-error', contextualError);
-            console.error("Firestore Error:", err);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [vendorId, effectiveOwnerId]);
-
-    // 🔧 FIX: Page Visibility API - Auto-refresh when tab becomes active again
-    // Prevents "Failed to fetch" errors when user returns after leaving tab inactive
+    // Page Visibility API - Auto-refresh when tab becomes active again
     useEffect(() => {
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                console.log('[StreetVendor] Tab became visible, refreshing data...');
-                // Refresh data immediately when user returns to tab
-                if (impersonatedOwnerId) {
-                    fetchOrdersViaApi();
-                }
+            if (document.visibilityState === 'visible' && user) {
+                fetchOrdersViaApi(false);
             }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
-
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [impersonatedOwnerId, fetchOrdersViaApi]); // Deps needed for the refresh function
+    }, [user, fetchOrdersViaApi]);
 
     const handleUpdateStatus = async (orderId, newStatus, reason = null, shouldRefund = undefined) => {
         try {
@@ -834,6 +789,7 @@ const StreetVendorDashboardContent = () => {
                 rejectionReason: reason,
                 shouldRefund,
             });
+            fetchOrdersViaApi(false);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: error.message });
             throw error;
@@ -872,9 +828,19 @@ const StreetVendorDashboardContent = () => {
                 orderIds: [orderId],
                 action: 'markCashRefunded'
             });
+            fetchOrdersViaApi(false);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: error.message });
         }
+    };
+
+    const parseDateSafe = (val) => {
+        if (!val) return new Date();
+        if (typeof val.toDate === 'function') return val.toDate();
+        if (val.seconds) return new Date(val.seconds * 1000);
+        if (val._seconds) return new Date(val._seconds * 1000);
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? new Date() : d;
     };
 
     const filteredOrders = useMemo(() => {
@@ -884,7 +850,7 @@ const StreetVendorDashboardContent = () => {
             const start = startOfDay(date.from);
             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
             items = items.filter(order => {
-                const orderDate = order.orderDate.toDate();
+                const orderDate = parseDateSafe(order.orderDate);
                 return orderDate >= start && orderDate <= end;
             });
         }
@@ -893,19 +859,27 @@ const StreetVendorDashboardContent = () => {
             const lowerQuery = searchQuery.toLowerCase();
             items = items.filter(order =>
                 order.dineInToken?.toLowerCase().includes(lowerQuery) ||
+                order.trackingToken?.toLowerCase().includes(lowerQuery) ||
                 order.customerName?.toLowerCase().includes(lowerQuery) ||
                 order.customerPhone?.includes(lowerQuery) ||
-                order.totalAmount?.toString().includes(lowerQuery)
+                order.totalAmount?.toString().includes(lowerQuery) ||
+                order.id?.toLowerCase().includes(lowerQuery)
             );
         }
 
         return items;
     }, [orders, searchQuery, date]);
 
-    const pendingOrders = useMemo(() => filteredOrders.filter(o => o.status === 'pending'), [filteredOrders]);
-    const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
-    const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
-    const cancelledOrders = useMemo(() => filteredOrders.filter(o => o.status === 'rejected'), [filteredOrders]);
+    const pendingOrders = useMemo(() => filteredOrders.filter(o => isNewOrder(o.status)), [filteredOrders]);
+    const readyOrders = useMemo(() => filteredOrders.filter(o => isReadyOrder(o.status)), [filteredOrders]);
+    const collectedOrders = useMemo(() => filteredOrders.filter(o => {
+        const s = String(o.status || '').toLowerCase();
+        return s === 'delivered' || s === 'picked_up' || s === 'completed';
+    }), [filteredOrders]);
+    const cancelledOrders = useMemo(() => filteredOrders.filter(o => {
+        const s = String(o.status || '').toLowerCase();
+        return s === 'rejected' || s === 'cancelled';
+    }), [filteredOrders]);
 
     const handleSetDateFilter = (selectedRange) => {
         setDate(selectedRange);
@@ -1004,7 +978,7 @@ const StreetVendorDashboardContent = () => {
             </div>
 
             <main>
-                {(loading || isUserLoading || !vendorId) && !error ? (
+                {(loading || isUserLoading) && !error ? (
                     <div className="text-center py-20 text-muted-foreground">
                         <Loader2 className="mx-auto animate-spin" size={48} />
                         <p className="mt-4">Loading your dashboard...</p>
