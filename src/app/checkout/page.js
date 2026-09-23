@@ -1731,10 +1731,7 @@ const CheckoutPageInternal = () => {
             setError(deliveryValidation.message || "Your selected address is outside delivery range.");
             return false;
         }
-        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
-            setError("Please provide a name for the order.");
-            return false;
-        }
+
         setError('');
         return true;
     };
@@ -1771,7 +1768,7 @@ const CheckoutPageInternal = () => {
 
         const orderData = {
             idempotencyKey,
-            name: orderName || selectedAddress?.name || '',
+            name: (orderName && orderName.trim()) || selectedAddress?.name || (deliveryType === 'street-vendor-pre-order' ? 'Guest' : ''),
             phone: orderPhone || selectedAddress?.phone || '',
             restaurantId,
             collectionName: cartData?.collectionName,
@@ -1893,7 +1890,7 @@ const CheckoutPageInternal = () => {
                                 router.push(`/track/dine-in/${tabId}?${params.toString()}`);
                             }
                         },
-                        prefill: { name: orderName, phone: orderPhone },
+                        prefill: { name: (orderName && orderName.trim()) || 'Guest', phone: orderPhone || '' },
                         modal: {
                             ondismiss: function () {
                                 console.log("[Checkout] Razorpay dismissed");
@@ -2210,7 +2207,7 @@ const CheckoutPageInternal = () => {
                             : `/track/${data.firestore_order_id}?token=${data.token}${phoneParam}${refParam}`;
                         router.replace(trackingUrl);
                     },
-                    prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
+                    prefill: { name: (orderName && orderName.trim()) || 'Guest', email: user?.email || "customer@servizephyr.com", contact: orderPhone || '' },
                     redirect: (orderData.deliveryType === 'dine-in' || orderData.deliveryType === 'car-order') ? true : false,
                     modal: {
                         ondismiss: function () {
@@ -2752,6 +2749,40 @@ const CheckoutPageInternal = () => {
                                         </Button>
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* STREET VENDOR CUSTOMER DETAILS (OPTIONAL) */}
+                        {deliveryType === 'street-vendor-pre-order' && (
+                            <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <User className="h-4 w-4 text-primary" />
+                                    <h3 className="font-bold text-sm uppercase text-muted-foreground">Customer Details (Optional)</h3>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                                    <div>
+                                        <Label htmlFor="street-vendor-name" className="text-xs text-muted-foreground">Your Name</Label>
+                                        <Input
+                                            id="street-vendor-name"
+                                            value={orderName}
+                                            onChange={(e) => setOrderName(e.target.value)}
+                                            placeholder="e.g. Rahul (optional)"
+                                            className="mt-1 h-9 text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="street-vendor-phone" className="text-xs text-muted-foreground">Phone Number</Label>
+                                        <Input
+                                            id="street-vendor-phone"
+                                            type="tel"
+                                            value={orderPhone}
+                                            onChange={(e) => setOrderPhone(e.target.value)}
+                                            placeholder="For WhatsApp updates (optional)"
+                                            className="mt-1 h-9 text-sm"
+                                            disabled={!!phoneFromUrl}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
 

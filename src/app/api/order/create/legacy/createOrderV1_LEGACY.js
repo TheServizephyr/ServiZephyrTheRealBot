@@ -702,7 +702,7 @@ export async function processOrderV1(body, firestore) {
         const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order';
         console.log(`[API /order/create] Is Street Vendor Order? ${isStreetVendorOrder}`);
 
-        if (deliveryType !== 'dine-in' && !name) {
+        if (deliveryType !== 'dine-in' && !isStreetVendorOrder && !name) {
             console.error("[API /order/create] Validation Error: Name is required for non-dine-in orders.");
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
@@ -1827,7 +1827,7 @@ export async function processOrderV1(body, firestore) {
         }
 
         const finalOrderData = {
-            customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
+            customerName: name || 'Guest', customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
