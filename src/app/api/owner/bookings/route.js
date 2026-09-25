@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { verifyPublicIntakeProximity } from '@/lib/server/proximityVerification';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
+import { enforcePublicIntakeRateLimit } from '@/lib/server/publicIntakeRateLimit';
 
 function assertRestaurantCollection(collectionName) {
     if (collectionName !== 'restaurants') {
@@ -194,6 +195,22 @@ export async function POST(req) {
             assertRestaurantCollection(ownerContext.collectionName);
             if (ownerContext.businessId !== restaurantId) {
                 return NextResponse.json({ message: 'Access Denied: This booking belongs to another restaurant.' }, { status: 403 });
+            }
+        }
+        if (!isManualQuickAdd) {
+            const rate = await enforcePublicIntakeRateLimit({
+                firestore,
+                req,
+                channel: 'booking-create',
+                restaurantId,
+                phone: normalizedPhone,
+                restaurantLimit: 30,
+            });
+            if (!rate.allowed) {
+                return NextResponse.json(
+                    { message: 'Too many booking requests. Please try again later.' },
+                    { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+                );
             }
         }
         if (!isManualQuickAdd && businessData?.bookingLocationVerificationEnabled === true) {

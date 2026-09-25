@@ -9,6 +9,7 @@ globalThis.__servizephyrRequestShieldState = STATE;
 
 const WINDOW_MS = 10 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 1000;
+const AUTOMATION_USER_AGENT = /(?:^|[\s/;(])(?:curl|postmanruntime|insomnia|httpie|wget|python-requests|python-httpx|node-fetch|undici|go-http-client|apache-httpclient|powershell)(?:[\s/;) ]|$)/i;
 
 function hashValue(input = '') {
   let hash = 2166136261;
@@ -33,6 +34,26 @@ function isDesktopLocalRequest(request) {
   if (process.env.NEXT_PUBLIC_IS_DESKTOP_APP !== '1') return false;
   const hostHeader = String(request.headers.get('host') || '').toLowerCase();
   return hostHeader.includes('localhost') || hostHeader.includes('127.0.0.1');
+}
+
+function isTrustedInfrastructurePath(pathname) {
+  return (
+    pathname.startsWith('/api/webhooks') ||
+    pathname.startsWith('/api/cron') ||
+    pathname.startsWith('/healthz') ||
+    pathname.startsWith('/readyz')
+  );
+}
+
+function isKnownAutomationClient(request) {
+  return AUTOMATION_USER_AGENT.test(request.headers.get('user-agent') || '');
+}
+
+function blockedAutomationResponse() {
+  return NextResponse.json(
+    { message: 'Automated HTTP clients are not permitted.' },
+    { status: 403, headers: { 'Cache-Control': 'no-store' } }
+  );
 }
 
 function getVisitorId(request, ipAddress) {
@@ -173,6 +194,10 @@ export async function middleware(request) {
 
   if (isDesktopLocalRequest(request)) {
     return NextResponse.next();
+  }
+
+  if (!isTrustedInfrastructurePath(request.nextUrl.pathname) && isKnownAutomationClient(request)) {
+    return blockedAutomationResponse();
   }
 
 

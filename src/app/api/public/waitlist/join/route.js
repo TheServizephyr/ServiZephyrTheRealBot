@@ -4,6 +4,7 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 import { verifyPublicIntakeProximity } from '@/lib/server/proximityVerification';
+import { enforcePublicIntakeRateLimit } from '@/lib/server/publicIntakeRateLimit';
 
 export const dynamic = 'force-dynamic';
 const DEFAULT_WAITLIST_TOKEN_BASE = 0;
@@ -144,6 +145,22 @@ export async function POST(req) {
         if (!restaurantData.isWaitlistEnabled) {
             return NextResponse.json({ message: 'Waitlist is currently disabled for this restaurant.' }, { status: 403 });
         }
+
+        const rate = await enforcePublicIntakeRateLimit({
+            firestore,
+            req,
+            channel: 'waitlist-join',
+            restaurantId,
+            phone: normalizedPhone,
+            restaurantLimit: 30,
+        });
+        if (!rate.allowed) {
+            return NextResponse.json(
+                { message: 'Too many waitlist requests. Please try again later.' },
+                { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+            );
+        }
+
         if (restaurantData.waitlistLocationVerificationEnabled === true) {
             const proximity = verifyPublicIntakeProximity(restaurantData, body);
             if (!proximity.ok) {
