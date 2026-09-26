@@ -198,15 +198,15 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
     const now = Date.now();
     const todayCounterDateKey = getDateKeyInTimeZone(new Date(now));
 
-    // Only consider bookings whose bookingDateTime falls within the past 48 hours.
-    // This is a hard date-guard: old/stale/injected fake bookings from previous days
-    // will never be bridged, even if their status is still pending/confirmed.
+    // Hard date-guard: only bridge bookings whose bookingDateTime is within
+    // the past 48 hours. Old/stale/injected fake bookings from previous days
+    // will never cascade into the live waitlist again.
+    // NOTE: We filter in JS (not Firestore) to avoid needing a composite index.
     const BRIDGE_LOOKBACK_MS = 48 * 60 * 60 * 1000;
     const earliestBookingMs = now - BRIDGE_LOOKBACK_MS;
 
     const bookingSnap = await businessRef.collection('bookings')
         .where('status', 'in', ['pending', 'confirmed'])
-        .where('bookingDateTime', '>=', new Date(earliestBookingMs))
         .limit(120)
         .get();
 
@@ -215,7 +215,9 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
     for (const bookingDoc of bookingSnap.docs) {
         const bookingData = bookingDoc.data() || {};
         const bookingAtMs = toMillis(bookingData.bookingDateTime);
-        if (!bookingAtMs || bookingAtMs + LATE_BOOKING_GRACE_MS > now) continue;
+        // Skip if booking is older than 48h (date guard — no Firestore index needed)
+        if (!bookingAtMs || bookingAtMs < earliestBookingMs) continue;
+        if (bookingAtMs + LATE_BOOKING_GRACE_MS > now) continue;
 
         const bookingPhone = String(bookingData.customerPhone || '').replace(/\D/g, '').slice(-10);
 
