@@ -100,9 +100,23 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         console.log(`[API Employee Access] ${uid} accessing ${employeeOfOwnerId}'s bookings`);
         targetOwnerId = employeeOfOwnerId;
     }
-    // Owner access
+    // Owner access. If the dashboard URL lost its employee_of parameter, use a
+    // single active linked outlet as a safe fallback. This grants no more access
+    // than the existing employee_of flow (which verifies the same active link),
+    // while avoiding a false 403 for staff returning through a bookmarked URL.
     else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+        const activeOutlets = Array.isArray(userData.linkedOutlets)
+            ? userData.linkedOutlets.filter((outlet) => outlet?.status === 'active' && outlet?.ownerId)
+            : [];
+        const activeOutlet = activeOutlets.find((outlet) => outlet.isActive === true)
+            || (activeOutlets.length === 1 ? activeOutlets[0] : null);
+
+        if (!activeOutlet) {
+            throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+        }
+
+        targetOwnerId = activeOutlet.ownerId;
+        console.log(`[API Employee Access] ${uid} accessing assigned outlet owner ${targetOwnerId}.`);
     }
 
     const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -204,7 +218,7 @@ export async function POST(req) {
                 channel: 'booking-create',
                 restaurantId,
                 phone: normalizedPhone,
-                restaurantLimit: 5,
+                restaurantLimit: 80,
             });
             if (!rate.allowed) {
                 return NextResponse.json(

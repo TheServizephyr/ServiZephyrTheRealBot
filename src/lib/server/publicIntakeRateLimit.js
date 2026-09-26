@@ -2,7 +2,10 @@ import crypto from 'crypto';
 
 import { enforceRateLimit } from '@/lib/public-auth';
 
-const WINDOW_SEC = 10 * 60;
+// Public restaurant traffic frequently comes through carrier-grade NAT or venue
+// Wi-Fi, where many genuine guests share one public IP. Keep this short enough
+// to contain a burst, without treating a normal dinner rush as an attack.
+const WINDOW_SEC = 60;
 
 function getClientIp(req) {
     const forwardedFor = req.headers.get('x-forwarded-for') || '';
@@ -25,20 +28,22 @@ export async function enforcePublicIntakeRateLimit({
     channel,
     restaurantId,
     phone,
-    restaurantLimit = 5,
+    restaurantLimit = 80,
 }) {
     const safeChannel = String(channel || 'public-intake').replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
     const safeRestaurantId = String(restaurantId || '').trim().slice(0, 160);
     const ipHash = hash(getClientIp(req));
     const phoneHash = hash(phone);
-    const base = `public-intake:${safeChannel}`;
+    // A versioned namespace also releases guests who were caught by the former
+    // emergency 10-minute limits as soon as this safer policy is deployed.
+    const base = `public-intake:v2:${safeChannel}`;
 
     const checks = await Promise.all([
         // Stops a single origin from spraying restaurant IDs or phone numbers.
         enforceRateLimit(firestore, {
             bucket: 'public_intake_limits',
             key: `${base}:ip:${ipHash}`,
-            limit: 4,
+            limit: 30,
             windowSec: WINDOW_SEC,
             req,
             auditContext: `${safeChannel}_ip_limit`,
@@ -47,16 +52,17 @@ export async function enforcePublicIntakeRateLimit({
         enforceRateLimit(firestore, {
             bucket: 'public_intake_limits',
             key: `${base}:restaurant-ip:${safeRestaurantId}:${ipHash}`,
-            limit: 2,
+            limit: 12,
             windowSec: WINDOW_SEC,
             req,
             auditContext: `${safeChannel}_restaurant_ip_limit`,
         }),
-        // A customer may create only one pending public request per time window.
+        // Allow a short retry window for slow mobile networks. The endpoint's
+        // duplicate protection remains the final guard against duplicate records.
         enforceRateLimit(firestore, {
             bucket: 'public_intake_limits',
             key: `${base}:restaurant-phone:${safeRestaurantId}:${phoneHash}`,
-            limit: 1,
+            limit: 3,
             windowSec: WINDOW_SEC,
             req,
             auditContext: `${safeChannel}_phone_limit`,

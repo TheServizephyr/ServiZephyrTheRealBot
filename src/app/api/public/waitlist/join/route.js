@@ -152,7 +152,7 @@ export async function POST(req) {
             channel: 'waitlist-join',
             restaurantId,
             phone: normalizedPhone,
-            restaurantLimit: 30,
+            restaurantLimit: 80,
         });
         if (!rate.allowed) {
             return NextResponse.json(
