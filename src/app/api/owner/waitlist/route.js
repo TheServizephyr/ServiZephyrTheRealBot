@@ -197,8 +197,16 @@ function toNoShowTimeoutMs(value) {
 async function maybeBridgeLateBookings({ firestore, businessRef, businessId, businessName }) {
     const now = Date.now();
     const todayCounterDateKey = getDateKeyInTimeZone(new Date(now));
+
+    // Only consider bookings whose bookingDateTime falls within the past 48 hours.
+    // This is a hard date-guard: old/stale/injected fake bookings from previous days
+    // will never be bridged, even if their status is still pending/confirmed.
+    const BRIDGE_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+    const earliestBookingMs = now - BRIDGE_LOOKBACK_MS;
+
     const bookingSnap = await businessRef.collection('bookings')
         .where('status', 'in', ['pending', 'confirmed'])
+        .where('bookingDateTime', '>=', new Date(earliestBookingMs))
         .limit(120)
         .get();
 

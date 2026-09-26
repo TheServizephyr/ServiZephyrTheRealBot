@@ -25,7 +25,7 @@ export async function enforcePublicIntakeRateLimit({
     channel,
     restaurantId,
     phone,
-    restaurantLimit = 30,
+    restaurantLimit = 5,
 }) {
     const safeChannel = String(channel || 'public-intake').replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
     const safeRestaurantId = String(restaurantId || '').trim().slice(0, 160);

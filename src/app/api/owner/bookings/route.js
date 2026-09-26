@@ -204,7 +204,7 @@ export async function POST(req) {
                 channel: 'booking-create',
                 restaurantId,
                 phone: normalizedPhone,
-                restaurantLimit: 30,
+                restaurantLimit: 5,
             });
             if (!rate.allowed) {
                 return NextResponse.json(
