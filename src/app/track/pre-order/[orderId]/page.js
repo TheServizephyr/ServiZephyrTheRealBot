@@ -441,32 +441,30 @@ function PreOrderTrackingContent() {
 
     return (
         <div className={cn("min-h-screen bg-background text-foreground font-sans", coinTheme)}>
-            {/* 📌 Sticky Header Section - Always visible at top */}
-            <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="max-w-2xl mx-auto px-4 py-3">
-                    {/* Multi-Order Banner */}
-                    {allOrders.length > 1 && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="flex justify-center mb-2"
-                        >
-                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-900 px-5 py-2 rounded-full shadow-sm font-semibold text-xs">
-                                🎉 You have {allOrders.length} active orders
-                            </div>
-                        </motion.div>
-                    )}
+            {/* 📌 Top Action Bar - Standalone button, no full-width opaque navbar */}
+            <div className="w-full max-w-2xl mx-auto px-4 pt-4 pb-1 flex items-center justify-between relative z-20">
+                {(order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready') ? (
+                    <Button 
+                        onClick={handleBackToMenu} 
+                        variant="outline" 
+                        size="sm" 
+                        className="rounded-full bg-background/80 hover:bg-muted text-foreground border border-border/80 shadow-xs text-xs font-medium px-3.5 h-8.5 gap-1.5 transition-colors"
+                    >
+                        <ArrowLeft size={15} /> Back to Menu
+                    </Button>
+                ) : <div />}
 
-                    {/* Back to Menu Button */}
-                    {(order?.status === 'pending' || order?.status === 'confirmed' || order?.status === 'Ready') && (
-                        <div className="flex items-center">
-                            <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted" size="sm">
-                                <ArrowLeft className="mr-2" size={16} /> Back to Menu
-                            </Button>
-                        </div>
-                    )}
-                </div>
-            </header>
+                {/* Multi-Order Banner */}
+                {allOrders.length > 1 && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-900 px-3.5 py-1 rounded-full shadow-xs font-semibold text-xs"
+                    >
+                        🎉 {allOrders.length} active orders
+                    </motion.div>
+                )}
+            </div>
 
             {/* 📄 Main Scrollable Content */}
             <main className="max-w-2xl mx-auto px-4 pb-8 space-y-6">
@@ -546,7 +544,7 @@ function PreOrderTrackingContent() {
                             key="coin-view"
                             initial={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.8, opacity: 0 }}
-                            className="flex-grow flex flex-col items-center justify-center"
+                            className="flex-grow flex flex-col items-center justify-center pt-8 pb-4"
                         >
                             <AnimatePresence>
                                 {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
