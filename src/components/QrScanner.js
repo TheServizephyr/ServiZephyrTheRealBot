@@ -50,6 +50,59 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
         }
     }, []);
 
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    const stopScannerRef = useRef(stopScanner);
+    useEffect(() => {
+        stopScannerRef.current = stopScanner;
+    }, [stopScanner]);
+
+    // 📱 Intercept mobile/hardware back button to close scanner instead of leaving page
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const stateId = `qr_scanner_${Date.now()}`;
+        try {
+            window.history.pushState(
+                { ...(window.history.state || {}), __scanner_modal_open: stateId },
+                '',
+                window.location.href
+            );
+        } catch (e) {
+            console.warn('[QrScanner] Could not push history state:', e);
+        }
+
+        let closedByPopstate = false;
+
+        const handlePopState = () => {
+            closedByPopstate = true;
+            if (stopScannerRef.current) {
+                void stopScannerRef.current();
+            }
+            if (onCloseRef.current) {
+                onCloseRef.current();
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            if (!closedByPopstate) {
+                try {
+                    if (window.history.state?.__scanner_modal_open === stateId) {
+                        window.history.back();
+                    }
+                } catch (e) {
+                    console.warn('[QrScanner] Could not pop history state:', e);
+                }
+            }
+        };
+    }, []);
+
     useEffect(() => {
         if (!scannerRef.current) return;
         isActiveRef.current = true;

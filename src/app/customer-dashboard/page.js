@@ -199,6 +199,49 @@ function CustomerHubContent() {
         };
     }, [showScanner, onScanSuccess, onScanFailure]);
 
+    // 📱 Intercept mobile/hardware back button to close scanner modal instead of navigating away
+    useEffect(() => {
+        if (!showScanner || typeof window === 'undefined') return;
+
+        const stateId = `customer_scanner_${Date.now()}`;
+        try {
+            window.history.pushState(
+                { ...(window.history.state || {}), __customer_scanner_open: stateId },
+                '',
+                window.location.href
+            );
+        } catch (e) {
+            console.warn('[CustomerDashboard] Could not push history state:', e);
+        }
+
+        let closedByPopstate = false;
+
+        const handlePopState = () => {
+            closedByPopstate = true;
+            if (scannerRef.current) {
+                try {
+                    void scannerRef.current.clear();
+                } catch {}
+            }
+            setShowScanner(false);
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            if (!closedByPopstate) {
+                try {
+                    if (window.history.state?.__customer_scanner_open === stateId) {
+                        window.history.back();
+                    }
+                } catch (e) {
+                    console.warn('[CustomerDashboard] Could not pop history state:', e);
+                }
+            }
+        };
+    }, [showScanner]);
+
     return (
         <>
             {isNavigating ? (

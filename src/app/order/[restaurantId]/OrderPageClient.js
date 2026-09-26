@@ -799,6 +799,50 @@ const QrScannerModal = ({ isOpen, onClose }) => {
         return () => { active = false; stopCamera(); };
     }, [isOpen]);
 
+    const onCloseRef = useRef(onClose);
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    // 📱 Intercept mobile/hardware back button to close scanner modal instead of navigating away
+    useEffect(() => {
+        if (!isOpen || typeof window === 'undefined') return;
+
+        const stateId = `table_scanner_${Date.now()}`;
+        try {
+            window.history.pushState(
+                { ...(window.history.state || {}), __table_scanner_open: stateId },
+                '',
+                window.location.href
+            );
+        } catch (e) {
+            console.warn('[QrScannerModal] Could not push history state:', e);
+        }
+
+        let closedByPopstate = false;
+
+        const handlePopState = () => {
+            closedByPopstate = true;
+            stopCamera();
+            onCloseRef.current?.();
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+            if (!closedByPopstate) {
+                try {
+                    if (window.history.state?.__table_scanner_open === stateId) {
+                        window.history.back();
+                    }
+                } catch (e) {
+                    console.warn('[QrScannerModal] Could not pop history state:', e);
+                }
+            }
+        };
+    }, [isOpen]);
+
     useEffect(() => {
         if (!scanning) return;
         let lastWarningTime = 0;
