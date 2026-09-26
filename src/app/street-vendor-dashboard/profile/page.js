@@ -655,8 +655,8 @@ function VendorProfilePageContent() {
                     <div className="space-y-4 pt-4 border-t">
                         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                             <Label htmlFor="packagingChargeEnabled" className="flex flex-col">
-                                <span className="font-bold text-lg flex items-center gap-2"><Package size={18} />Packaging Charges</span>
-                                <span className="text-sm text-muted-foreground">Charge for packing takeaway orders</span>
+                                <span className="font-bold text-lg flex items-center gap-2"><Package size={18} />Takeaway & Parcel Option</span>
+                                <span className="text-sm text-muted-foreground">Allow customers to choose parcel/takeaway packaging. If disabled, all orders are served on plate.</span>
                             </Label>
                             <Switch
                                 id="packagingChargeEnabled"
@@ -669,7 +669,7 @@ function VendorProfilePageContent() {
                         {editedUser.packagingChargeEnabled && (
                             <div className="ml-6 p-4 border-l-4 border-primary/50 space-y-4 bg-muted/30 rounded">
                                 <div>
-                                    <Label htmlFor="packagingChargeAmount">Amount (₹)</Label>
+                                    <Label htmlFor="packagingChargeAmount">Packaging Fee (₹)</Label>
                                     <input
                                         id="packagingChargeAmount"
                                         type="number"
@@ -680,7 +680,7 @@ function VendorProfilePageContent() {
                                         placeholder="0"
                                     />
                                     <p className="text-xs text-muted-foreground mt-1">
-                                        This amount will be added to Takeaway orders.
+                                        Customers will choose &quot;Serve on Plate&quot; or &quot;Pack for Takeaway&quot; at checkout. Set ₹0 for free packaging.
                                     </p>
                                 </div>
                             </div>

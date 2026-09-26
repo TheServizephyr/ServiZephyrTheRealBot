@@ -1170,7 +1170,7 @@ export async function GET(req) {
             const topMissed = missedItemsData[0];
             aiInsights.push({
                 type: 'warning',
-                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' cancel hua. Stock check karo!`,
+                message: `You lost approximately ₹${Math.round(missedRevenue)} in potential revenue because '${topMissed.name}' was cancelled or out of stock. Consider restocking!`,
             });
         }
         if (peakHours.length > 0) {
@@ -1178,26 +1178,26 @@ export async function GET(req) {
             const peakTime = peak.hour >= 12 ? `${peak.hour > 12 ? peak.hour - 12 : peak.hour} PM` : `${peak.hour} AM`;
             aiInsights.push({
                 type: 'tip',
-                message: `Aapka sabse busy time ${peakTime} hai (${peak.count} orders). Uss time se pehle ready raho!`,
+                message: `Your busiest peak hour is around ${peakTime} with ${peak.count} orders. Prepare staff and ingredients beforehand!`,
             });
         }
         const aov = totalBusinessOrders > 0 ? totalBusinessRevenue / totalBusinessOrders : 0;
         if (aov > 0 && aov < 100) {
             aiInsights.push({
                 type: 'suggestion',
-                message: `Average order value ₹${Math.round(aov)} hai. Combo offers dalo toh zyada paisa banega!`,
+                message: `Average order value is ₹${Math.round(aov)}. Introducing combo offers or bundles can help boost sales!`,
             });
         }
         if (manualCallOrderCount > onlineOrderCount && manualCallOrderCount > 0) {
             aiInsights.push({
                 type: 'suggestion',
-                message: `Call orders (${manualCallOrderCount}) online orders (${onlineOrderCount}) se zyada hain. WhatsApp CTA push karke conversion aur improve ho sakta hai.`,
+                message: `Phone call orders (${manualCallOrderCount}) exceed digital orders (${onlineOrderCount}). Promoting your QR code & WhatsApp ordering can improve order flow.`,
             });
         }
         if (customerStats.repeatRate > 50) {
             aiInsights.push({
                 type: 'success',
-                message: `Badhiya! ${customerStats.repeatRate}% customers wapas aa rahe hain. Matlab khana accha hai!`,
+                message: `Outstanding! ${customerStats.repeatRate}% repeat customer rate shows high customer loyalty and satisfaction.`,
             });
         }
 

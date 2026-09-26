@@ -512,8 +512,9 @@ export async function createOrderV2(req, options = {}) {
                 ? requestedInitialStatus
                 : 'pending';
 
-        // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
-        const sanitizedDiningPreference = (deliveryType === 'dine-in') ? diningPreference : null;
+        // ✅ SANITIZATION: Allow diningPreference for dine-in and street-vendor orders
+        const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order' || businessType === 'street-vendor';
+        const sanitizedDiningPreference = (deliveryType === 'dine-in' || isStreetVendorOrder) ? diningPreference : null;
 
         // ✅ CRITICAL: Street vendors DON'T support add-ons!
         // Force new order creation by ignoring existingOrderId

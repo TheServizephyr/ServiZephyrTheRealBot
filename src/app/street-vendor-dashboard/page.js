@@ -346,11 +346,6 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                                 <ConciergeBell size={18} /> SERVE ON PLATE
                             </div>
                         )}
-                        {!order.diningPreference && (
-                            <div className="mt-2 flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg bg-gray-500/20 text-gray-600 border-2 border-gray-500 w-fit">
-                                <ClipboardList size={18} /> STANDARD ORDER
-                            </div>
-                        )}
                     </div>
                     <div className="text-right">
                         <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>

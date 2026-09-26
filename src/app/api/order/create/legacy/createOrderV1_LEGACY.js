@@ -315,9 +315,9 @@ export async function processOrderV1(body, firestore) {
             guestToken = null // NEW: Guest Token
         } = body;
 
-        // ✅ SANITIZATION: Only allow diningPreference for dine-in orders
+        // ✅ SANITIZATION: Only allow diningPreference for dine-in and street-vendor orders
         // This prevents data inconsistency (e.g. Delivery order with "dine-in" preference)
-        if (deliveryType !== 'dine-in') {
+        if (deliveryType !== 'dine-in' && deliveryType !== 'street-vendor-pre-order' && body.businessType !== 'street-vendor') {
             diningPreference = null;
         }
 

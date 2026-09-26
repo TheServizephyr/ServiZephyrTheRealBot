@@ -116,7 +116,7 @@ export default function StreetVendorAnalyticsPage() {
                         <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
                             Analytics Dashboard
                         </h1>
-                        <p className="text-muted-foreground mt-1 text-sm md:text-base">Aapka business ka poora hisaab</p>
+                        <p className="text-muted-foreground mt-1 text-sm md:text-base">Complete business financial and sales overview</p>
                     </div>
                     <div className="flex items-center gap-2">
                         <Select value={dateFilter} onValueChange={setDateFilter}>
@@ -145,9 +145,9 @@ export default function StreetVendorAnalyticsPage() {
                     <Card className="border-2 border-primary/20 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 shadow-xl">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-2xl">
-                                💰 Galla Status
+                                💰 Revenue & Cash Drawer
                             </CardTitle>
-                            <CardDescription className="text-base">Aaj ka poora hisaab</CardDescription>
+                            <CardDescription className="text-base">Complete overview for selected period</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
                             {/* Revenue Hero */}
@@ -189,8 +189,8 @@ export default function StreetVendorAnalyticsPage() {
                                     <p className="text-3xl font-bold text-center text-purple-600">₹{salesData.kpis.avgOrderValue.toFixed(0)}</p>
                                     <p className="text-xs text-center text-muted-foreground mt-2">
                                         {salesData.kpis.avgOrderValue < 100 ?
-                                            "💡 Combo offers se AOV badha sakte ho!" :
-                                            "🎉 Badhiya! Customers accha khareed rahe hain"}
+                                            "💡 Introduce combo offers to increase average order value!" :
+                                            "🎉 Great! Customers are placing high-value orders."}
                                     </p>
                                 </div>
                             </div>
@@ -208,7 +208,7 @@ export default function StreetVendorAnalyticsPage() {
                                     <Award className="h-5 w-5 text-yellow-600" />
                                     🔥 Star Items
                                 </CardTitle>
-                                <CardDescription>Aag laga rahe hain!</CardDescription>
+                                <CardDescription>Top selling favorite items</CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
                                 {topPerformers.length === 0 ? (
@@ -240,9 +240,9 @@ export default function StreetVendorAnalyticsPage() {
                                 <CardHeader className="bg-gradient-to-r from-orange-500/10 to-red-500/10">
                                     <CardTitle className="flex items-center gap-2">
                                         <XCircle className="h-5 w-5 text-orange-600" />
-                                        🐢 Dead Stock
+                                        🐢 Slow Moving Items
                                     </CardTitle>
-                                    <CardDescription>Nahi bik raha</CardDescription>
+                                    <CardDescription>Low sales volume</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-6">
                                     <div className="space-y-2">
@@ -275,7 +275,7 @@ export default function StreetVendorAnalyticsPage() {
                                     <AlertTriangle className="h-5 w-5 text-red-600" />
                                     ❌ Lost Revenue
                                 </CardTitle>
-                                <CardDescription>Out of stock ka nuksan</CardDescription>
+                                <CardDescription>Lost revenue due to out of stock</CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
                                 {salesData.kpis.missedRevenue > 0 ? (
@@ -300,7 +300,7 @@ export default function StreetVendorAnalyticsPage() {
                                     <div className="text-center py-8">
                                         <p className="text-4xl font-bold text-green-600 mb-2">0</p>
                                         <p className="text-sm font-semibold text-green-700">Orders Rejected</p>
-                                        <p className="text-xs text-muted-foreground mt-2">Badhiya! Aapne koi customer khali haath nahi jane diya.</p>
+                                        <p className="text-xs text-muted-foreground mt-2">Outstanding! Zero rejected orders in this period.</p>
                                     </div>
                                 )}
                             </CardContent>
@@ -316,7 +316,7 @@ export default function StreetVendorAnalyticsPage() {
                                 <Clock className="h-6 w-6 text-blue-600" />
                                 ⏰ Rush Hour Heatmap
                             </CardTitle>
-                            <CardDescription>Kis time sabse zyada orders aate hain</CardDescription>
+                            <CardDescription>Busiest hours with highest order volume</CardDescription>
                         </CardHeader>
                         <CardContent className="pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -360,8 +360,8 @@ export default function StreetVendorAnalyticsPage() {
                                         {salesData.kpis.avgPrepTime > 0 ? `${salesData.kpis.avgPrepTime} min` : "--"}
                                     </p>
                                     <p className="text-xs text-center text-muted-foreground mt-2">
-                                        {salesData.kpis.avgPrepTime > 15 ? "⚠️ Thoda slow hai, speed badhao" :
-                                            salesData.kpis.avgPrepTime > 0 ? "✅ Badhiya speed hai!" : "Calculating..."}
+                                        {salesData.kpis.avgPrepTime > 15 ? "⚠️ Average prep time is slightly high" :
+                                            salesData.kpis.avgPrepTime > 0 ? "✅ Great prep speed!" : "Calculating..."}
                                     </p>
                                 </div>
                             </div>
@@ -377,7 +377,7 @@ export default function StreetVendorAnalyticsPage() {
                                 <Users className="h-6 w-6 text-green-600" />
                                 👥 Customer Loyalty
                             </CardTitle>
-                            <CardDescription>Kitne log wapas aa rahe hain</CardDescription>
+                            <CardDescription>Customer retention and repeat visits</CardDescription>
                         </CardHeader>
                         <CardContent className="pt-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -398,7 +398,7 @@ export default function StreetVendorAnalyticsPage() {
                                     <div className="text-center p-3 bg-white/50 dark:bg-black/20 rounded">
                                         <p className="text-sm">
                                             {customerStats.repeatRate > 50 ?
-                                                `💚 ${customerStats.repeatRate}% customers wapas aa rahe hain!` :
+                                                `💚 ${customerStats.repeatRate}% repeat customer rate!` :
                                                 `${customerStats.repeatRate}% repeat rate`
                                             }
                                         </p>
@@ -451,7 +451,7 @@ export default function StreetVendorAnalyticsPage() {
                                     <Bot className="h-6 w-6 text-purple-600" />
                                     🤖 ServiZephyr AI Coach
                                 </CardTitle>
-                                <CardDescription>Aapke liye khaas tips aur insights</CardDescription>
+                                <CardDescription>Personalized tips and performance insights</CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
                                 <div className="space-y-3">
@@ -481,7 +481,7 @@ export default function StreetVendorAnalyticsPage() {
                                                         size="sm"
                                                         variant="secondary"
                                                         className="mt-2 h-7 text-xs bg-white/80 hover:bg-white"
-                                                        onClick={() => router.push('/owner-dashboard/menu')}
+                                                        onClick={() => router.push('/street-vendor-dashboard/menu')}
                                                     >
                                                         Create Combo
                                                     </Button>
@@ -491,7 +491,7 @@ export default function StreetVendorAnalyticsPage() {
                                                         size="sm"
                                                         variant="secondary"
                                                         className="mt-2 h-7 text-xs bg-white/80 hover:bg-white"
-                                                        onClick={() => router.push('/owner-dashboard/inventory')}
+                                                        onClick={() => router.push('/street-vendor-dashboard/menu')}
                                                     >
                                                         Update Stock
                                                     </Button>

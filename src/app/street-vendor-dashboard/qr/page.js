@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Download, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import QRCode from 'qrcode.react';
@@ -87,7 +87,20 @@ export default function StreetVendorQrPage() {
         fetchVendorData();
     }, [user, isUserLoading, effectiveOwnerId]);
 
-    const qrValue = vendorId ? `${window.location.origin}/order/${vendorId}` : '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const qrValue = vendorId ? `${origin || 'https://servizephyr.com'}/order/${vendorId}` : '';
+    const [copied, setCopied] = useState(false);
+
+    const handleCopyLink = useCallback(async () => {
+        if (!qrValue) return;
+        try {
+            await navigator.clipboard.writeText(qrValue);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy', err);
+        }
+    }, [qrValue]);
 
     return (
         <>
@@ -167,9 +180,20 @@ export default function StreetVendorQrPage() {
                                 Print this QR code and display it at your stall. Customers can scan it to see your menu and place pre-paid orders.
                             </p>
 
-                            <div className="mt-8 grid grid-cols-1 gap-4 w-full max-w-lg">
-                                <Button onClick={handleDownload} variant="outline" className="text-lg h-14 px-8 border-2 border-border text-foreground hover:bg-muted">
-                                    <Download className="mr-2" /> Download PNG
+                            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
+                                <Button onClick={handleDownload} variant="outline" className="text-base h-14 px-6 border-2 border-border text-foreground hover:bg-muted font-bold">
+                                    <Download className="mr-2 h-5 w-5" /> Download PNG
+                                </Button>
+                                <Button onClick={handleCopyLink} variant="default" className="text-base h-14 px-6 font-bold">
+                                    {copied ? (
+                                        <>
+                                            <Check className="mr-2 h-5 w-5 text-green-300" /> Copied Link!
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Copy className="mr-2 h-5 w-5" /> Copy Order Link
+                                        </>
+                                    )}
                                 </Button>
                             </div>
                         </>

@@ -264,6 +264,10 @@ const CheckoutPageInternal = () => {
 
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
+    const deliveryType = useMemo(() => {
+        if (tableId) return 'dine-in';
+        return cartData?.deliveryType || 'delivery';
+    }, [tableId, cartData]);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [carOrderDetails, setCarOrderDetails] = useState(null);
     const [carTokenPreview, setCarTokenPreview] = useState('');
@@ -283,6 +287,7 @@ const CheckoutPageInternal = () => {
     const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false); // NEW: Bottom drawer
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
 
+    const [diningPreference, setDiningPreference] = useState('dine-in');
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState('full'); // 'full' or 'split'
     const [paymentGateway, setPaymentGateway] = useState('razorpay'); // 'razorpay', 'phonepe'
@@ -727,6 +732,9 @@ const CheckoutPageInternal = () => {
                 }
             }
             const isAnonymousPreOrder = deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
+            if (deliveryType === 'street-vendor-pre-order' || savedCart?.businessType === 'street-vendor') {
+                setIsBillSummaryExpanded(true);
+            }
 
             console.log(`[Checkout Page] Checks: isDineIn=${isDineIn}, WS=${isWhatsAppSession}, Ref=${!!ref}`);
 
@@ -1075,8 +1083,14 @@ const CheckoutPageInternal = () => {
 
         if (enabledMethods.length === 1 && selectedPaymentMethod !== enabledMethods[0]) {
             setSelectedPaymentMethod(enabledMethods[0]);
+            return;
         }
-    }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod]);
+
+        const isStreetVendor = deliveryType === 'street-vendor-pre-order' || cartData?.businessType === 'street-vendor';
+        if (isStreetVendor && codEnabled && !selectedPaymentMethod) {
+            setSelectedPaymentMethod('counter');
+        }
+    }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled, selectedPaymentMethod, deliveryType, cartData?.businessType]);
 
     // Ã°Å¸Å½Â¯ NEW: Load saved address from localStorage and pre-select it
     useEffect(() => {
@@ -1142,11 +1156,6 @@ const CheckoutPageInternal = () => {
     }, [deliveryType, selectedAddress, orderPhone]);
     */
 
-    const deliveryType = useMemo(() => {
-        if (tableId) return 'dine-in';
-        return cartData?.deliveryType || 'delivery';
-    }, [tableId, cartData]);
-
     const enabledPaymentMethods = useMemo(() => {
         if (!paymentOptionsLoaded) return [];
         return [
@@ -1155,7 +1164,12 @@ const CheckoutPageInternal = () => {
         ].filter(Boolean);
     }, [paymentOptionsLoaded, codEnabled, onlinePaymentEnabled]);
 
-    const effectiveSelectedPaymentMethod = selectedPaymentMethod || (enabledPaymentMethods.length === 1 ? enabledPaymentMethods[0] : null);
+    const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order' || cartData?.businessType === 'street-vendor';
+    const effectiveSelectedPaymentMethod = selectedPaymentMethod || (
+        enabledPaymentMethods.length === 1
+            ? enabledPaymentMethods[0]
+            : (isStreetVendorOrder && enabledPaymentMethods.includes('counter') ? 'counter' : null)
+    );
 
     const isMultiPaymentSelectionPending = paymentOptionsLoaded && enabledPaymentMethods.length > 1 && !effectiveSelectedPaymentMethod;
 
@@ -1218,7 +1232,9 @@ const CheckoutPageInternal = () => {
         }
     }, [deliveryType, selectedAddress, cartData, currentSubtotal]);
 
-    const diningPreference = cartData?.diningPreference || 'dine-in';
+    const effectiveDiningPreference = isStreetVendorOrder
+        ? (vendorCharges?.packagingChargeEnabled ? (diningPreference || 'dine-in') : null)
+        : (diningPreference || cartData?.diningPreference || 'dine-in');
 
     // Ã¢Å“â€¦ TRIGGER VALIDATION: When Address or Subtotal changes
     useEffect(() => {
@@ -1388,7 +1404,7 @@ const CheckoutPageInternal = () => {
                 }
             }
         }
-        const internalPackagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
+        const internalPackagingCharge = (effectiveDiningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
         const normalizedServiceFeeApplyOn = vendorCharges?.serviceFeeApplyOn || 'all';
         const effectiveServiceFeeContext = deliveryType === 'street-vendor-pre-order' ? 'pickup' : deliveryType;
         const shouldApplyServiceFee = Boolean(vendorCharges?.serviceFeeEnabled) && (
@@ -1431,7 +1447,7 @@ const CheckoutPageInternal = () => {
             isEstimated: !!shadowDeliveryResult && !deliveryValidation,
             isDeliveryOutOfRange: isDeliveryOutOfRange
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery, currentSubtotal]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, effectiveDiningPreference, selectedAddress, selectedTipAmount, customTipAmount, showCustomTipInput, deliveryValidation, shadowDeliveryResult, isValidatingDelivery, currentSubtotal]);
 
     const maxSavings = useMemo(() => {
         if (!cartData?.availableCoupons?.length) return 0;
@@ -1788,7 +1804,7 @@ const CheckoutPageInternal = () => {
             guestToken: token || null, // Pass the token (can be used to validate ref)
 
             existingOrderId: activeOrderId || undefined,
-            diningPreference: diningPreference,
+            diningPreference: effectiveDiningPreference,
             packagingCharge: packagingCharge,
             serviceFee: serviceFee,
             serviceFeeLabel: vendorCharges?.serviceFeeLabel || 'Additional Charge',
@@ -2364,9 +2380,7 @@ const CheckoutPageInternal = () => {
         isValidatingDelivery ||
         hasOutOfRangeAddress ||
         !paymentOptionsLoaded ||
-        enabledPaymentMethods.length === 0 ||
-        isAddressStepPending ||
-        isPaymentStepPending;
+        enabledPaymentMethods.length === 0;
 
     // Debug CTA Disable Reason
     useEffect(() => {
@@ -2522,24 +2536,17 @@ const CheckoutPageInternal = () => {
                                 <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
                             </div>
                         </div>
-                    ) : (
+                    ) : deliveryType !== 'street-vendor-pre-order' ? (
                         <div>
                             <Label htmlFor="name" className="flex items-center gap-2"><User size={16} /> Your Name *</Label>
                             <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} required />
                         </div>
-                    )}
-                    {(deliveryType === 'street-vendor-pre-order') ? (
+                    ) : null}
+                    {(deliveryType !== 'street-vendor-pre-order' && deliveryType !== 'delivery') && (
                         <div>
-                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16} /> Phone Number (Optional)</Label>
-                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} placeholder="For order updates via WhatsApp" />
+                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16} /> Phone Number</Label>
+                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
                         </div>
-                    ) : (
-                        deliveryType !== 'delivery' && (
-                            <div>
-                                <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16} /> Phone Number</Label>
-                                <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
-                            </div>
-                        )
                     )}
                 </div>
                 <Button onClick={handleConfirmDetails} className="w-full mt-4 bg-primary text-primary-foreground">
@@ -2752,36 +2759,38 @@ const CheckoutPageInternal = () => {
                             </div>
                         )}
 
-                        {/* STREET VENDOR CUSTOMER DETAILS (OPTIONAL) */}
-                        {deliveryType === 'street-vendor-pre-order' && (
-                            <div className="bg-card p-4 rounded-lg border border-border mb-3 shadow-sm">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <User className="h-4 w-4 text-primary" />
-                                    <h3 className="font-bold text-sm uppercase text-muted-foreground">Customer Details (Optional)</h3>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                                    <div>
-                                        <Label htmlFor="street-vendor-name" className="text-xs text-muted-foreground">Your Name</Label>
-                                        <Input
-                                            id="street-vendor-name"
-                                            value={orderName}
-                                            onChange={(e) => setOrderName(e.target.value)}
-                                            placeholder="e.g. Rahul (optional)"
-                                            className="mt-1 h-9 text-sm"
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label htmlFor="street-vendor-phone" className="text-xs text-muted-foreground">Phone Number</Label>
-                                        <Input
-                                            id="street-vendor-phone"
-                                            type="tel"
-                                            value={orderPhone}
-                                            onChange={(e) => setOrderPhone(e.target.value)}
-                                            placeholder="For WhatsApp updates (optional)"
-                                            className="mt-1 h-9 text-sm"
-                                            disabled={!!phoneFromUrl}
-                                        />
-                                    </div>
+                        {/* STREET VENDOR DINING PREFERENCE (PLATE VS TAKEAWAY) */}
+                        {isStreetVendorOrder && vendorCharges?.packagingChargeEnabled && (
+                            <div className="bg-card p-3 rounded-xl border border-border mb-3 shadow-sm">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Dining Option</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDiningPreference('dine-in')}
+                                        className={cn(
+                                            "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all",
+                                            effectiveDiningPreference === 'dine-in'
+                                                ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                                : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                                        )}
+                                    >
+                                        <span>🍽️</span> Serve on Plate
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDiningPreference('takeaway')}
+                                        className={cn(
+                                            "flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-xs font-bold transition-all",
+                                            effectiveDiningPreference === 'takeaway'
+                                                ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                                : "border-border bg-muted/20 text-muted-foreground hover:bg-muted/40"
+                                        )}
+                                    >
+                                        <span>📦</span> Pack for Takeaway
+                                        {Number(vendorCharges?.packagingChargeAmount) > 0 && (
+                                            <span className="text-[10px] font-normal opacity-80">(+₹{vendorCharges.packagingChargeAmount})</span>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -3017,10 +3026,10 @@ const CheckoutPageInternal = () => {
                                 </div>
                             </div>
 
-                            {/* Collapsed View - Show only "You Pay" */}
+                            {/* Collapsed View - Show Grand Total */}
                             {!isBillSummaryExpanded && (
                                 <div className="flex justify-between text-xl font-bold mt-3">
-                                    <span>You Pay</span>
+                                    <span className="font-bold text-foreground">Grand Total</span>
                                     <span className="text-primary">{formatCurrency(Math.round(grandTotal), 0)}</span>
                                 </div>
                             )}
@@ -3130,7 +3139,7 @@ const CheckoutPageInternal = () => {
                                     )}
                                     <div className="border-t border-border pt-2 mt-2" />
                                     <div className="flex justify-between text-xl font-bold">
-                                        <span>You Pay</span>
+                                        <span className="font-bold text-foreground">Grand Total</span>
                                         <div className="flex flex-col items-end">
                                             <span className="text-primary leading-none">{formatCurrency(Math.round(grandTotal), 0)}</span>
                                             <span className="text-[10px] text-muted-foreground font-normal mt-1">
@@ -3189,7 +3198,7 @@ const CheckoutPageInternal = () => {
                                     </div>
                                     <div className="leading-tight">
                                         <p className={`text-sm font-bold line-clamp-1 ${effectiveSelectedPaymentMethod ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                            {!paymentOptionsLoaded ? 'Loading...' : (effectiveSelectedPaymentMethod === 'counter' ? 'COD' : effectiveSelectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode')}
+                                            {!paymentOptionsLoaded ? 'Loading...' : (effectiveSelectedPaymentMethod === 'counter' ? (deliveryType === 'street-vendor-pre-order' || deliveryType === 'pickup' || deliveryType === 'dine-in' || cartData?.businessType === 'street-vendor' ? 'Pay at Counter' : 'COD') : effectiveSelectedPaymentMethod === 'online' ? 'UPI' : 'Select Mode')}
                                         </p>
                                     </div>
                                 </div>
@@ -3221,7 +3230,8 @@ const CheckoutPageInternal = () => {
                             }}
                             disabled={isCtaDisabled}
                             className={cn(
-                                "h-12 px-4 rounded-xl font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md flex-none w-[55%] sm:w-[45%]",
+                                "h-12 px-4 rounded-xl font-bold text-sm transition-all shadow-md flex-none w-[55%] sm:w-[45%]",
+                                isCtaDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer active:scale-95",
                                 isOrderReadyToPlace
                                     ? "bg-primary text-white hover:bg-primary/90 shadow-primary/25"
                                     : "bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/25"
@@ -3234,7 +3244,7 @@ const CheckoutPageInternal = () => {
                             ) : (
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex flex-col items-start pr-3 border-r border-white/20 mr-3 min-w-[3rem]">
-                                        <span className="text-[9px] font-medium opacity-80 uppercase tracking-wide leading-none mb-0.5">TOTAL</span>
+                                        <span className="text-[9px] font-medium opacity-80 uppercase tracking-wide leading-none mb-0.5">GRAND TOTAL</span>
                                         <span className="text-base font-extrabold leading-none">{formatCurrency(grandTotal, 0)}</span>
                                     </div>
                                     <div className="flex items-center gap-1 flex-1 justify-center whitespace-nowrap">
@@ -3284,8 +3294,12 @@ const CheckoutPageInternal = () => {
                                             <HandCoins className="h-6 w-6" />
                                         </div>
                                         <div className="flex-1">
-                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'counter' ? 'text-primary' : 'text-foreground'}`}>Cash on Delivery (COD)</p>
-                                            <p className="text-sm text-muted-foreground">Cash or UPI at your doorstep</p>
+                                            <p className={`font-bold text-base ${selectedPaymentMethod === 'counter' ? 'text-primary' : 'text-foreground'}`}>
+                                                {deliveryType === 'street-vendor-pre-order' || deliveryType === 'pickup' || deliveryType === 'dine-in' || cartData?.businessType === 'street-vendor' ? 'Pay at Counter' : 'Cash on Delivery (COD)'}
+                                            </p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {deliveryType === 'street-vendor-pre-order' || deliveryType === 'pickup' || deliveryType === 'dine-in' || cartData?.businessType === 'street-vendor' ? 'Cash or UPI directly at the counter' : 'Cash or UPI at your doorstep'}
+                                            </p>
                                         </div>
                                         {selectedPaymentMethod === 'counter' && (
                                             <div className="bg-primary text-white p-1 rounded-full">
