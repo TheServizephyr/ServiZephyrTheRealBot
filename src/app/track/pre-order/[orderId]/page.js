@@ -80,14 +80,24 @@ const normalizeApiOrder = (payload) => {
     return {
         ...apiOrder,
         id: apiOrder.id || null,
+        customerOrderId: apiOrder.customerOrderId || null,
         restaurantId: apiOrder.restaurantId || apiRestaurant.id || null,
         restaurantName: apiRestaurant.name || apiOrder.restaurantName || 'ServiZephyr',
         businessType: apiRestaurant.businessType || apiOrder.businessType || 'street-vendor',
-        packagingCharge: apiOrder.packagingCharge || 0,
-        convenienceFee: apiOrder.convenienceFee || 0,
-        tipAmount: apiOrder.tipAmount || 0,
-        discount: apiOrder.discount || 0,
-        grandTotal: apiOrder.grandTotal || apiOrder.totalAmount || 0,
+        packagingCharge: Number(apiOrder.packagingCharge || 0),
+        convenienceFee: Number(apiOrder.convenienceFee || 0),
+        platformFee: Number(apiOrder.platformFee || 0),
+        serviceFee: Number(apiOrder.serviceFee || 0),
+        serviceFeeLabel: apiOrder.serviceFeeLabel || null,
+        tipAmount: Number(apiOrder.tipAmount || 0),
+        discount: Number(apiOrder.discount || 0),
+        subtotal: Number(apiOrder.subtotal || 0),
+        cgst: Number(apiOrder.cgst || 0),
+        sgst: Number(apiOrder.sgst || 0),
+        deliveryCharge: Number(apiOrder.deliveryCharge || 0),
+        grandTotal: Number(apiOrder.grandTotal || apiOrder.totalAmount || 0),
+        diningPreference: apiOrder.diningPreference || null,
+        coupon: apiOrder.coupon || null,
         items: Array.isArray(apiOrder.items) ? apiOrder.items : [],
         orderDate: apiOrder.createdAt || apiOrder.orderDate || null,
     };
@@ -384,6 +394,29 @@ function PreOrderTrackingContent() {
         }
     }, [coinTheme]);
 
+    const calculatedSubtotal = useMemo(() => {
+        if (Number(order?.subtotal) > 0) return Number(order.subtotal);
+        return (order?.items || []).reduce((sum, item) => {
+            const unit = Number(item.totalPrice ?? item.price ?? 0);
+            const qty = Number(item.quantity) || 1;
+            return sum + (unit * qty);
+        }, 0);
+    }, [order?.subtotal, order?.items]);
+
+    const calculatedGrandTotal = useMemo(() => {
+        if (Number(order?.grandTotal || order?.totalAmount) > 0) {
+            return Number(order.grandTotal || order.totalAmount);
+        }
+        return Math.max(0, calculatedSubtotal - (order?.discount || 0)) +
+            (order?.packagingCharge || 0) +
+            (order?.deliveryCharge || 0) +
+            (order?.cgst || 0) +
+            (order?.sgst || 0) +
+            (order?.convenienceFee || 0) +
+            (order?.platformFee || 0) +
+            (order?.serviceFee || 0) +
+            (order?.tipAmount || 0);
+    }, [order, calculatedSubtotal]);
 
     if (loading) {
         return <div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
@@ -404,7 +437,7 @@ function PreOrderTrackingContent() {
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
     const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : (order.orderDate ? new Date(order.orderDate) : new Date());
-    const formattedDate = format(orderDate, 'dd MMM, p');
+    const formattedDate = `${format(orderDate, 'dd')} ${format(orderDate, 'MMM').toUpperCase()}, ${format(orderDate, 'p').toUpperCase()}`;
 
     return (
         <div className={cn("min-h-screen bg-background text-foreground font-sans", coinTheme)}>
@@ -563,26 +596,6 @@ function PreOrderTrackingContent() {
                     )}
                 </AnimatePresence>
 
-                {/* 📋 Single Order ID Display - ONLY for single order pages */}
-                {allOrders.length === 1 && !(showFullScreenCelebration || showFullScreenCancellation) && order?.customerOrderId && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="w-full flex justify-center px-4 pb-4"
-                    >
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl px-6 py-3 shadow-sm">
-                            <div className="text-center">
-                                <div className="text-[10px] text-blue-600 font-semibold uppercase tracking-wider mb-0.5">
-                                    Your Order ID
-                                </div>
-                                <div className="font-mono text-lg font-black text-blue-900 tracking-wide">
-                                    {order.customerOrderId}
-                                </div>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-
                 {/* 🎨 Multi-Order Tabs - Calm & Professional */}
                 {allOrders.length > 1 && !(showFullScreenCelebration || showFullScreenCancellation) && (
                     <motion.div
@@ -732,6 +745,11 @@ function PreOrderTrackingContent() {
                             )}
 
                             <div className="space-y-2">
+                                {(order.customerOrderId || order.id || currentOrderId) && (
+                                    <p className="text-xs text-muted-foreground font-mono">
+                                        <strong className="text-foreground font-sans">Order ID:</strong> #{order.customerOrderId || order.id || currentOrderId}
+                                    </p>
+                                )}
                                 <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
                                 {order.diningPreference && (
                                     <p className="text-sm">
@@ -749,15 +767,18 @@ function PreOrderTrackingContent() {
                                 {order.items.map((item, index) => {
                                     // Handle Addons (support both property names)
                                     const addons = item.addons || item.selectedAddOns || [];
+                                    const quantity = Number(item.quantity) || 1;
+                                    const unitPrice = Number(item.totalPrice ?? item.price ?? 0);
+                                    const itemTotal = unitPrice * quantity;
 
                                     return (
                                         <div key={index} className="flex flex-col gap-1 text-sm text-muted-foreground border-b border-border/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
                                             <div className="flex justify-between items-start">
                                                 <span className="font-medium text-foreground">
-                                                    {item.quantity} x {item.name}
+                                                    {quantity} x {item.name}
                                                     {item.portion?.name ? ` (${item.portion.name})` : (item.variant ? ` (${item.variant})` : '')}
                                                 </span>
-                                                <span className="font-semibold text-foreground">{formatCurrency(item.totalPrice)}</span>
+                                                <span className="font-semibold text-foreground">{formatCurrency(itemTotal)}</span>
                                             </div>
 
                                             {/* Add-ons Display */}
@@ -778,6 +799,18 @@ function PreOrderTrackingContent() {
                                 <div className="border-t border-dashed my-2"></div>
 
                                 <div className="space-y-1 text-sm">
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Item Subtotal</span>
+                                        <span>{formatCurrency(calculatedSubtotal)}</span>
+                                    </div>
+
+                                    {(order.discount > 0) && (
+                                        <div className="flex justify-between text-green-600 font-medium">
+                                            <span>Coupon Discount {order.coupon?.code ? `(${order.coupon.code})` : ''}</span>
+                                            <span>- {formatCurrency(order.discount)}</span>
+                                        </div>
+                                    )}
+
                                     {(order.packagingCharge > 0) && (
                                         <div className="flex justify-between text-muted-foreground">
                                             <span>Packaging Charge</span>
@@ -799,10 +832,10 @@ function PreOrderTrackingContent() {
                                         </div>
                                     )}
 
-                                    {(order.convenienceFee > 0) && (
+                                    {((order.convenienceFee > 0) || (order.platformFee > 0)) && (
                                         <div className="flex justify-between text-muted-foreground">
                                             <span>Platform Fee</span>
-                                            <span>{formatCurrency(order.convenienceFee)}</span>
+                                            <span>{formatCurrency((order.convenienceFee || 0) + (order.platformFee || 0))}</span>
                                         </div>
                                     )}
 
@@ -819,18 +852,11 @@ function PreOrderTrackingContent() {
                                             <span>{formatCurrency(order.tipAmount)}</span>
                                         </div>
                                     )}
-
-                                    {(order.discount > 0) && (
-                                        <div className="flex justify-between text-green-600">
-                                            <span>Discount</span>
-                                            <span>- {formatCurrency(order.discount)}</span>
-                                        </div>
-                                    )}
                                 </div>
 
                                 <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
                                     <span>Grand Total</span>
-                                    <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
+                                    <span>{formatCurrency(order.grandTotal || order.totalAmount || calculatedGrandTotal)}</span>
                                 </div>
                             </div>
                         </motion.div>
