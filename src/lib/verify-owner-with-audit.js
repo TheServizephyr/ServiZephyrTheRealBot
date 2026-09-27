@@ -414,11 +414,16 @@ export async function verifyOwnerFeatureAccess(req, featureId, action, metadata 
 }
 
 function inferFeatureIdFromAction(action, req) {
+    if (action === 'view_dashboard_badges') {
+        return null;
+    }
+
     if (ACTION_FEATURE_MAP[action]) {
         return ACTION_FEATURE_MAP[action];
     }
 
     const pathname = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`).pathname;
+    if (pathname.includes('/api/owner/dashboard-badges')) return null;
     if (pathname.includes('/api/owner/inventory/')) return 'inventory';
     if (pathname.includes('/api/owner/inventory')) return 'inventory';
     if (pathname.includes('/api/owner/waitlist')) return 'bookings';

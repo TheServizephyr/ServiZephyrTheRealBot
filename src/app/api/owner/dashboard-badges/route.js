@@ -19,7 +19,7 @@ function normalizeBusinessType(value) {
 export async function GET(req) {
   try {
     const firestore = await getFirestore();
-    const context = await verifyOwnerWithAudit(req, 'view_dashboard_data', {}, false, null);
+    const context = await verifyOwnerWithAudit(req, 'view_dashboard_badges', {}, false, null);
     const businessRef = context?.businessSnap?.ref;
 
     if (!businessRef) {
@@ -32,19 +32,34 @@ export async function GET(req) {
     const isRestaurantBusiness = businessType === 'restaurant';
     const cacheKey = `owner:dashboard-badges:${businessRef.path}`;
 
+    const lockedFeatures = Array.isArray(businessData?.lockedFeatures)
+      ? businessData.lockedFeatures
+      : Array.isArray(context?.businessData?.lockedFeatures)
+        ? context.businessData.lockedFeatures
+        : [];
+
+    const isLiveOrdersLocked = lockedFeatures.includes('live-orders');
+    const isWhatsappLocked = lockedFeatures.includes('whatsapp-direct');
+    const isBookingsLocked = lockedFeatures.includes('bookings');
+    const isDineInLocked = lockedFeatures.includes('dine-in');
+
     const payload = await getOrSetEphemeralCache(cacheKey, BADGE_CACHE_TTL_MS, async () => {
-      const pendingOrdersPromise = firestore
-        .collection('orders')
-        .where('restaurantId', '==', businessId)
-        .where('status', '==', 'pending')
-        .get();
+      const pendingOrdersPromise = isLiveOrdersLocked
+        ? Promise.resolve({ size: 0 })
+        : firestore
+            .collection('orders')
+            .where('restaurantId', '==', businessId)
+            .where('status', '==', 'pending')
+            .get();
 
-      const unreadConversationsPromise = businessRef
-        .collection('conversations')
-        .where('unreadCount', '>', 0)
-        .get();
+      const unreadConversationsPromise = isWhatsappLocked
+        ? Promise.resolve({ docs: [] })
+        : businessRef
+            .collection('conversations')
+            .where('unreadCount', '>', 0)
+            .get();
 
-      const dineInPendingPromise = isRestaurantBusiness
+      const dineInPendingPromise = (isRestaurantBusiness && !isDineInLocked)
         ? firestore
             .collection('orders')
             .where('restaurantId', '==', businessId)
@@ -53,14 +68,14 @@ export async function GET(req) {
             .get()
         : Promise.resolve(null);
 
-      const waitlistPromise = isRestaurantBusiness
+      const waitlistPromise = (isRestaurantBusiness && !isBookingsLocked)
         ? businessRef
             .collection('waitlist')
             .where('status', 'in', ['pending', 'notified'])
             .get()
         : Promise.resolve(null);
 
-      const serviceRequestsPromise = isRestaurantBusiness
+      const serviceRequestsPromise = (isRestaurantBusiness && !isDineInLocked)
         ? businessRef
             .collection('serviceRequests')
             .where('status', '==', 'pending')
@@ -81,15 +96,17 @@ export async function GET(req) {
         serviceRequestsPromise,
       ]);
 
-      const whatsappUnreadCount = unreadConversationsSnap.docs.reduce((acc, doc) => {
-        const data = doc.data() || {};
-        if (data.state !== 'direct_chat') return acc;
-        return acc + Math.max(0, Number(data.unreadCount || 0));
-      }, 0);
+      const whatsappUnreadCount = Array.isArray(unreadConversationsSnap?.docs)
+        ? unreadConversationsSnap.docs.reduce((acc, doc) => {
+            const data = doc.data() || {};
+            if (data.state !== 'direct_chat') return acc;
+            return acc + Math.max(0, Number(data.unreadCount || 0));
+          }, 0)
+        : 0;
 
       return {
         businessType,
-        pendingOrdersCount: pendingOrdersSnap.size,
+        pendingOrdersCount: pendingOrdersSnap?.size || 0,
         whatsappUnreadCount,
         waitlistEntriesCount: waitlistSnap?.size || 0,
         dineInPendingOrdersCount: dineInPendingSnap?.size || 0,
