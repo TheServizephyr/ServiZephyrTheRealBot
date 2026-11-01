@@ -442,6 +442,7 @@ export async function enforceRateLimit(_firestore, {
   windowSec = 60,
   req = null,
   auditContext = 'public_api_limits',
+  requireSharedStorage = false,
 } = {}) {
   const safeKey = String(key || '').trim();
   if (!safeKey) return { allowed: true };
@@ -456,6 +457,9 @@ export async function enforceRateLimit(_firestore, {
   }
 
   if (!result) {
+    if (requireSharedStorage) {
+      return { allowed: false, status: 503, retryAfterSec: Math.max(1, Number(windowSec) || 60), source: 'unavailable' };
+    }
     result = consumeInMemoryRateLimit(`${bucket}:${safeKey}`, limit, windowSec);
   }
 

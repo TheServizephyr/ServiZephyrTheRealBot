@@ -128,6 +128,14 @@ export async function POST(req) {
         }
         const normalizedPhone = normalizedPhonePayload.storedPhone;
 
+        const rate = await enforcePublicIntakeRateLimit({ firestore, req, channel: 'waitlist-join', restaurantId, phone: normalizedPhone, restaurantLimit: 80 });
+        if (!rate.allowed) {
+            return NextResponse.json(
+                { message: rate.status === 503 ? 'Waitlist requests are temporarily unavailable. Please try again shortly.' : 'Too many waitlist requests. Please try again later.' },
+                { status: rate.status || 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+            );
+        }
+
         // Validate restaurant exists
         const restaurantSnap = await firestore.collection('restaurants').doc(restaurantId).get();
         if (!restaurantSnap.exists) {
@@ -144,21 +152,6 @@ export async function POST(req) {
         }
         if (!restaurantData.isWaitlistEnabled) {
             return NextResponse.json({ message: 'Waitlist is currently disabled for this restaurant.' }, { status: 403 });
-        }
-
-        const rate = await enforcePublicIntakeRateLimit({
-            firestore,
-            req,
-            channel: 'waitlist-join',
-            restaurantId,
-            phone: normalizedPhone,
-            restaurantLimit: 80,
-        });
-        if (!rate.allowed) {
-            return NextResponse.json(
-                { message: 'Too many waitlist requests. Please try again later.' },
-                { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
-            );
         }
 
         if (restaurantData.waitlistLocationVerificationEnabled === true) {

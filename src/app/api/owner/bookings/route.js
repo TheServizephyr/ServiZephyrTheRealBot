@@ -4,6 +4,8 @@ import { verifyPublicIntakeProximity } from '@/lib/server/proximityVerification'
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 import { enforcePublicIntakeRateLimit } from '@/lib/server/publicIntakeRateLimit';
+import { buildBookingReadQuery, getBookingReadScope } from '@/lib/bookingReads.mjs';
+import { enforceRateLimit } from '@/lib/public-auth';
 
 function assertRestaurantCollection(collectionName) {
     if (collectionName !== 'restaurants') {
@@ -124,7 +126,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
         if (!query.empty) {
             const doc = query.docs[0];
-            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, businessData: doc.data() || {}, isAdmin: userRole === 'admin' };
+            return { uid: targetOwnerId, callerUid: uid, businessId: doc.id, collectionName: collectionName, businessData: doc.data() || {}, isAdmin: userRole === 'admin' };
         }
     }
 
@@ -132,16 +134,20 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
 }
 
 
-// GET all bookings for the owner's business
+// Live refreshes read active bookings; history is fetched explicitly by date.
 export async function GET(req) {
     try {
+        const scope = getBookingReadScope(new URL(req.url).searchParams);
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, callerUid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         assertRestaurantCollection(collectionName);
 
+        const rate = await enforceRateLimit(firestore, { bucket: 'owner_booking_reads', key: `${callerUid}:${scope.view}`, limit: scope.view === 'live' ? 120 : 30, windowSec: 60, req });
+        if (!rate.allowed) return NextResponse.json({ message: 'Too many booking requests. Please try again shortly.' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } });
+
         const bookingsRef = firestore.collection(collectionName).doc(businessId).collection('bookings');
-        const bookingsSnap = await bookingsRef.orderBy('bookingDateTime', 'desc').get();
+        const bookingsSnap = await buildBookingReadQuery(bookingsRef, scope).get();
 
         let bookings = bookingsSnap.docs.map(doc => {
             const data = doc.data();
@@ -150,6 +156,10 @@ export async function GET(req) {
                 ...data,
             };
         });
+
+        if (scope.view === 'history') {
+            bookings = bookings.filter(booking => ['completed', 'cancelled'].includes(booking.status));
+        }
 
         return NextResponse.json({ bookings }, { status: 200 });
 
@@ -190,6 +200,17 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Booking time must be in the future.' }, { status: 400 });
         }
 
+        // Throttle anonymous intake before paying for restaurant/query reads.
+        if (!isManualQuickAdd) {
+            const rate = await enforcePublicIntakeRateLimit({ firestore, req, channel: 'booking-create', restaurantId, phone: normalizedPhone, restaurantLimit: 80 });
+            if (!rate.allowed) {
+                return NextResponse.json(
+                    { message: rate.status === 503 ? 'Bookings are temporarily unavailable. Please try again shortly.' : 'Too many booking requests. Please try again later.' },
+                    { status: rate.status || 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
+                );
+            }
+        }
+
         const businessRef = firestore.collection('restaurants').doc(restaurantId);
         const businessSnap = await businessRef.get();
         if (!businessSnap.exists) {
@@ -209,22 +230,6 @@ export async function POST(req) {
             assertRestaurantCollection(ownerContext.collectionName);
             if (ownerContext.businessId !== restaurantId) {
                 return NextResponse.json({ message: 'Access Denied: This booking belongs to another restaurant.' }, { status: 403 });
-            }
-        }
-        if (!isManualQuickAdd) {
-            const rate = await enforcePublicIntakeRateLimit({
-                firestore,
-                req,
-                channel: 'booking-create',
-                restaurantId,
-                phone: normalizedPhone,
-                restaurantLimit: 80,
-            });
-            if (!rate.allowed) {
-                return NextResponse.json(
-                    { message: 'Too many booking requests. Please try again later.' },
-                    { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } }
-                );
             }
         }
         if (!isManualQuickAdd && businessData?.bookingLocationVerificationEnabled === true) {
@@ -278,7 +283,7 @@ export async function POST(req) {
 
     } catch (error) {
         console.error("POST BOOKING ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
 

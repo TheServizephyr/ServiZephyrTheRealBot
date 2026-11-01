@@ -17,7 +17,7 @@ function hash(value) {
 }
 
 /**
- * Limits public, state-changing restaurant intake endpoints at three independent
+ * Limits public, state-changing restaurant intake endpoints at four independent
  * scopes. The keys deliberately avoid storing a customer's raw phone number.
  *
  * This is backed by KV when configured, so it is shared across Vercel instances.
@@ -41,6 +41,7 @@ export async function enforcePublicIntakeRateLimit({
     const checks = await Promise.all([
         // Stops a single origin from spraying restaurant IDs or phone numbers.
         enforceRateLimit(firestore, {
+            requireSharedStorage: true,
             bucket: 'public_intake_limits',
             key: `${base}:ip:${ipHash}`,
             limit: 30,
@@ -50,6 +51,7 @@ export async function enforcePublicIntakeRateLimit({
         }),
         // Stops rapid retries against one restaurant from the same origin.
         enforceRateLimit(firestore, {
+            requireSharedStorage: true,
             bucket: 'public_intake_limits',
             key: `${base}:restaurant-ip:${safeRestaurantId}:${ipHash}`,
             limit: 12,
@@ -60,6 +62,7 @@ export async function enforcePublicIntakeRateLimit({
         // Allow a short retry window for slow mobile networks. The endpoint's
         // duplicate protection remains the final guard against duplicate records.
         enforceRateLimit(firestore, {
+            requireSharedStorage: true,
             bucket: 'public_intake_limits',
             key: `${base}:restaurant-phone:${safeRestaurantId}:${phoneHash}`,
             limit: 3,
@@ -69,6 +72,7 @@ export async function enforcePublicIntakeRateLimit({
         }),
         // Contains distributed-IP floods aimed at a single restaurant.
         enforceRateLimit(firestore, {
+            requireSharedStorage: true,
             bucket: 'public_intake_limits',
             key: `${base}:restaurant:${safeRestaurantId}`,
             limit: restaurantLimit,
@@ -81,6 +85,19 @@ export async function enforcePublicIntakeRateLimit({
     const denied = checks.find((check) => !check.allowed);
     return {
         allowed: !denied,
+        status: denied?.status || 429,
         retryAfterSec: denied?.retryAfterSec || WINDOW_SEC,
     };
+}
+
+export async function enforcePublicWaitlistReadLimit({ firestore, req, channel, restaurantId, entryId }) {
+    const prefix = `waitlist-read:v1:${channel}`;
+    const common = { bucket: 'public_waitlist_reads', windowSec: 60, req, requireSharedStorage: true, auditContext: channel };
+    const checks = await Promise.all([
+        // Allow many guests behind a venue/carrier IP while bounding query floods.
+        enforceRateLimit(firestore, { ...common, key: `${prefix}:ip:${hash(getClientIp(req))}`, limit: 1200 }),
+        enforceRateLimit(firestore, { ...common, key: `${prefix}:entry:${hash(`${restaurantId}:${entryId}`)}`, limit: channel === 'status' ? 60 : 12 }),
+    ]);
+    const denied = checks.find(check => !check.allowed);
+    return { allowed: !denied, status: denied?.status || 429, retryAfterSec: denied?.retryAfterSec || 60 };
 }

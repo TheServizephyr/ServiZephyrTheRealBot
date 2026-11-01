@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { enforcePublicWaitlistReadLimit } from '@/lib/server/publicIntakeRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,8 @@ export async function GET(req) {
         }
 
         const firestore = await getFirestore();
+        const rate = await enforcePublicWaitlistReadLimit({ firestore, req, channel: 'status', restaurantId, entryId });
+        if (!rate.allowed) return noStoreJson({ message: rate.status === 503 ? 'Tracking is temporarily unavailable. Please try again shortly.' : 'Too many tracking requests. Please try again shortly.' }, { status: rate.status, headers: { 'Retry-After': String(rate.retryAfterSec) } });
         const restaurantSnap = await firestore.collection('restaurants').doc(restaurantId).get();
         if (!restaurantSnap.exists) {
             return noStoreJson({ message: 'Restaurant not found.' }, { status: 404 });

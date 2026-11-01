@@ -32,10 +32,15 @@ import OfflineDesktopStatus from '@/components/OfflineDesktopStatus';
 import { isDesktopApp } from '@/lib/desktop/runtime';
 import { getOfflineNamespace, setOfflineNamespace } from '@/lib/desktop/offlineStore';
 import { PERMISSIONS, ROLES, canAccessPage, getPermissionsForRole, resolveRolePermissions } from '@/lib/permissions';
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/bookingReads.mjs';
+import { getIndiaDateKey } from '@/lib/historyDates.mjs';
+import { loadServiceHistory, invalidateServiceHistory, serviceHistoryScope } from '@/lib/client/serviceHistoryCache.mjs';
+import { waitlistDeadlines, bookingBridgeDeadlines } from '@/lib/client/serviceDeadlines.mjs';
+import { useServiceDeadlines } from '@/hooks/useServiceDeadlines';
+import { LIVE_WAITLIST_STATUSES, recentNoShowCutoff } from '@/lib/waitlistReads.mjs';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIVE_WAITLIST_STATUSES = ['pending', 'ready_to_notify', 'notified', 'arrived', 'no_show'];
 const WAITLIST_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_BOOKINGS, PERMISSIONS.MANAGE_BOOKINGS, PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN];
 const DINE_IN_TABLE_REQUIRED_PERMISSIONS = [PERMISSIONS.VIEW_DINE_IN_ORDERS, PERMISSIONS.MANAGE_DINE_IN, PERMISSIONS.VIEW_TABLES, PERMISSIONS.ASSIGN_TABLE];
 const NO_SHOW_LIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -133,7 +138,35 @@ const isWaitlistLockedForBusiness = (businessInfo) => {
     return ['waitlist', 'bookings'].some((featureId) => isFeatureLockedForBusiness(businessInfo, featureId));
 };
 
-const getLocalDateKey = (date = new Date()) => format(date, 'yyyy-MM-dd');
+const getLocalDateKey = getIndiaDateKey;
+
+const invalidateOutletHistory = (restaurant, impersonatedOwnerId, employeeOfOwnerId, dates = null) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    invalidateServiceHistory(serviceHistoryScope(uid, restaurant?.id, impersonatedOwnerId || employeeOfOwnerId || uid), undefined, dates);
+};
+
+const fetchServiceHistory = async ({ channel, restaurant, impersonatedOwnerId, employeeOfOwnerId, range, force = false }) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Please sign in again to view history.');
+    const scope = serviceHistoryScope(user.uid, restaurant?.id, impersonatedOwnerId || employeeOfOwnerId || user.uid);
+    return loadServiceHistory({
+        scope, channel, startDate: range.startDate, endDate: range.endDate, force,
+        fetcher: async () => {
+            const idToken = await user.getIdToken();
+            const url = new URL(`/api/owner/${channel}`, window.location.origin);
+            url.searchParams.set(channel === 'bookings' ? 'view' : 'history', channel === 'bookings' ? 'history' : 'true');
+            url.searchParams.set('startDate', range.startDate);
+            url.searchParams.set('endDate', range.endDate);
+            if (impersonatedOwnerId) url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            else if (employeeOfOwnerId) url.searchParams.set('employee_of', employeeOfOwnerId);
+            const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${idToken}` }, cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to load history.');
+            return data;
+        },
+    });
+};
 
 const getInitialQuickAddForm = () => {
     const nextSlot = new Date();
@@ -876,36 +909,35 @@ const HistoryCard = ({ name, phone, pax, time, status, type, token }) => {
     );
 };
 
-const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, searchQuery = '', historyDateRange }) => {
+const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, searchQuery = '', historyDateRange, refreshKey = 0 }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const requestIdRef = useRef(0);
 
     const fetchHistory = useCallback(async () => {
+        const requestId = ++requestIdRef.current;
         setLoading(true);
+        setEntries([]);
+        setError('');
         try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            let url = new URL('/api/owner/waitlist', window.location.origin);
-            url.searchParams.append('history', 'true');
-            if (historyDateRange?.startDate) url.searchParams.append('startDate', historyDateRange.startDate);
-            if (historyDateRange?.endDate) url.searchParams.append('endDate', historyDateRange.endDate);
-            if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-            else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
-
-            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-            const data = await res.json();
-            if (res.ok) setEntries(data.entries || []);
-            else throw new Error(data.message);
+            const { payload } = await fetchServiceHistory({ channel: 'waitlist', restaurant, impersonatedOwnerId, employeeOfOwnerId, range: historyDateRange });
+            if (requestId === requestIdRef.current) setEntries(payload.entries);
         } catch (err) {
-            toast({ title: "History Fetch Error", description: err.message, variant: "destructive" });
+            if (requestId === requestIdRef.current) {
+                setError(err.message);
+                toast({ title: "History Fetch Error", description: err.message, variant: "destructive" });
+            }
         } finally {
-            setLoading(false);
+            if (requestId === requestIdRef.current) setLoading(false);
         }
-    }, [historyDateRange?.startDate, historyDateRange?.endDate, impersonatedOwnerId, employeeOfOwnerId, toast]);
+    }, [historyDateRange, restaurant, impersonatedOwnerId, employeeOfOwnerId, toast]);
 
-    useEffect(() => { fetchHistory(); }, [fetchHistory]);
+    useEffect(() => {
+        void fetchHistory();
+        return () => { requestIdRef.current += 1; };
+    }, [fetchHistory, refreshKey]);
 
     const filteredEntries = useMemo(() => {
         return filterWaitlistHistoryEntries(entries, searchQuery);
@@ -917,6 +949,8 @@ const WaitlistHistory = ({ restaurant, impersonatedOwnerId, employeeOfOwnerId, s
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-muted/20 animate-pulse rounded-xl" />)}
                 </div>
+            ) : error ? (
+                <p role="alert" className="py-10 text-center text-destructive">{error}</p>
             ) : filteredEntries.length === 0 ? (
                 <p className="text-center text-muted-foreground py-10">No waitlist history found.</p>
             ) : (
@@ -957,13 +991,14 @@ const formatAnalyticsMinutes = (value) => {
     return `${parsed.toFixed(parsed % 1 === 0 ? 0 : 1)} min`;
 };
 
-const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId, bookings = [], restaurant }) => {
+const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employeeOfOwnerId, restaurant }) => {
     const { toast } = useToast();
     const [startDate, setStartDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
     const [loading, setLoading] = useState(false);
     const [analytics, setAnalytics] = useState(null);
     const [waitlistCustomerEntries, setWaitlistCustomerEntries] = useState([]);
+    const [bookings, setBookings] = useState([]);
     const [customerInsightsLoading, setCustomerInsightsLoading] = useState(false);
     const [customerInsightSearch, setCustomerInsightSearch] = useState('');
     const [customerInsightFilter, setCustomerInsightFilter] = useState('all');
@@ -1007,10 +1042,20 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
             url.searchParams.set('all', 'true');
             if (impersonatedOwnerId) url.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
 
-            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+            const bookingsUrl = new URL('/api/owner/bookings', window.location.origin);
+            bookingsUrl.searchParams.set('view', 'customers');
+            if (impersonatedOwnerId) bookingsUrl.searchParams.set('impersonate_owner_id', impersonatedOwnerId);
+            const options = { headers: { 'Authorization': `Bearer ${idToken}` } };
+            const [res, bookingsRes] = await Promise.all([
+                fetch(url.toString(), options),
+                fetch(bookingsUrl.toString(), options),
+            ]);
             const data = await res.json().catch(() => ({}));
+            const bookingsData = await bookingsRes.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.message || 'Failed to load customer waitlist data.');
+            if (!bookingsRes.ok) throw new Error(bookingsData.message || 'Failed to load customer bookings.');
             setWaitlistCustomerEntries(Array.isArray(data.entries) ? data.entries : []);
+            setBookings(Array.isArray(bookingsData.bookings) ? bookingsData.bookings : []);
             setCustomerInsightsLoaded(true);
         } catch (err) {
             toast({ title: 'Customer Insights Error', description: err.message, variant: 'destructive' });
@@ -1321,13 +1366,18 @@ const WaitlistAnalyticsModal = ({ isOpen, onClose, impersonatedOwnerId, employee
     );
 };
 
-const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true, canUseOwnerActions = true }) => {
+const HistoryModal = ({ isOpen, onClose, restaurant, impersonatedOwnerId, employeeOfOwnerId, onOpenAnalytics, canUseWaitlist = true, canUseBookings = true, canUseOwnerActions = true }) => {
     const { toast } = useToast();
     const [historySearchQuery, setHistorySearchQuery] = useState('');
     const [historyRangeMode, setHistoryRangeMode] = useState('today');
     const [historyStartDate, setHistoryStartDate] = useState(() => getLocalDateKey());
     const [historyEndDate, setHistoryEndDate] = useState(() => getLocalDateKey());
     const [isExportingHistory, setIsExportingHistory] = useState(false);
+    const [bookingsHistory, setBookingsHistory] = useState([]);
+    const [bookingsHistoryLoading, setBookingsHistoryLoading] = useState(false);
+    const [bookingsHistoryError, setBookingsHistoryError] = useState('');
+    const [historyTab, setHistoryTab] = useState(canUseWaitlist ? 'waitlist' : 'bookings');
+    const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
     const historyDateRange = useMemo(
         () => normalizeDateRange(historyStartDate, historyEndDate),
         [historyStartDate, historyEndDate]
@@ -1340,13 +1390,32 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         from: parseDateKey(historyDateRange.startDate),
         to: parseDateKey(historyDateRange.endDate),
     }), [historyDateRange.endDate, historyDateRange.startDate]);
-    const defaultHistoryTab = canUseWaitlist ? 'waitlist' : 'bookings';
     const applyQuickHistoryRange = useCallback((mode) => {
         const nextRange = getQuickDateRange(mode);
         setHistoryRangeMode(mode);
         setHistoryStartDate(nextRange.startDate);
         setHistoryEndDate(nextRange.endDate);
     }, []);
+
+    useEffect(() => {
+        if (!isOpen || !canUseBookings || historyTab !== 'bookings') return;
+        let cancelled = false;
+        setBookingsHistory([]);
+        setBookingsHistoryLoading(true);
+        setBookingsHistoryError('');
+        const loadHistory = async () => {
+            try {
+                const { payload } = await fetchServiceHistory({ channel: 'bookings', restaurant, impersonatedOwnerId, employeeOfOwnerId, range: historyDateRange });
+                if (!cancelled) setBookingsHistory(payload.bookings);
+            } catch (error) {
+                if (!cancelled) setBookingsHistoryError(error.message);
+            } finally {
+                if (!cancelled) setBookingsHistoryLoading(false);
+            }
+        };
+        void loadHistory();
+        return () => { cancelled = true; };
+    }, [isOpen, canUseBookings, historyTab, historyRefreshKey, historyDateRange, restaurant, impersonatedOwnerId, employeeOfOwnerId]);
 
     const filteredBookingsHistory = useMemo(() => {
         const q = String(historySearchQuery || '').trim().toLowerCase();
@@ -1364,27 +1433,19 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
 
     const fetchWaitlistHistoryForExport = useCallback(async () => {
         if (!canUseWaitlist) return [];
-        const user = auth.currentUser;
-        if (!user) throw new Error('Please sign in again before exporting history.');
-        const idToken = await user.getIdToken();
-        const url = new URL('/api/owner/waitlist', window.location.origin);
-        url.searchParams.append('history', 'true');
-        url.searchParams.append('startDate', historyDateRange.startDate);
-        url.searchParams.append('endDate', historyDateRange.endDate);
-        if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-        else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
-
-        const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.message || 'Failed to export waitlist history.');
-        return filterWaitlistHistoryEntries(data.entries || [], historySearchQuery);
-    }, [canUseWaitlist, employeeOfOwnerId, historyDateRange.endDate, historyDateRange.startDate, historySearchQuery, impersonatedOwnerId]);
+        const { payload } = await fetchServiceHistory({ channel: 'waitlist', restaurant, impersonatedOwnerId, employeeOfOwnerId, range: historyDateRange });
+        return filterWaitlistHistoryEntries(payload.entries, historySearchQuery);
+    }, [canUseWaitlist, restaurant, employeeOfOwnerId, historyDateRange, historySearchQuery, impersonatedOwnerId]);
 
     const handleExportHistory = useCallback(async () => {
         setIsExportingHistory(true);
         try {
             const waitlistRows = canUseWaitlist ? await fetchWaitlistHistoryForExport() : [];
-            const bookingRows = canUseBookings ? filteredBookingsHistory : [];
+            const bookingPayload = canUseBookings
+                ? (await fetchServiceHistory({ channel: 'bookings', restaurant, impersonatedOwnerId, employeeOfOwnerId, range: historyDateRange })).payload.bookings
+                : [];
+            const search = historySearchQuery.trim().toLowerCase();
+            const bookingRows = bookingPayload.filter(booking => !search || [booking.customerName, booking.customerPhone, booking.waitlistToken].some(value => String(value || '').toLowerCase().includes(search)));
             const rows = [
                 ...waitlistRows.map((entry) => [
                     'Waitlist',
@@ -1427,7 +1488,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
         } finally {
             setIsExportingHistory(false);
         }
-    }, [canUseBookings, canUseWaitlist, fetchWaitlistHistoryForExport, filteredBookingsHistory, historyDateRange.endDate, historyDateRange.startDate, restaurant?.name, toast]);
+    }, [canUseBookings, canUseWaitlist, fetchWaitlistHistoryForExport, historySearchQuery, historyDateRange, restaurant, impersonatedOwnerId, employeeOfOwnerId, toast]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -1485,6 +1546,10 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                                     />
                                 </PopoverContent>
                             </Popover>
+                            <Button type="button" size="sm" variant="outline" onClick={() => {
+                                invalidateOutletHistory(restaurant, impersonatedOwnerId, employeeOfOwnerId);
+                                setHistoryRefreshKey(value => value + 1);
+                            }}><RefreshCw size={14} className="mr-2" />Refresh</Button>
                             {canUseOwnerActions && (
                                 <Button
                                     type="button"
@@ -1513,7 +1578,7 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
                     />
                 </div>
 
-                <Tabs defaultValue={defaultHistoryTab} className="mt-4">
+                <Tabs value={historyTab} onValueChange={setHistoryTab} className="mt-4">
                     <TabsList className={cn(
                         "grid w-full bg-muted/50 p-1",
                         canUseWaitlist && canUseBookings ? "grid-cols-2" : "grid-cols-1"
@@ -1524,18 +1589,23 @@ const HistoryModal = ({ isOpen, onClose, bookingsHistory, restaurant, impersonat
 
                     {canUseWaitlist && (
                         <TabsContent value="waitlist">
-                            <WaitlistHistory
+                            {isOpen && historyTab === 'waitlist' && <WaitlistHistory
                                 restaurant={restaurant}
                                 impersonatedOwnerId={impersonatedOwnerId}
                                 employeeOfOwnerId={employeeOfOwnerId}
                                 searchQuery={historySearchQuery}
                                 historyDateRange={historyDateRange}
-                            />
+                                refreshKey={historyRefreshKey}
+                            />}
                         </TabsContent>
                     )}
                     {canUseBookings && (
                         <TabsContent value="bookings" className="space-y-4 py-4">
-                            {filteredBookingsHistory.length === 0 ? (
+                            {bookingsHistoryLoading ? (
+                                <Loader2 className="mx-auto my-10 h-6 w-6 animate-spin" />
+                            ) : bookingsHistoryError ? (
+                                <p role="alert" className="py-10 text-center text-destructive">{bookingsHistoryError}</p>
+                            ) : filteredBookingsHistory.length === 0 ? (
                                 <p className="text-center text-muted-foreground py-10">No booking history found.</p>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1844,10 +1914,12 @@ const WaitlistManagement = ({
         if (res.status === 204) return null;
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'API failed');
+        if (method !== 'GET') invalidateOutletHistory(restaurant, impersonatedOwnerId, employeeOfOwnerId);
         return data;
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+    }, [restaurant, impersonatedOwnerId, employeeOfOwnerId]);
 
     const listenerRefreshTimerRef = useRef(null);
+    const waitlistRealtimeReadyRef = useRef(false);
     const fetchData = useCallback(async (silent = false) => {
         if (listenerRefreshTimerRef.current) {
             clearTimeout(listenerRefreshTimerRef.current);
@@ -1856,11 +1928,11 @@ const WaitlistManagement = ({
         if (!silent) setLoading(true);
         try {
             const waitlistPromise = handleApiCall('GET', null, '/api/owner/waitlist');
-            const tablesPromise = canUseDineInTables
+            const tablesPromise = canUseDineInTables && effectiveWaitlistSeatingMode === 'table_assign'
                 ? handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables')
                 : Promise.resolve({ tables: [] });
             const [waitlistData, tablesData] = await Promise.all([waitlistPromise, tablesPromise]);
-            setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
+            if (!waitlistRealtimeReadyRef.current) setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
             setWaitlistMeta(waitlistData?.meta || { noShowTimeoutMinutes: 10, capacity: null });
             setAllTables(tablesData?.tables || []);
         } catch (err) {
@@ -1869,7 +1941,11 @@ const WaitlistManagement = ({
         } finally {
             if (!silent) setLoading(false);
         }
-    }, [canUseDineInTables, handleApiCall, toast]);
+    }, [canUseDineInTables, effectiveWaitlistSeatingMode, handleApiCall, toast]);
+
+    const liveDeadlines = useMemo(() => waitlistDeadlines(entries, waitlistMeta?.noShowTimeoutMinutes || 10), [entries, waitlistMeta?.noShowTimeoutMinutes]);
+    const refreshAtDeadline = useCallback(() => fetchData(true), [fetchData]);
+    useServiceDeadlines(liveDeadlines, refreshAtDeadline);
 
     const handleQuickAddSubmit = useCallback(async (event) => {
         event.preventDefault();
@@ -1955,45 +2031,74 @@ const WaitlistManagement = ({
         }
 
         setLoading(true);
+        waitlistRealtimeReadyRef.current = false;
         void fetchData();
 
         let unsubscribeWaitlist = null;
+        let unsubscribeRecentNoShows = null;
+        let unsubscribeTables = null;
+        const streams = { active: { rows: [], bootstrapped: false, ready: false }, noShows: { rows: [], bootstrapped: false, ready: false } };
+        const applySnapshot = (snapshot, stream) => {
+            const state = streams[stream];
+            if (state.bootstrapped && snapshot.docChanges().length) {
+                const dates = [getLocalDateKey(), ...snapshot.docChanges().map(change => getLocalDateKey(new Date(getTimestampMs(getWaitlistHistoryTime(change.doc.data())) || Date.now())))];
+                invalidateOutletHistory(restaurant, impersonatedOwnerId, employeeOfOwnerId, dates);
+            }
+            state.bootstrapped = true;
+            state.ready = !snapshot.metadata.fromCache;
+            state.rows = snapshot.docs.map(normalizeWaitlistSnapshotDoc).filter(entry => stream !== 'noShows' || entry.status === 'no_show');
+            waitlistRealtimeReadyRef.current = streams.active.ready && streams.noShows.ready;
+            setEntries(sortActiveWaitlistEntries([...new Map([...streams.active.rows, ...streams.noShows.rows].map(entry => [entry.id, entry])).values()]));
+            setLoading(false);
+        };
+        const listenerFailed = (error, stream) => {
+            streams[stream].ready = false;
+            waitlistRealtimeReadyRef.current = false;
+            console.error('[Bookings] Waitlist realtime listener failed:', error);
+            setLoading(false);
+        };
         try {
             const activeWaitlistQuery = query(
                 collection(db, restaurant.collection, restaurant.id, 'waitlist'),
-                where('status', 'in', ACTIVE_WAITLIST_STATUSES)
+                where('status', 'in', LIVE_WAITLIST_STATUSES)
             );
 
             unsubscribeWaitlist = onSnapshot(
                 activeWaitlistQuery,
-                (snapshot) => {
-                    const nextEntries = sortActiveWaitlistEntries(snapshot.docs.map(normalizeWaitlistSnapshotDoc));
-                    setEntries(nextEntries);
-                    setLoading(false);
-                },
-                (error) => {
-                    console.error('[Bookings] Waitlist realtime listener failed:', error);
-                    setLoading(false);
-                }
+                { includeMetadataChanges: true },
+                snapshot => applySnapshot(snapshot, 'active'),
+                error => listenerFailed(error, 'active')
             );
+            unsubscribeRecentNoShows = onSnapshot(query(
+                collection(db, restaurant.collection, restaurant.id, 'waitlist'),
+                where('noShowAt', '>=', recentNoShowCutoff())
+            ), { includeMetadataChanges: true }, snapshot => applySnapshot(snapshot, 'noShows'), error => listenerFailed(error, 'noShows'));
         } catch (error) {
             console.error('[Bookings] Waitlist realtime setup failed:', error);
             setLoading(false);
         }
 
-        const intervalId = window.setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                void fetchData(true);
-            }
-        }, 60000);
+        if (canUseDineInTables && effectiveWaitlistSeatingMode === 'table_assign') {
+            let tablesBootstrapped = false;
+            unsubscribeTables = onSnapshot(collection(db, restaurant.collection, restaurant.id, 'tables'), snapshot => {
+                if (tablesBootstrapped && snapshot.docChanges().length) {
+                    clearTimeout(listenerRefreshTimerRef.current);
+                    listenerRefreshTimerRef.current = setTimeout(() => void fetchData(true), 300);
+                }
+                tablesBootstrapped = true;
+            }, error => console.error('[Waitlist] Table updates unavailable:', error));
+        }
 
         return () => {
+            waitlistRealtimeReadyRef.current = false;
             if (typeof unsubscribeWaitlist === 'function') {
                 unsubscribeWaitlist();
             }
-            window.clearInterval(intervalId);
+            unsubscribeRecentNoShows?.();
+            unsubscribeTables?.();
+            clearTimeout(listenerRefreshTimerRef.current);
         };
-    }, [restaurant, fetchData]);
+    }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId]);
 
     useEffect(() => {
         if (!refreshSignal) return;
@@ -2004,6 +2109,13 @@ const WaitlistManagement = ({
         const interval = setInterval(() => setNowTs(Date.now()), 1000);
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        setEntries(current => {
+            const visible = current.filter(entry => isLiveActiveWaitlistEntry(entry, nowTs));
+            return visible.length === current.length ? current : visible;
+        });
+    }, [nowTs]);
 
     const handleUpdateStatus = async (entryId, status) => {
         setActionLoading(entryId);
@@ -2741,6 +2853,7 @@ const WaitlistManagement = ({
 
 function BookingsPageContent() {
     const [bookings, setBookings] = useState([]);
+    const bookingsRealtimeReadyRef = useRef(false);
     const [waitlistCount, setWaitlistCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [businessInfo, setBusinessInfo] = useState(null);
@@ -2772,8 +2885,8 @@ function BookingsPageContent() {
     const { toast } = useToast();
     const bookingsCacheKey = useMemo(() => {
         const scope = impersonatedOwnerId ? `imp_${impersonatedOwnerId}` : (employeeOfOwnerId ? `emp_${employeeOfOwnerId}` : 'owner_self');
-        return `owner_bookings::${scope}`;
-    }, [impersonatedOwnerId, employeeOfOwnerId]);
+        return `owner_bookings_v2::${auth.currentUser?.uid || 'pending'}::${businessInfo?.id || scope}`;
+    }, [impersonatedOwnerId, employeeOfOwnerId, businessInfo?.id]);
     const canUseWaitlist = canUseWaitlistForAccess(employeeAccess) && !isWaitlistLockedForBusiness(businessInfo);
     const canUseBookings = canUseBookingsForAccess(employeeAccess);
     const canUseDineInTables = canUseDineInTablesForAccess(employeeAccess) && !isFeatureLockedForBusiness(businessInfo, 'dine-in');
@@ -2781,6 +2894,9 @@ function BookingsPageContent() {
     const shouldRenderWaitlist = canUseWaitlist && (!employeeOfOwnerId || employeeAccess.isLoaded);
     const shouldRenderBookings = !employeeOfOwnerId || !employeeAccess.isLoaded || canUseBookings;
     const canMountWaitlistManagement = shouldRenderWaitlist && Boolean(businessInfo?.id && businessInfo?.collection);
+    const bridgeDeadlines = useMemo(() => bookingBridgeDeadlines(bookings), [bookings]);
+    const refreshBookingBridge = useCallback(() => setWaitlistRefreshSignal(value => value + 1), []);
+    useServiceDeadlines(bridgeDeadlines, refreshBookingBridge, canMountWaitlistManagement && activeTab === 'waitlist');
 
     useEffect(() => {
         let cancelled = false;
@@ -2912,8 +3028,10 @@ function BookingsPageContent() {
             if (res.ok) {
                 const data = await res.json();
                 const nextBookings = data.bookings || [];
-                setBookings(nextBookings);
-                await persistBookingsToCache(nextBookings);
+                if (!bookingsRealtimeReadyRef.current) {
+                    setBookings(nextBookings);
+                    await persistBookingsToCache(nextBookings);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -2930,7 +3048,7 @@ function BookingsPageContent() {
                 cached = desktopPayload?.data || null;
             }
             if (cached?.bookings) {
-                setBookings(Array.isArray(cached.bookings) ? cached.bookings : []);
+                setBookings(Array.isArray(cached.bookings) ? cached.bookings.filter(booking => ACTIVE_BOOKING_STATUSES.includes(booking.status)) : []);
                 setInfoDialog({ isOpen: true, title: 'Offline Cache Active', message: 'Live bookings fetch failed, so cached desktop bookings are being shown.' });
             }
         }
@@ -2940,7 +3058,6 @@ function BookingsPageContent() {
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) return;
-        let pollIntervalId = null;
         const setup = async () => {
             try {
                 const targetId = impersonatedOwnerId || employeeOfOwnerId || user.uid;
@@ -2966,39 +3083,38 @@ function BookingsPageContent() {
                 }
             } catch (err) { console.error(err); setLoading(false); }
         };
-        void fetchBookings(true);
         setup();
-        pollIntervalId = window.setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                void fetchBookings(true);
-            }
-        }, 120000);
-        return () => {
-            if (pollIntervalId) {
-                window.clearInterval(pollIntervalId);
-            }
-        };
-    }, [impersonatedOwnerId, employeeOfOwnerId, fetchBookings]);
+    }, [impersonatedOwnerId, employeeOfOwnerId]);
 
     useEffect(() => {
+        bookingsRealtimeReadyRef.current = false;
         if (!businessInfo?.id || businessInfo?.collection !== 'restaurants') return;
 
         let unsubscribeBookings = null;
+        let bootstrapped = false;
         try {
             const bookingsQuery = query(
                 collection(db, businessInfo.collection, businessInfo.id, 'bookings'),
-                orderBy('bookingDateTime', 'desc')
+                where('status', 'in', ACTIVE_BOOKING_STATUSES)
             );
 
             unsubscribeBookings = onSnapshot(
                 bookingsQuery,
+                { includeMetadataChanges: true },
                 (snapshot) => {
+                    bookingsRealtimeReadyRef.current = !snapshot.metadata.fromCache;
+                    if (bootstrapped && snapshot.docChanges().length) {
+                        const dates = snapshot.docChanges().map(change => getLocalDateKey(new Date(getTimestampMs(change.doc.data().bookingDateTime) || Date.now())));
+                        invalidateOutletHistory(businessInfo, impersonatedOwnerId, employeeOfOwnerId, dates);
+                    }
+                    bootstrapped = true;
                     const nextBookings = snapshot.docs.map(normalizeBookingSnapshotDoc);
                     setBookings(nextBookings);
                     void persistBookingsToCache(nextBookings);
                     setLoading(false);
                 },
                 (error) => {
+                    bookingsRealtimeReadyRef.current = false;
                     console.error('[Bookings] Bookings realtime listener failed:', error);
                     void fetchBookings(true);
                     setLoading(false);
@@ -3011,11 +3127,12 @@ function BookingsPageContent() {
         }
 
         return () => {
+            bookingsRealtimeReadyRef.current = false;
             if (typeof unsubscribeBookings === 'function') {
                 unsubscribeBookings();
             }
         };
-    }, [businessInfo?.collection, businessInfo?.id, fetchBookings, persistBookingsToCache]);
+    }, [businessInfo, employeeOfOwnerId, impersonatedOwnerId, fetchBookings, persistBookingsToCache]);
 
     useEffect(() => {
         setNoShowTimeoutDraft(String(waitlistNoShowTimeoutMinutes || 10));
@@ -3074,6 +3191,7 @@ function BookingsPageContent() {
                 throw new Error(data.message || `Failed to update booking to ${status}.`);
             }
             if (res.ok) {
+                invalidateOutletHistory(businessInfo, impersonatedOwnerId, employeeOfOwnerId);
                 const messageParts = [data.message || `Booking ${status}.`];
                 if (whatsappUrl) {
                     if (whatsappWindow && !whatsappWindow.closed) {
@@ -3358,10 +3476,6 @@ function BookingsPageContent() {
         return getT(a.bookingDateTime) - getT(b.bookingDateTime);
     }), [filtered]);
 
-    const past = useMemo(() => bookings.filter(b => b.status === 'completed' || b.status === 'cancelled').sort((a, b) => {
-        const getT = v => v?._seconds ? v._seconds * 1000 : new Date(v).getTime();
-        return getT(b.bookingDateTime) - getT(a.bookingDateTime);
-    }), [bookings]);
     const isRestaurantBusiness = businessInfo?.collection === 'restaurants';
 
     if (!loading && businessInfo && !isRestaurantBusiness) {
@@ -3643,10 +3757,9 @@ function BookingsPageContent() {
             </Dialog>
 
             <WaitlistQrModal isOpen={isWaitlistQrOpen} onClose={() => setIsWaitlistQrOpen(false)} restaurant={businessInfo} />
-            <HistoryModal
+            {isHistoryOpen && <HistoryModal
                 isOpen={isHistoryOpen}
                 onClose={() => setIsHistoryOpen(false)}
-                bookingsHistory={past}
                 restaurant={businessInfo}
                 impersonatedOwnerId={impersonatedOwnerId}
                 employeeOfOwnerId={employeeOfOwnerId}
@@ -3654,14 +3767,13 @@ function BookingsPageContent() {
                 canUseWaitlist={canUseWaitlist}
                 canUseBookings={canUseBookings}
                 canUseOwnerActions={canUseOwnerHistoryActions}
-            />
+            />}
             {canUseOwnerHistoryActions && canUseWaitlist && (
                 <WaitlistAnalyticsModal
                     isOpen={isWaitlistAnalyticsOpen}
                     onClose={() => setIsWaitlistAnalyticsOpen(false)}
                     impersonatedOwnerId={impersonatedOwnerId}
                     employeeOfOwnerId={employeeOfOwnerId}
-                    bookings={bookings}
                     restaurant={businessInfo}
                 />
             )}

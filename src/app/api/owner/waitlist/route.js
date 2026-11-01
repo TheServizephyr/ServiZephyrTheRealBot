@@ -4,6 +4,9 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 import { PERMISSIONS } from '@/lib/permissions';
 import crypto from 'crypto';
+import { getHistoryReadRange } from '@/lib/historyDates.mjs';
+import { enforceRateLimit } from '@/lib/public-auth';
+import { buildLiveWaitlistQueries } from '@/lib/waitlistReads.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,37 +135,8 @@ function isLiveActiveWaitlistRecord(entry = {}, nowMs = Date.now()) {
     return noShowLapsedMs > 0 && (nowMs - noShowLapsedMs) < NO_SHOW_LIVE_WINDOW_MS;
 }
 
-function isValidDateKey(value) {
-    return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
-}
-
 function getHistoryDateRange(url) {
-    const dateKey = url.searchParams.get('date');
-    const startDateKey = url.searchParams.get('startDate') || dateKey;
-    const endDateKey = url.searchParams.get('endDate') || dateKey;
-
-    if (!startDateKey && !endDateKey) return null;
-    if (!isValidDateKey(startDateKey) || !isValidDateKey(endDateKey)) {
-        throw { message: 'Invalid history date filter.', status: 400 };
-    }
-
-    const start = new Date(`${startDateKey}T00:00:00+05:30`);
-    const endDayStart = new Date(`${endDateKey}T00:00:00+05:30`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(endDayStart.getTime())) {
-        throw { message: 'Invalid history date filter.', status: 400 };
-    }
-
-    if (start.getTime() > endDayStart.getTime()) {
-        return {
-            start: endDayStart,
-            end: new Date(start.getTime() + 24 * 60 * 60 * 1000),
-        };
-    }
-
-    return {
-        start,
-        end: new Date(endDayStart.getTime() + 24 * 60 * 60 * 1000),
-    };
+    return getHistoryReadRange(url.searchParams);
 }
 
 async function fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange }) {
@@ -172,7 +146,6 @@ async function fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange 
             .where(fieldName, '>=', historyDateRange.start)
             .where(fieldName, '<', historyDateRange.end)
             .orderBy(fieldName, 'desc')
-            .limit(900)
             .get()
     )));
 
@@ -343,6 +316,7 @@ async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
         const lapsedAtMs = deadlineMs || (notifiedAtMs ? notifiedAtMs + noShowTimeoutMs : 0);
         const updatePayload = {
             status: 'no_show',
+            menuWishlistCleanupAfter: entryData.menuWishlistClearedAt ? null : new Date((lapsedAtMs || Date.now()) + NO_SHOW_LIVE_WINDOW_MS),
             noShowAt: lapsedAtMs ? new Date(lapsedAtMs) : FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
         };
@@ -408,6 +382,7 @@ function applyWaitlistMenuWishlistFinalization({
     });
 
     updatePayload.menuWishlistClearedAt = FieldValue.serverTimestamp();
+    updatePayload.menuWishlistCleanupAfter = null;
     updatePayload.menuWishlistClearedReason = status;
     updatePayload.menuWishlistClearedCount = wishlistDocs.length;
     updatePayload.menuWishlistCleanupTruncated = wishlistDocs.length >= WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT;
@@ -436,6 +411,7 @@ async function clearWaitlistMenuWishlistMarkers({ firestore, entryDoc, reason })
     wishlistSnap.docs.forEach((doc) => batch.delete(doc.ref));
     batch.set(entryDoc.ref, {
         menuWishlistClearedAt: FieldValue.serverTimestamp(),
+        menuWishlistCleanupAfter: null,
         menuWishlistClearedReason: reason,
         menuWishlistClearedCount: wishlistSnap.size,
         menuWishlistCleanupTruncated: wishlistSnap.size >= WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT,
@@ -544,6 +520,8 @@ export async function GET(req) {
             throw { message: 'Owner access required for all-time waitlist customer data.', status: 403 };
         }
         const historyDateRange = isHistory ? getHistoryDateRange(url) : null;
+        const rate = await enforceRateLimit(firestore, { bucket: 'owner_waitlist_reads', key: `${context.callerUid || context.uid}:${isHistory ? 'history' : includeAll ? 'customers' : 'live'}`, limit: isHistory || includeAll ? 30 : 120, windowSec: 60, req });
+        if (!rate.allowed) return NextResponse.json({ message: 'Too many waitlist requests. Please try again shortly.' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfterSec) } });
         const businessRef = businessSnap.ref;
         const businessData = businessSnap.data() || {};
         const waitlistSeatingMode = normalizeWaitlistSeatingMode(businessData.waitlistSeatingMode);
@@ -567,6 +545,7 @@ export async function GET(req) {
         }
 
         let waitlistDocs = [];
+        let cleanupDocs = [];
 
         if (includeAll) {
             const waitlistSnap = await businessRef.collection('waitlist').get();
@@ -574,20 +553,17 @@ export async function GET(req) {
         } else if (isHistory && historyDateRange) {
             waitlistDocs = await fetchWaitlistHistoryDocsForRange({ businessRef, historyDateRange });
         } else {
-            let queryRef = businessRef.collection('waitlist');
-
-            if (isHistory) {
-                queryRef = queryRef.where('status', 'in', Array.from(HISTORY_STATUSES));
-            } else {
-                queryRef = queryRef.where('status', 'in', Array.from(ACTIVE_STATUSES));
-            }
-
-            const waitlistSnap = await queryRef.get();
-            waitlistDocs = waitlistSnap.docs;
+            const [activeSnap, recentNoShowSnap, pendingCleanupSnap] = await Promise.all([
+                ...buildLiveWaitlistQueries(businessRef.collection('waitlist')).map(query => query.get()),
+                businessRef.collection('waitlist').where('menuWishlistCleanupAfter', '<=', new Date()).limit(WAITLIST_MENU_WISHLIST_LAPSED_CLEANUP_LIMIT).get(),
+            ]);
+            const liveDocs = [...activeSnap.docs, ...recentNoShowSnap.docs.filter(doc => doc.data().status === 'no_show')];
+            waitlistDocs = [...new Map(liveDocs.map(doc => [doc.id, doc])).values()];
+            cleanupDocs = pendingCleanupSnap.docs;
         }
 
         if (!isHistory && !includeAll) {
-            wishlistCleanup = await cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs });
+            wishlistCleanup = await cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs: [...new Map([...waitlistDocs, ...cleanupDocs].map(doc => [doc.id, doc])).values()] });
         }
 
         let entries = waitlistDocs.map((doc) => {
@@ -845,6 +821,7 @@ export async function PATCH(req) {
             }
             if (status === 'no_show') {
                 updatePayload.noShowAt = FieldValue.serverTimestamp();
+                updatePayload.menuWishlistCleanupAfter = freshEntryData.menuWishlistClearedAt ? null : new Date(Date.now() + NO_SHOW_LIVE_WINDOW_MS);
             }
 
             const finalizationResult = applyWaitlistMenuWishlistFinalization({

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { enforcePublicWaitlistReadLimit } from '@/lib/server/publicIntakeRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,9 @@ export async function POST(req) {
         if (!safeRestaurantId || !safeEntryId || !safeCode) {
             return NextResponse.json({ message: 'restaurantId, entryId and arrivalCode are required.' }, { status: 400 });
         }
+
+        const rate = await enforcePublicWaitlistReadLimit({ firestore, req, channel: 'arrive', restaurantId: safeRestaurantId, entryId: safeEntryId });
+        if (!rate.allowed) return NextResponse.json({ message: rate.status === 503 ? 'Token verification is temporarily unavailable. Please try again shortly.' : 'Too many token requests. Please try again shortly.' }, { status: rate.status, headers: { 'Retry-After': String(rate.retryAfterSec) } });
 
         const restaurantSnap = await firestore.collection('restaurants').doc(safeRestaurantId).get();
         if (!restaurantSnap.exists) {
