@@ -17,40 +17,38 @@ export function usePolling(callback, {
     deps = []
 } = {}) {
     const savedCallback = useRef(callback);
-    const intervalRef = useRef(null);
-    const isVisible = useRef(true);
+    const refreshRef = useRef(() => Promise.resolve());
 
     useEffect(() => {
         savedCallback.current = callback;
     }, [callback]);
 
-    const runPolling = useCallback(async () => {
-        if (!enabled) return;
-
-        // Skip if tab is hidden and we want to stop entirely, 
-        // OR slow down if we just want backoff.
-        // For simplicity, we slow down by backoffFactor.
-        const currentInterval = document.visibilityState === 'visible'
-            ? interval
-            : interval * backoffFactor;
-
-        try {
-            await savedCallback.current();
-        } catch (error) {
-            console.error('[usePolling] Callback failed:', error);
-        }
-
-        intervalRef.current = setTimeout(runPolling, currentInterval);
-    }, [enabled, interval, backoffFactor]);
-
     useEffect(() => {
+        let disposed = false;
+        let timer = null;
+        let inFlight = null;
+        const runPolling = () => {
+            if (disposed || !enabled) return Promise.resolve();
+            if (inFlight) return inFlight;
+            clearTimeout(timer);
+            inFlight = Promise.resolve().then(() => {
+                if (!disposed) return savedCallback.current();
+            }).catch(error => {
+                console.error('[usePolling] Callback failed:', error);
+            }).finally(() => {
+                inFlight = null;
+                // An awaited request can finish after unmount or a scope change.
+                // Never let that old effect resurrect its polling timer.
+                if (disposed) return;
+                const delay = document.visibilityState === 'visible' ? interval : interval * backoffFactor;
+                timer = setTimeout(runPolling, delay);
+            });
+            return inFlight;
+        };
+        refreshRef.current = runPolling;
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                // Instantly trigger refresh on focus if it was slowed down
-                if (intervalRef.current) {
-                    clearTimeout(intervalRef.current);
-                    runPolling();
-                }
+                void runPolling();
             }
         };
 
@@ -61,15 +59,16 @@ export function usePolling(callback, {
         }
 
         return () => {
+            disposed = true;
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (intervalRef.current) clearTimeout(intervalRef.current);
+            clearTimeout(timer);
+            if (refreshRef.current === runPolling) refreshRef.current = () => Promise.resolve();
         };
-    }, [enabled, runPolling, ...deps]);
+        // Callers supply individual scope dependencies; their array identity is irrelevant.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled, interval, backoffFactor, ...deps]);
 
     return {
-        refresh: () => {
-            if (intervalRef.current) clearTimeout(intervalRef.current);
-            runPolling();
-        }
+        refresh: useCallback(() => refreshRef.current(), [])
     };
 }
