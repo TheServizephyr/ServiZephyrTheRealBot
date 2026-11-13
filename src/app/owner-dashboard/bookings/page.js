@@ -38,6 +38,9 @@ import { loadServiceHistory, invalidateServiceHistory, serviceHistoryScope } fro
 import { waitlistDeadlines, bookingBridgeDeadlines } from '@/lib/client/serviceDeadlines.mjs';
 import { useServiceDeadlines } from '@/hooks/useServiceDeadlines';
 import { LIVE_WAITLIST_STATUSES, recentNoShowCutoff } from '@/lib/waitlistReads.mjs';
+import { createServiceRefreshQueue, fetchServiceJson } from '@/lib/client/serviceApi.mjs';
+import { reportClientIncident } from '@/lib/opsClientReporter';
+import { getBestEffortIdToken } from '@/lib/client-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -446,7 +449,7 @@ const buildBookingCustomerInsights = ({ bookings = [], waitlistEntries = [] }) =
         customer.totalCovers += paxCount;
         totalWaitlistJoins += 1;
         totalCovers += paxCount;
-        if (ACTIVE_WAITLIST_STATUSES.includes(status)) customer.activeWaitlistCount += 1;
+        if (LIVE_WAITLIST_STATUSES.includes(status) || status === 'no_show') customer.activeWaitlistCount += 1;
         if (status === 'seated') customer.seatedCount += 1;
         if (status === 'cancelled') customer.cancelledCount += 1;
         if (status === 'no_show') customer.noShowCount += 1;
@@ -1894,7 +1897,7 @@ const WaitlistManagement = ({
     const handleApiCall = useCallback(async (method, body, path) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Auth required");
-        const idToken = await user.getIdToken();
+        const idToken = await getBestEffortIdToken(user, { timeoutMs: 5000 });
         let url = new URL(path, window.location.origin);
         if (impersonatedOwnerId) url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         else if (employeeOfOwnerId) url.searchParams.append('employee_of', employeeOfOwnerId);
@@ -1910,22 +1913,26 @@ const WaitlistManagement = ({
             Object.keys(body).forEach(k => url.searchParams.append(k, body[k]));
         }
 
-        const res = await fetch(url.toString(), options);
-        if (res.status === 204) return null;
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'API failed');
+        let data;
+        try {
+            data = await fetchServiceJson(url.toString(), options);
+        } catch (error) {
+            if (['INVALID_RESPONSE', 'TIMEOUT', 'SECURITY_CHECK'].includes(error.code)) {
+                reportClientIncident({
+                    source: 'waitlist_api_response', area: 'api',
+                    title: 'Waitlist API response failed', message: error.message,
+                    context: { endpoint: url.pathname, method, status: error.status, code: error.code, requestId: error.requestId || null },
+                });
+            }
+            throw error;
+        }
         if (method !== 'GET') invalidateOutletHistory(restaurant, impersonatedOwnerId, employeeOfOwnerId);
         return data;
     }, [restaurant, impersonatedOwnerId, employeeOfOwnerId]);
 
     const listenerRefreshTimerRef = useRef(null);
     const waitlistRealtimeReadyRef = useRef(false);
-    const fetchData = useCallback(async (silent = false) => {
-        if (listenerRefreshTimerRef.current) {
-            clearTimeout(listenerRefreshTimerRef.current);
-            listenerRefreshTimerRef.current = null;
-        }
-        if (!silent) setLoading(true);
+    const loadData = useCallback(async () => {
         try {
             const waitlistPromise = handleApiCall('GET', null, '/api/owner/waitlist');
             const tablesPromise = canUseDineInTables && effectiveWaitlistSeatingMode === 'table_assign'
@@ -1935,13 +1942,21 @@ const WaitlistManagement = ({
             if (!waitlistRealtimeReadyRef.current) setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
             setWaitlistMeta(waitlistData?.meta || { noShowTimeoutMinutes: 10, capacity: null });
             setAllTables(tablesData?.tables || []);
+            return true;
         } catch (err) {
             console.error("Waitlist fetch error:", err);
             toast({ title: "Fetch Error", description: err.message, variant: "destructive" });
-        } finally {
-            if (!silent) setLoading(false);
+            return false;
         }
     }, [canUseDineInTables, effectiveWaitlistSeatingMode, handleApiCall, toast]);
+    const refreshQueue = useMemo(() => createServiceRefreshQueue(loadData), [loadData]);
+    const fetchData = useCallback(async (silent = false, afterMutation = false) => {
+        clearTimeout(listenerRefreshTimerRef.current);
+        listenerRefreshTimerRef.current = null;
+        if (!silent) setLoading(true);
+        try { return await refreshQueue.run(afterMutation); }
+        finally { if (!silent) setLoading(false); }
+    }, [refreshQueue]);
 
     const liveDeadlines = useMemo(() => waitlistDeadlines(entries, waitlistMeta?.noShowTimeoutMinutes || 10), [entries, waitlistMeta?.noShowTimeoutMinutes]);
     const refreshAtDeadline = useCallback(() => fetchData(true), [fetchData]);
@@ -2007,7 +2022,7 @@ const WaitlistManagement = ({
                 }, '/api/owner/waitlist');
                 const tokenText = result?.entry?.waitlistToken ? ` Token ${result.entry.waitlistToken}.` : '';
                 toast({ title: "Waitlist Added", description: `${normalizedName} added to live waitlist.${tokenText}` });
-                await fetchData(true);
+                await fetchData(true, true);
             }
             closeQuickAdd();
         } catch (err) {
@@ -2048,8 +2063,12 @@ const WaitlistManagement = ({
             state.ready = !snapshot.metadata.fromCache;
             state.rows = snapshot.docs.map(normalizeWaitlistSnapshotDoc).filter(entry => stream !== 'noShows' || entry.status === 'no_show');
             waitlistRealtimeReadyRef.current = streams.active.ready && streams.noShows.ready;
-            setEntries(sortActiveWaitlistEntries([...new Map([...streams.active.rows, ...streams.noShows.rows].map(entry => [entry.id, entry])).values()]));
-            setLoading(false);
+            const mergedEntries = [...new Map([...streams.active.rows, ...streams.noShows.rows].map(entry => [entry.id, entry])).values()];
+            // An empty local snapshot is not proof that the server queue is empty.
+            if (waitlistRealtimeReadyRef.current || mergedEntries.length > 0) {
+                setEntries(sortActiveWaitlistEntries(mergedEntries));
+                setLoading(false);
+            }
         };
         const listenerFailed = (error, stream) => {
             streams[stream].ready = false;
@@ -2102,7 +2121,7 @@ const WaitlistManagement = ({
 
     useEffect(() => {
         if (!refreshSignal) return;
-        void fetchData();
+        void fetchData(true);
     }, [fetchData, refreshSignal]);
 
     useEffect(() => {
@@ -2121,8 +2140,8 @@ const WaitlistManagement = ({
         setActionLoading(entryId);
         try {
             const result = await handleApiCall('PATCH', { entryId, status }, '/api/owner/waitlist');
-            await fetchData();
             toast({ title: "Updated", description: `Customer marked as ${status}.` });
+            void fetchData(true, true);
             if (result?.promotedEntryId) {
                 toast({ title: "Next Guest Notified", description: "Auto-promoted next pending guest." });
             }
@@ -2149,7 +2168,7 @@ const WaitlistManagement = ({
                     ? `${entry.name} marked as seated (manual seating).`
                     : `${entry.name} seated at Table ${tableId}.${source === 'scan' ? ' (via token scan)' : ''}`
             });
-            await fetchData();
+            void fetchData(true, true);
         } catch (err) {
             toast({ title: "Seating Error", description: err.message, variant: "destructive" });
         } finally {
@@ -2328,7 +2347,7 @@ const WaitlistManagement = ({
                     <Button variant="outline" size="sm" onClick={() => setIsArrivalScannerOpen(true)} className="h-8 hidden md:inline-flex">
                         <ScanLine size={14} className="mr-2" /> Scan Token QR
                     </Button>
-                    <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="h-8">
+                    <Button variant="outline" size="sm" onClick={() => void fetchData()} disabled={loading} className="h-8">
                         <RefreshCw size={14} className={cn("md:mr-2", loading && "animate-spin")} /> <span className="hidden md:inline">Refresh</span>
                     </Button>
                 </div>

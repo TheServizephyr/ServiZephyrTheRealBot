@@ -1,3 +1,13 @@
 {
-    "extends": "next/core-web-vitals"
+    "extends": "next/core-web-vitals",
+    "overrides": [
+        {
+            "files": [
+                "src/app/owner-dashboard/bookings/page.js",
+                "src/app/public/waitlist/*/page.js"
+            ],
+            "env": { "browser": true, "es2021": true },
+            "rules": { "no-undef": "error" }
+        }
+    ]
 }

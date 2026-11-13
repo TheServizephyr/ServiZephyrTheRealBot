@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, validatePhoneNumberLength } from 'libphonenumber-js';
 import { getLocationErrorDetails, getPreciseBrowserLocation, getServerLocationErrorDetails } from '@/lib/browser/preciseLocation';
+import { readBrowserStorage, writeBrowserStorage, removeBrowserStorage } from '@/lib/client/safeStorage.mjs';
+import { fetchServiceJson } from '@/lib/client/serviceApi.mjs';
 
 const getWaitlistStorageKey = (restaurantId) => `servizephyr_waitlist_token_${restaurantId}`;
 const getWaitlistMenuCredentialKey = (restaurantId, entryId) => `servizephyr_waitlist_menu_credential_${restaurantId}_${entryId}`;
@@ -118,16 +120,10 @@ export default function PublicWaitlistPage({ params }) {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const res = await fetch(`/api/public/restaurant-overview/${restaurantId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setRestaurantData(data.restaurant);
-                    setMenuExploreEnabled(data.restaurant?.services?.waitlistMenuExplore === true);
-                    setStatusError('');
-                } else {
-                    setRestaurantData(null);
-                    setStatusError('Could not verify restaurant status right now. Please try again in a moment.');
-                }
+                const data = await fetchServiceJson(`/api/public/restaurant-overview/${restaurantId}`);
+                setRestaurantData(data.restaurant);
+                setMenuExploreEnabled(data.restaurant?.services?.waitlistMenuExplore === true);
+                setStatusError('');
             } catch (err) {
                 console.error("Failed to fetch restaurant status:", err);
                 setRestaurantData(null);
@@ -153,7 +149,7 @@ export default function PublicWaitlistPage({ params }) {
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const storageKey = getWaitlistStorageKey(restaurantId);
-        const raw = window.localStorage.getItem(storageKey);
+        const raw = readBrowserStorage('localStorage', storageKey);
         if (!raw) return;
 
         try {
@@ -184,7 +180,7 @@ export default function PublicWaitlistPage({ params }) {
             return;
         }
 
-        window.localStorage.setItem(storageKey, JSON.stringify({
+        writeBrowserStorage('localStorage', storageKey, JSON.stringify({
             restaurantId,
             mode: 'waitlist',
             name,
@@ -209,8 +205,14 @@ export default function PublicWaitlistPage({ params }) {
         if (!(mode === 'waitlist' && success && entryId && arrivalCode)) return undefined;
 
         let isCancelled = false;
+        let inFlight = false;
+        let retryAt = 0;
+        let terminal = false;
 
         const pollWaitlistStatus = async ({ force = false } = {}) => {
+            if (isCancelled || terminal || inFlight || Date.now() < retryAt) return;
+            if (!force && document.visibilityState === 'hidden') return;
+            inFlight = true;
             try {
                 const params = new URLSearchParams({
                     restaurantId,
@@ -218,10 +220,8 @@ export default function PublicWaitlistPage({ params }) {
                     arrivalCode,
                 });
                 params.set('_', String(Date.now()));
-                if (!force && document.visibilityState === 'hidden') return;
-                const res = await fetch(`/api/public/waitlist/status?${params.toString()}`, { cache: 'no-store' });
-                const data = await res.json();
-                if (!res.ok || isCancelled) return;
+                const data = await fetchServiceJson(`/api/public/waitlist/status?${params.toString()}`);
+                if (isCancelled) return;
 
                 const nextStatus = String(data?.status || 'pending').toLowerCase();
                 setQueueStatus(nextStatus);
@@ -232,6 +232,7 @@ export default function PublicWaitlistPage({ params }) {
                 }
 
                 if (nextStatus === 'seated') {
+                    terminal = true;
                     setSuccess(true);
                     return;
                 }
@@ -241,11 +242,12 @@ export default function PublicWaitlistPage({ params }) {
                     setError(nextStatus === 'no_show'
                         ? 'Your waitlist token expired due to late arrival. Please join again.'
                         : 'Your waitlist entry was cancelled. Please join again if needed.');
-                    window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+                    removeBrowserStorage('localStorage', getWaitlistStorageKey(restaurantId));
                 }
             } catch (pollErr) {
+                retryAt = Date.now() + Math.max(3, pollErr.retryAfterSec || 0) * 1000;
                 console.warn('[waitlist] status poll error:', pollErr);
-            }
+            } finally { inFlight = false; }
         };
 
         const handleVisibilityChange = () => {
@@ -275,7 +277,7 @@ export default function PublicWaitlistPage({ params }) {
 
     const returnToFreshWaitlistForm = useCallback(() => {
         if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+            removeBrowserStorage('localStorage', getWaitlistStorageKey(restaurantId));
         }
 
         setSuccess(false);
@@ -375,16 +377,15 @@ export default function PublicWaitlistPage({ params }) {
             }
             if (preciseLocation) payload.location = preciseLocation;
 
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const data = await res.json();
-
-            if (!res.ok) {
-                const locationDetails = getServerLocationErrorDetails(data?.code, data);
+            let data;
+            try {
+                data = await fetchServiceJson(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } catch (requestError) {
+                const locationDetails = getServerLocationErrorDetails(requestError.data?.code, requestError.data);
                 if (locationDetails) {
                     const locationError = new Error(locationDetails.message);
                     locationError.name = 'PreciseLocationError';
@@ -392,7 +393,7 @@ export default function PublicWaitlistPage({ params }) {
                     locationError.userTitle = locationDetails.title;
                     throw locationError;
                 }
-                throw new Error(data.message || `Failed to ${isBookingMode ? 'book table' : 'join waitlist'}`);
+                throw requestError;
             }
 
             setWaitlistToken(data?.waitlistToken || '');
@@ -402,7 +403,7 @@ export default function PublicWaitlistPage({ params }) {
             setNotifiedAt('');
             setNoShowDeadlineAt('');
             if (isBookingMode && typeof window !== 'undefined') {
-                window.localStorage.removeItem(getWaitlistStorageKey(restaurantId));
+                removeBrowserStorage('localStorage', getWaitlistStorageKey(restaurantId));
             }
             setSuccess(true);
         } catch (err) {
