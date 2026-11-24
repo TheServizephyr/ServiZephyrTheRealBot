@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServiceDeadlineScheduler } from '../src/lib/client/serviceDeadlineScheduler.mjs';
 import { createServiceRefreshQueue, fetchServiceJson } from '../src/lib/client/serviceApi.mjs';
 import { readBrowserStorage, writeBrowserStorage, removeBrowserStorage } from '../src/lib/client/safeStorage.mjs';
-import { createWaitlistMutations } from '../src/lib/client/waitlistMutations.mjs';
+import { createWaitlistMutations, watchNewManualWaitlistEntry } from '../src/lib/client/waitlistMutations.mjs';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function clock(refresh) {
@@ -202,6 +202,43 @@ test('a delayed API result cannot restore a created token that realtime later dr
     assert.deepEqual(updates.reconcile([], { fromServer: true }), []);
     assert.deepEqual(updates.reconcile([guest], { readVersion }), []);
     assert.deepEqual(updates.reconcile([guest]), []);
+});
+
+test('another staff member can seat a quick-added guest before the live query observes it', () => {
+    const updates = createWaitlistMutations();
+    const guest = { id: 'guest', status: 'pending' };
+    updates.confirm(guest.id, guest);
+    const readVersion = updates.version;
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), [guest]);
+
+    let emitEntry;
+    let unsubscribed = false;
+    const stop = watchNewManualWaitlistEntry((onValue) => {
+        emitEntry = onValue;
+        return () => { unsubscribed = true; };
+    }, () => {
+        updates.confirm(guest.id);
+        stop();
+    }, assert.fail);
+
+    const snapshot = (status, metadata = {}) => ({
+        metadata,
+        exists: () => true,
+        data: () => ({ status }),
+    });
+    emitEntry(snapshot('seated', { fromCache: true }));
+    emitEntry(snapshot('seated', { hasPendingWrites: true }));
+    emitEntry(snapshot('pending'));
+    assert.equal(unsubscribed, false);
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), [guest]);
+
+    // The live query has never included this guest. The document listener
+    // independently confirms the other staff member's seating.
+    emitEntry(snapshot('seated'));
+    assert.equal(unsubscribed, true);
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), []);
+    assert.deepEqual(updates.reconcile([guest], { readVersion }), []);
+    assert.deepEqual(updates.reconcile([guest], { fromServer: true }), []);
 });
 
 test('a browser denying the storage property itself cannot crash token rendering', () => {

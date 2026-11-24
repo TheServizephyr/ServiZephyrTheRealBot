@@ -36,3 +36,11 @@ export function createWaitlistMutations() {
         },
     };
 }
+
+export function watchNewManualWaitlistEntry(subscribe, onRemoval, onError) {
+    return subscribe((snapshot) => {
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        const status = snapshot.data()?.status;
+        if (!snapshot.exists() || status === 'seated' || status === 'cancelled') onRemoval();
+    }, onError);
+}

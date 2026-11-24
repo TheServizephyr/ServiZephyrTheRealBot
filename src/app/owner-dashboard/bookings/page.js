@@ -39,7 +39,7 @@ import { waitlistDeadlines, bookingBridgeDeadlines } from '@/lib/client/serviceD
 import { useServiceDeadlines } from '@/hooks/useServiceDeadlines';
 import { LIVE_WAITLIST_STATUSES, recentNoShowCutoff } from '@/lib/waitlistReads.mjs';
 import { createServiceRefreshQueue, fetchServiceJson } from '@/lib/client/serviceApi.mjs';
-import { createWaitlistMutations } from '@/lib/client/waitlistMutations.mjs';
+import { createWaitlistMutations, watchNewManualWaitlistEntry } from '@/lib/client/waitlistMutations.mjs';
 import { reportClientIncident } from '@/lib/opsClientReporter';
 import { getBestEffortIdToken } from '@/lib/client-session';
 
@@ -1934,14 +1934,34 @@ const WaitlistManagement = ({
 
     const listenerRefreshTimerRef = useRef(null);
     const waitlistRealtimeReadyRef = useRef(false);
+    const quickAddEntryWatchesRef = useRef(new Map());
+    const waitlistMountedRef = useRef(false);
+    useEffect(() => {
+        waitlistMountedRef.current = true;
+        const watches = quickAddEntryWatchesRef.current;
+        return () => {
+            waitlistMountedRef.current = false;
+            for (const unsubscribe of watches.values()) unsubscribe();
+            watches.clear();
+        };
+    }, []);
+
+    const stopQuickAddEntryWatch = useCallback((entryId) => {
+        const watches = quickAddEntryWatchesRef.current;
+        const unsubscribe = watches.get(entryId);
+        watches.delete(entryId);
+        unsubscribe?.();
+    }, []);
+
     const confirmWaitlistMutation = useCallback((entryId, entry = null) => {
+        if (!entry) stopQuickAddEntryWatch(entryId);
         waitlistMutations.confirm(entryId, entry);
         setEntries(current => {
             if (!entry) return current.filter(row => row.id !== entryId);
             if (current.some(row => row.id === entryId)) return current;
             return sortActiveWaitlistEntries([...current, entry]);
         });
-    }, [waitlistMutations]);
+    }, [stopQuickAddEntryWatch, waitlistMutations]);
 
     const loadData = useCallback(async () => {
         try {
@@ -1972,6 +1992,25 @@ const WaitlistManagement = ({
         try { return await refreshQueue.run(afterMutation); }
         finally { if (!silent) setLoading(false); }
     }, [refreshQueue]);
+
+    const watchQuickAddEntry = useCallback((entryId) => {
+        if (!waitlistMountedRef.current || !restaurant?.collection || !restaurant?.id) return;
+        const watches = quickAddEntryWatchesRef.current;
+        const entryRef = doc(db, restaurant.collection, restaurant.id, 'waitlist', entryId);
+        const unsubscribe = watchNewManualWaitlistEntry(
+            (onValue, onError) => onSnapshot(entryRef, { includeMetadataChanges: true }, onValue, onError),
+            () => {
+                if (watches.has(entryId)) confirmWaitlistMutation(entryId);
+            },
+            (error) => {
+                if (!watches.has(entryId)) return;
+                stopQuickAddEntryWatch(entryId);
+                console.error('[Waitlist] Could not watch the new manual entry:', error);
+                void fetchData(true, true);
+            }
+        );
+        watches.set(entryId, unsubscribe);
+    }, [restaurant?.collection, restaurant?.id, confirmWaitlistMutation, stopQuickAddEntryWatch, fetchData]);
 
     const liveDeadlines = useMemo(() => waitlistDeadlines(entries, waitlistMeta?.noShowTimeoutMinutes || 10), [entries, waitlistMeta?.noShowTimeoutMinutes]);
     const refreshAtDeadline = useCallback(() => fetchData(true), [fetchData]);
@@ -2035,7 +2074,10 @@ const WaitlistManagement = ({
                     paxCount: normalizedPaxCount,
                     source: 'manual_quick_add',
                 }, '/api/owner/waitlist');
-                if (result?.entry?.id) confirmWaitlistMutation(result.entry.id, result.entry);
+                if (result?.entry?.id) {
+                    confirmWaitlistMutation(result.entry.id, result.entry);
+                    if (effectiveWaitlistSeatingMode === 'manual_seat') watchQuickAddEntry(result.entry.id);
+                }
                 const tokenText = result?.entry?.waitlistToken ? ` Token ${result.entry.waitlistToken}.` : '';
                 toast({ title: "Waitlist Added", description: `${normalizedName} added to live waitlist.${tokenText}` });
                 void fetchData(true, true);
@@ -2046,7 +2088,7 @@ const WaitlistManagement = ({
         } finally {
             setQuickAddLoading(false);
         }
-    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, confirmWaitlistMutation, fetchData, closeQuickAdd, onBookingCreated, toast]);
+    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, confirmWaitlistMutation, effectiveWaitlistSeatingMode, watchQuickAddEntry, fetchData, closeQuickAdd, onBookingCreated, toast]);
 
     useEffect(() => {
         if (typeof onWaitlistUpdate === 'function') {
@@ -2088,6 +2130,9 @@ const WaitlistManagement = ({
             // An empty local snapshot is not proof that the server queue is empty.
             if (waitlistRealtimeReadyRef.current || mergedEntries.length > 0) {
                 const rows = waitlistMutations.reconcile(mergedEntries, { fromServer: waitlistRealtimeReadyRef.current });
+                if (waitlistRealtimeReadyRef.current && quickAddEntryWatchesRef.current.size) {
+                    for (const row of mergedEntries) stopQuickAddEntryWatch(row.id);
+                }
                 setEntries(sortActiveWaitlistEntries(rows));
                 setLoading(false);
             }
@@ -2139,7 +2184,7 @@ const WaitlistManagement = ({
             unsubscribeTables?.();
             clearTimeout(listenerRefreshTimerRef.current);
         };
-    }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId, waitlistMutations]);
+    }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId, waitlistMutations, stopQuickAddEntryWatch]);
 
     useEffect(() => {
         if (!refreshSignal) return;
