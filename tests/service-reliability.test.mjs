@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServiceDeadlineScheduler } from '../src/lib/client/serviceDeadlineScheduler.mjs';
 import { createServiceRefreshQueue, fetchServiceJson } from '../src/lib/client/serviceApi.mjs';
 import { readBrowserStorage, writeBrowserStorage, removeBrowserStorage } from '../src/lib/client/safeStorage.mjs';
+import { createWaitlistMutations } from '../src/lib/client/waitlistMutations.mjs';
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function clock(refresh) {
@@ -148,6 +149,59 @@ test('overlapping refreshes share one request; mutations queue one fresh follow-
     assert.deepEqual(await Promise.all(mutations), ['after-mutation', 'after-mutation']);
     assert.equal(await first, 'before-mutation');
     assert.ok((await Promise.all(repeats)).every(result => result === 'before-mutation'));
+});
+
+test('old waitlist reads cannot restore a seated row or hide a newly created token', () => {
+    const updates = createWaitlistMutations();
+    const seated = { id: 'seated', status: 'arrived' };
+    const created = { id: 'created', status: 'pending' };
+    const staleReadVersion = updates.version;
+    updates.confirm(seated.id);
+    updates.confirm(created.id, created);
+
+    assert.deepEqual(updates.reconcile([seated], { readVersion: staleReadVersion }), [created]);
+    assert.deepEqual(updates.reconcile([seated]), [created]);
+
+    const arrived = { ...created, status: 'arrived' };
+    assert.deepEqual(updates.reconcile([arrived], { fromServer: true }), [arrived]);
+    assert.deepEqual(updates.reconcile([seated], { readVersion: staleReadVersion }), [arrived]);
+    assert.deepEqual(updates.reconcile([seated, created]), [arrived]);
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), []);
+});
+
+test('a fresh fallback read reconciles successful writes when realtime is unavailable', () => {
+    const updates = createWaitlistMutations();
+    const created = { id: 'created', status: 'pending' };
+    updates.confirm(created.id, created);
+    const readVersion = updates.version;
+    const newer = { id: 'newer', status: 'pending' };
+    updates.confirm(newer.id, newer);
+    assert.deepEqual(updates.reconcile([], { readVersion }), [newer]);
+});
+
+test('cached snapshots after an API refresh cannot restore a seated guest', () => {
+    const updates = createWaitlistMutations();
+    const guest = { id: 'guest', status: 'notified' };
+    updates.confirm(guest.id);
+
+    assert.deepEqual(updates.reconcile([], { readVersion: updates.version }), []);
+    assert.deepEqual(updates.reconcile([guest]), []);
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), []);
+    assert.deepEqual(updates.reconcile([guest], { readVersion: 0 }), []);
+    assert.deepEqual(updates.reconcile([guest]), []);
+    assert.deepEqual(updates.reconcile([guest], { fromServer: true }), []);
+});
+
+test('a delayed API result cannot restore a created token that realtime later dropped', () => {
+    const updates = createWaitlistMutations();
+    const guest = { id: 'guest', status: 'pending' };
+    updates.confirm(guest.id, guest);
+    const readVersion = updates.version;
+
+    assert.deepEqual(updates.reconcile([guest], { fromServer: true }), [guest]);
+    assert.deepEqual(updates.reconcile([], { fromServer: true }), []);
+    assert.deepEqual(updates.reconcile([guest], { readVersion }), []);
+    assert.deepEqual(updates.reconcile([guest]), []);
 });
 
 test('a browser denying the storage property itself cannot crash token rendering', () => {

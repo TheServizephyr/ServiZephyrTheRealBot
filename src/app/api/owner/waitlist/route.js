@@ -292,53 +292,54 @@ async function maybeBridgeLateBookings({ firestore, businessRef, businessId, bus
 }
 
 async function expireNoShows({ firestore, businessRef, noShowTimeoutMs }) {
-    const notifiedSnap = await businessRef.collection('waitlist')
+    const notifiedQuery = businessRef.collection('waitlist')
         .where('status', '==', 'notified')
-        .limit(120)
-        .get();
+        .limit(120);
 
-    const expiredEntries = notifiedSnap.docs.filter((doc) => {
-        const data = doc.data() || {};
+    const now = Date.now();
+    const isExpired = (data) => {
         const deadlineMs = toMillis(data.noShowDeadlineAt) || 0;
-        if (deadlineMs > 0) return Date.now() >= deadlineMs;
+        if (deadlineMs > 0) return now >= deadlineMs;
         const notifiedAtMs = toMillis(data.notifiedAt) || toMillis(data.updatedAt) || 0;
-        return notifiedAtMs > 0 && (Date.now() - notifiedAtMs) >= noShowTimeoutMs;
-    });
-
+        return notifiedAtMs > 0 && (now - notifiedAtMs) >= noShowTimeoutMs;
+    };
+    const notifiedSnap = await notifiedQuery.get();
+    const expiredEntries = notifiedSnap.docs.filter(doc => isExpired(doc.data() || {}));
     if (expiredEntries.length === 0) return 0;
 
-    const batch = firestore.batch();
+    // A concurrent seat or cancel must win over an old maintenance query.
+    return firestore.runTransaction(async (transaction) => {
+        const currentEntries = await transaction.getAll(...expiredEntries.map(doc => doc.ref));
+        let expiredCount = 0;
+        for (const entryDoc of currentEntries) {
+            const entryData = entryDoc.data() || {};
+            if (entryData.status !== 'notified' || !isExpired(entryData)) continue;
 
-    for (const entryDoc of expiredEntries) {
-        const entryData = entryDoc.data() || {};
-        const deadlineMs = toMillis(entryData.noShowDeadlineAt) || 0;
-        const notifiedAtMs = toMillis(entryData.notifiedAt) || toMillis(entryData.updatedAt) || 0;
-        const lapsedAtMs = deadlineMs || (notifiedAtMs ? notifiedAtMs + noShowTimeoutMs : 0);
-        const updatePayload = {
-            status: 'no_show',
-            menuWishlistCleanupAfter: entryData.menuWishlistClearedAt ? null : new Date((lapsedAtMs || Date.now()) + NO_SHOW_LIVE_WINDOW_MS),
-            noShowAt: lapsedAtMs ? new Date(lapsedAtMs) : FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-        };
-        if (!deadlineMs && lapsedAtMs) {
-            updatePayload.noShowDeadlineAt = new Date(lapsedAtMs);
+            const deadlineMs = toMillis(entryData.noShowDeadlineAt) || 0;
+            const notifiedAtMs = toMillis(entryData.notifiedAt) || toMillis(entryData.updatedAt) || 0;
+            const lapsedAtMs = deadlineMs || notifiedAtMs + noShowTimeoutMs;
+            const updatePayload = {
+                status: 'no_show',
+                menuWishlistCleanupAfter: entryData.menuWishlistClearedAt ? null : new Date(lapsedAtMs + NO_SHOW_LIVE_WINDOW_MS),
+                noShowAt: new Date(lapsedAtMs),
+                updatedAt: FieldValue.serverTimestamp(),
+            };
+            if (!deadlineMs) updatePayload.noShowDeadlineAt = new Date(lapsedAtMs);
+            transaction.update(entryDoc.ref, updatePayload);
+            expiredCount += 1;
+
+            const normalizedPhone = String(entryData.phone || '').trim();
+            if (!normalizedPhone) continue;
+            const lockRef = businessRef.collection('waitlist_active_phone').doc(normalizedPhone);
+            transaction.set(lockRef, {
+                phone: normalizedPhone,
+                entryId: entryDoc.id,
+                status: 'active',
+                updatedAt: FieldValue.serverTimestamp(),
+            }, { merge: true });
         }
-        batch.set(entryDoc.ref, updatePayload, { merge: true });
-
-        const normalizedPhone = String(entryData.phone || '').trim();
-        if (!normalizedPhone) continue;
-
-        const lockRef = businessRef.collection('waitlist_active_phone').doc(normalizedPhone);
-        batch.set(lockRef, {
-            phone: normalizedPhone,
-            entryId: entryDoc.id,
-            status: 'active',
-            updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-    }
-
-    await batch.commit();
-    return expiredEntries.length;
+        return expiredCount;
+    });
 }
 
 function getSavedWishlistDocsForAggregation(wishlistDocs = []) {
@@ -451,41 +452,31 @@ async function cleanupLapsedNoShowMenuWishlists({ firestore, waitlistDocs }) {
 }
 
 async function autoPromoteNextPending({ firestore, businessRef }) {
-    const activeNotifiedSnap = await businessRef.collection('waitlist')
-        .where('status', 'in', ['notified', READY_TO_NOTIFY_STATUS])
-        .limit(1)
-        .get();
-    if (!activeNotifiedSnap.empty) return null;
+    const waitlistRef = businessRef.collection('waitlist');
+    return firestore.runTransaction(async (transaction) => {
+        const activeNotifiedSnap = await transaction.get(waitlistRef
+            .where('status', 'in', ['notified', READY_TO_NOTIFY_STATUS]).limit(1));
+        if (!activeNotifiedSnap.empty) return null;
 
-    const pendingSnap = await businessRef.collection('waitlist')
-        .where('status', '==', 'pending')
-        .limit(200)
-        .get();
-    if (pendingSnap.empty) return null;
+        const pendingSnap = await transaction.get(waitlistRef.where('status', '==', 'pending').limit(200));
+        const [nextEntry] = pendingSnap.docs
+            .map(doc => ({ id: doc.id, data: doc.data(), ref: doc.ref }))
+            .sort((a, b) => {
+                const priorityA = normalizeQueuePriority(a.data.queuePriority, 2);
+                const priorityB = normalizeQueuePriority(b.data.queuePriority, 2);
+                return priorityA - priorityB || (toMillis(a.data.createdAt) || 0) - (toMillis(b.data.createdAt) || 0);
+            });
+        if (!nextEntry) return null;
 
-    const candidateDocs = pendingSnap.docs
-        .map((doc) => ({ id: doc.id, data: doc.data() || {}, ref: doc.ref }))
-        .sort((a, b) => {
-            const pA = normalizeQueuePriority(a.data.queuePriority, 2);
-            const pB = normalizeQueuePriority(b.data.queuePriority, 2);
-            if (pA !== pB) return pA - pB;
-            const cA = toMillis(a.data.createdAt) || 0;
-            const cB = toMillis(b.data.createdAt) || 0;
-            return cA - cB;
+        transaction.update(nextEntry.ref, {
+            status: READY_TO_NOTIFY_STATUS,
+            notifiedAt: null,
+            noShowDeadlineAt: null,
+            autoPromotedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
-
-    const nextEntry = candidateDocs[0];
-    if (!nextEntry) return null;
-
-    await nextEntry.ref.set({
-        status: READY_TO_NOTIFY_STATUS,
-        notifiedAt: null,
-        noShowDeadlineAt: null,
-        autoPromotedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    return nextEntry.id;
+        return nextEntry.id;
+    });
 }
 
 function getManualCapacityMetrics({ manualCapacity }) {
@@ -655,26 +646,25 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid phone number format.' }, { status: 400 });
         }
 
-        let entryPayload = null;
-        const todayCounterDateKey = getDateKeyInTimeZone(new Date());
+        const createdAt = new Date();
+        const todayCounterDateKey = getDateKeyInTimeZone(createdAt);
+        const lockRef = normalizedPhone
+            ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
+            : null;
 
-        await firestore.runTransaction(async (transaction) => {
-            const businessSnapTx = await transaction.get(businessRef);
+        const entryPayload = await firestore.runTransaction(async (transaction) => {
+            const [businessSnapTx, lockSnap] = await transaction.getAll(...(lockRef ? [businessRef, lockRef] : [businessRef]));
             const businessDataTx = businessSnapTx.data() || {};
-            const lockRef = normalizedPhone
-                ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
-                : null;
 
-            if (lockRef) {
-                const lockSnap = await transaction.get(lockRef);
+            if (lockSnap?.exists) {
                 const existingEntryId = String(lockSnap.data()?.entryId || '').trim();
-                if (lockSnap.exists && existingEntryId) {
+                if (existingEntryId) {
                     const existingEntryRef = businessRef.collection('waitlist').doc(existingEntryId);
                     const existingEntrySnap = await transaction.get(existingEntryRef);
                     if (existingEntrySnap.exists && isLiveActiveWaitlistRecord(existingEntrySnap.data())) {
                         throw { message: 'Active waitlist entry already exists for this phone.', status: 409 };
                     }
-                } else if (lockSnap.exists) {
+                } else {
                     throw { message: 'Active waitlist entry already exists for this phone.', status: 409 };
                 }
             }
@@ -690,7 +680,7 @@ export async function POST(req) {
             const arrivalCode = generateArrivalCode();
             const entryRef = businessRef.collection('waitlist').doc();
 
-            entryPayload = {
+            const entryPayload = {
                 id: entryRef.id,
                 name: normalizedName,
                 phone: normalizedPhone,
@@ -725,15 +715,16 @@ export async function POST(req) {
                     updatedAt: FieldValue.serverTimestamp(),
                 }, { merge: true });
             }
+            return entryPayload;
         });
 
         return NextResponse.json({
             message: 'Waitlist entry created.',
-            entry: entryPayload ? {
+            entry: {
                 ...entryPayload,
-                createdAt: null,
-                updatedAt: null,
-            } : null,
+                createdAt: createdAt.toISOString(),
+                updatedAt: createdAt.toISOString(),
+            },
         }, { status: 201 });
     } catch (error) {
         console.error("POST OWNER WAITLIST ERROR:", error);
@@ -751,7 +742,7 @@ export async function PATCH(req) {
             WAITLIST_MANAGE_PERMISSIONS
         );
         assertRestaurantBusiness(context);
-        const { businessId, businessSnap } = context;
+        const { businessSnap } = context;
         const firestore = await getFirestore();
         const { entryId, status } = await req.json();
 
@@ -771,34 +762,35 @@ export async function PATCH(req) {
         const noShowTimeoutMs = toNoShowTimeoutMs(noShowTimeoutMinutes);
 
         const entryRef = businessRef.collection('waitlist').doc(entryId);
-        const entrySnap = await entryRef.get();
-
-        if (!entrySnap.exists) {
-            return NextResponse.json({ message: 'Waitlist entry not found.' }, { status: 404 });
-        }
-
-        const entryData = entrySnap.data() || {};
-        const normalizedPhone = String(entryData.phone || '').trim();
-        const activePhoneLockRef = normalizedPhone
-            ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
-            : null;
-
-        const previousStatus = String(entryData.status || '').toLowerCase();
-
-        const wishlistFinalization = await firestore.runTransaction(async (transaction) => {
+        const updated = await firestore.runTransaction(async (transaction) => {
             const freshEntrySnap = await transaction.get(entryRef);
             if (!freshEntrySnap.exists) {
                 throw { message: 'Waitlist entry not found.', status: 404 };
             }
             const freshEntryData = freshEntrySnap.data() || {};
-            const lockSnap = activePhoneLockRef
-                ? await transaction.get(activePhoneLockRef)
+            const previousStatus = String(freshEntryData.status || '').toLowerCase();
+            if (previousStatus === 'seated' || previousStatus === 'cancelled') {
+                if (previousStatus !== status) {
+                    throw { message: `This waitlist entry is already ${previousStatus}.`, status: 409 };
+                }
+                return {
+                    wishlistFinalization: { aggregatedCount: 0, clearedCount: 0 },
+                    shouldPromoteNext: false,
+                };
+            }
+
+            const normalizedPhone = String(freshEntryData.phone || '').trim();
+            const activePhoneLockRef = normalizedPhone
+                ? businessRef.collection('waitlist_active_phone').doc(normalizedPhone)
                 : null;
             const shouldFinalizeWishlist = (status === 'seated' || status === 'cancelled')
                 && !freshEntryData.menuWishlistClearedAt;
-            const wishlistSnap = shouldFinalizeWishlist
-                ? await transaction.get(entryRef.collection('menu_wishlist').limit(WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT))
-                : null;
+            const [lockSnap, wishlistSnap] = await Promise.all([
+                activePhoneLockRef ? transaction.get(activePhoneLockRef) : null,
+                shouldFinalizeWishlist
+                    ? transaction.get(entryRef.collection('menu_wishlist').limit(WAITLIST_MENU_WISHLIST_FINALIZE_LIMIT))
+                    : null,
+            ]);
 
             const updatePayload = {
                 status,
@@ -824,7 +816,7 @@ export async function PATCH(req) {
                 updatePayload.menuWishlistCleanupAfter = freshEntryData.menuWishlistClearedAt ? null : new Date(Date.now() + NO_SHOW_LIVE_WINDOW_MS);
             }
 
-            const finalizationResult = applyWaitlistMenuWishlistFinalization({
+            const wishlistFinalization = applyWaitlistMenuWishlistFinalization({
                 transaction,
                 businessRef,
                 entryRef,
@@ -834,34 +826,34 @@ export async function PATCH(req) {
                 updatePayload,
             });
 
-            transaction.update(entryRef, {
-                ...updatePayload
-            });
+            transaction.update(entryRef, updatePayload);
 
-            if (!activePhoneLockRef) return finalizationResult;
-            if (ACTIVE_STATUSES.has(status)) {
+            if (activePhoneLockRef && ACTIVE_STATUSES.has(status)) {
                 transaction.set(activePhoneLockRef, {
                     phone: normalizedPhone,
                     entryId,
                     status: 'active',
                     updatedAt: FieldValue.serverTimestamp(),
                 }, { merge: true });
-                return finalizationResult;
+            } else if (lockSnap?.exists && String(lockSnap.data()?.entryId || '').trim() === entryId) {
+                transaction.delete(activePhoneLockRef);
             }
-
-            if (lockSnap.exists) {
-                const lockEntryId = String(lockSnap.data()?.entryId || '').trim();
-                if (lockEntryId === entryId) {
-                    transaction.delete(activePhoneLockRef);
-                }
-            }
-            return finalizationResult;
+            return {
+                wishlistFinalization,
+                shouldPromoteNext: ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled'].includes(status),
+            };
         });
 
-        const shouldPromoteNext = ['notified', READY_TO_NOTIFY_STATUS].includes(previousStatus) && ['seated', 'cancelled'].includes(status);
-        const promotedEntryId = shouldPromoteNext
-            ? await autoPromoteNextPending({ firestore, businessRef })
-            : null;
+        let promotedEntryId = null;
+        let warning = null;
+        if (updated.shouldPromoteNext) {
+            try {
+                promotedEntryId = await autoPromoteNextPending({ firestore, businessRef });
+            } catch (error) {
+                console.warn('[owner/waitlist] Could not promote next guest:', error);
+                warning = 'Automatic promotion failed. Check the live waitlist and notify the next guest manually if needed.';
+            }
+        }
         const capacity = getManualCapacityMetrics({
             manualCapacity: waitlistManualCapacity,
         });
@@ -869,8 +861,8 @@ export async function PATCH(req) {
         return NextResponse.json({
             message: `Status updated to ${status}`,
             promotedEntryId,
-            wishlistFinalization,
-            warning: null,
+            wishlistFinalization: updated.wishlistFinalization,
+            warning,
             capacity,
         }, { status: 200 });
 

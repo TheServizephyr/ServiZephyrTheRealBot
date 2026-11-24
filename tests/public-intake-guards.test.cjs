@@ -37,18 +37,40 @@ function request(body, index = 0) {
     };
 }
 
-async function route(relativePath, business, rateResult = { allowed: true }) {
+async function route(relativePath, business, rateResult = { allowed: true }, waitlistWrites) {
     let reads = 0;
-    const firestore = { collection(name) {
-        assert.equal(name, 'restaurants');
-        return { doc(id) {
-            assert.equal(id, 'pizzeria-vatika-cafe');
-            return { get: async () => { reads += 1; return { exists: true, data: () => business }; } };
-        } };
-    } };
+    const restaurantRef = {
+        get: async () => { reads += 1; return { exists: true, data: () => business }; },
+        collection: name => ({ doc: (id = 'new-token') => ({
+            id,
+            path: `${name}/${id}`,
+            get: async () => ({ exists: false }),
+        }) }),
+    };
+    const firestore = {
+        collection(name) {
+            assert.equal(name, 'restaurants');
+            return { doc(id) {
+                assert.equal(id, 'pizzeria-vatika-cafe');
+                return restaurantRef;
+            } };
+        },
+        runTransaction: callback => callback({
+            getAll: (...refs) => Promise.all(refs.map(ref => ref.get())),
+            set: (ref, value) => {
+                if (!waitlistWrites) assert.fail('Unexpected transaction write');
+                waitlistWrites.push({ path: ref.path || 'restaurant', value });
+            },
+        }),
+    };
     const loaded = await load(relativePath, {
         'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200 }) } },
-        '@/lib/firebase-admin': { getFirestore: async () => firestore, getAuth: async () => ({}), verifyAndGetUid: async () => { throw { status: 401, message: 'No authentication' }; } },
+        '@/lib/firebase-admin': {
+            getFirestore: async () => firestore,
+            getAuth: async () => ({}),
+            verifyAndGetUid: async () => { throw { status: 401, message: 'No authentication' }; },
+            FieldValue: { serverTimestamp: () => '2026-11-02T12:00:00Z' },
+        },
         '@/lib/server/proximityVerification': { verifyPublicIntakeProximity: () => { throw new Error('Unexpected proximity call'); } },
         '@/lib/server/publicIntakeRateLimit': { enforcePublicIntakeRateLimit: async () => rateResult, enforcePublicWaitlistReadLimit: async () => rateResult },
         '@/lib/public-auth': { enforceRateLimit: async () => ({ allowed: true }) },
@@ -73,6 +95,38 @@ test('disabled public waitlist rejects a valid-shaped submission before any writ
     assert.equal(response.status, 403);
     assert.match(response.body.message, /disabled/);
     assert.equal(reads(), 1);
+});
+
+test('a public QR token uses one outlet read and saves its phone lock with the entry', async () => {
+    const writes = [];
+    const { loaded, reads } = await route('src/app/api/public/waitlist/join/route.js',
+        { isWaitlistEnabled: true }, { allowed: true }, writes);
+    const response = await loaded.POST(request({ ...booking, paxCount: 2 }));
+    assert.equal(response.status, 201);
+    assert.equal(reads(), 1);
+    assert.equal(response.body.entryId, 'new-token');
+    assert.match(response.body.waitlistToken, /^#00[A-Z]{2}$/);
+    assert.equal(writes.find(write => write.path === 'waitlist/new-token').value.arrivalCode, response.body.arrivalCode);
+    assert.equal(writes.find(write => write.path === 'restaurant').value.waitlistTokenCounter, 1);
+    assert.equal(writes.find(write => write.path === 'waitlist_active_phone/9000000000').value.entryId, 'new-token');
+});
+
+test('QR form service status checks the business without loading its menu or orders', async () => {
+    let profileReads = 0;
+    const { getPublicRestaurantServiceStatus } = await load('src/services/business/publicRestaurantOverview.service.js', {
+        '@/lib/businessSchedule': { getEffectiveBusinessOpenStatus: () => true },
+        '@/services/business/businessService': { findBusinessById: async (_firestore, id, options) => {
+            assert.equal(id, 'vatika');
+            assert.equal(options.includeDeliverySettings, false);
+            profileReads += 1;
+            return { data: { isWaitlistEnabled: true, waitlistLocationVerificationEnabled: true, waitlistExpectedWaitMinutes: 15 } };
+        } },
+    });
+    const status = await getPublicRestaurantServiceStatus({}, 'vatika');
+    assert.equal(profileReads, 1);
+    assert.equal(status.restaurant.services.waitlist, true);
+    assert.equal(status.restaurant.services.waitlistLocationVerification, true);
+    assert.equal(status.restaurant.waitlistExpectedWaitMinutes, 15);
 });
 
 test('claiming manual_quick_add does not skip owner authentication', async () => {
@@ -148,6 +202,96 @@ test('waitlist history without explicit dates queries only Today, with no unfilt
         assert.equal(filters[1].op, '<');
         assert.equal(filters[1].value.toISOString(), '2026-11-02T18:30:00.000Z');
     }
+});
+
+async function loadOwnerWaitlistForSeating({ previouslyNotified = false, failPromotion = false } = {}) {
+    const phone = '9000000000';
+    const initial = { status: 'pending', phone, menuWishlistClearedAt: true };
+    let entry = { ...initial, status: failPromotion ? 'notified' : initial.status };
+    let lock = { entryId: 'guest' };
+    let writes = 0;
+    const entryRef = { id: 'guest' };
+    const lockRef = { id: phone };
+    const entrySnap = () => ({ id: 'guest', ref: entryRef, exists: true, data: () => entry });
+    function query(collection, filters = []) {
+        return {
+            doc: id => {
+                if (collection === 'waitlist' && id === entryRef.id) return entryRef;
+                if (collection === 'waitlist_active_phone' && id === lockRef.id) return lockRef;
+                assert.fail(`Unexpected document ${collection}/${id}`);
+            },
+            where: (...clause) => query(collection, [...filters, clause]),
+            limit: () => query(collection, filters),
+            get: async () => ({
+                docs: previouslyNotified && collection === 'waitlist' && filters[0]?.join(':') === 'status:==:notified'
+                    ? [{ id: entryRef.id, ref: entryRef, data: () => ({
+                        ...initial, status: 'notified', noShowDeadlineAt: '2026-11-02T11:58:00Z',
+                    }) }]
+                    : [],
+            }),
+        };
+    }
+    const firestore = {
+        runTransaction: callback => callback({
+            get: async ref => {
+                if (ref === entryRef) return entrySnap();
+                if (failPromotion && ref !== lockRef) throw new Error('Promotion query unavailable');
+                assert.equal(ref, lockRef);
+                return { exists: Boolean(lock), data: () => lock };
+            },
+            getAll: async (...refs) => {
+                assert.equal(refs.length, 1);
+                assert.equal(refs[0], entryRef);
+                return [entrySnap()];
+            },
+            update: (ref, fields) => { assert.equal(ref, entryRef); entry = { ...entry, ...fields }; writes += 1; },
+            delete: ref => { assert.equal(ref, lockRef); lock = null; writes += 1; },
+        }),
+    };
+    const route = await load('src/app/api/owner/waitlist/route.js', {
+        'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200 }) } },
+        '@/lib/firebase-admin': { getFirestore: async () => firestore, FieldValue: { serverTimestamp: () => '2026-11-02T12:00:00Z' } },
+        '@/lib/verify-owner-with-audit': { verifyOwnerWithAudit: async () => ({
+            uid: 'owner', collectionName: 'restaurants', businessId: 'vatika',
+            businessSnap: { data: () => ({}), ref: { collection: query } },
+        }) },
+        '@/lib/permissions': { PERMISSIONS: {} },
+        '@/lib/historyDates.mjs': {},
+        '@/lib/waitlistReads.mjs': await import('../src/lib/waitlistReads.mjs'),
+        '@/lib/public-auth': { enforceRateLimit: async () => ({ allowed: true }) },
+    });
+    return { route, entry: () => entry, writes: () => writes };
+}
+
+test('manual seating saves once and a stale status action cannot reopen the entry', async () => {
+    const { route, entry, writes } = await loadOwnerWaitlistForSeating();
+    const seat = () => route.PATCH(request({ entryId: 'guest', status: 'seated' }));
+    assert.equal((await seat()).status, 200);
+    assert.equal(entry().status, 'seated');
+    assert.equal(writes(), 2);
+    assert.equal((await seat()).status, 200);
+    assert.equal((await route.PATCH(request({ entryId: 'guest', status: 'arrived' }))).status, 409);
+    assert.equal(writes(), 2);
+});
+
+test('successful manual seating reports a manual follow-up when promotion fails', async () => {
+    const { route, entry, writes } = await loadOwnerWaitlistForSeating({ failPromotion: true });
+    const response = await route.PATCH(request({ entryId: 'guest', status: 'seated' }));
+    assert.equal(response.status, 200);
+    assert.equal(entry().status, 'seated');
+    assert.equal(writes(), 2);
+    assert.equal(response.body.promotedEntryId, null);
+    assert.match(response.body.warning, /notify the next guest manually/);
+});
+
+test('no-show maintenance cannot overwrite a seating committed after its first read', async () => {
+    const { route, entry, writes } = await loadOwnerWaitlistForSeating({ previouslyNotified: true });
+    assert.equal((await route.PATCH(request({ entryId: 'guest', status: 'seated' }))).status, 200);
+    const response = await route.GET(request({}));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.meta.autoExpiredCount, 0);
+    assert.equal(entry().status, 'seated');
+    assert.equal(writes(), 2);
 });
 
 test('public booking and waitlist limits reject before any Firestore read', async () => {

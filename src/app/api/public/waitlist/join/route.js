@@ -136,51 +136,37 @@ export async function POST(req) {
             );
         }
 
-        // Validate restaurant exists
-        const restaurantSnap = await firestore.collection('restaurants').doc(restaurantId).get();
-        if (!restaurantSnap.exists) {
-            return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
-        }
-
-        const restaurantData = restaurantSnap.data();
-        const businessType = String(restaurantData?.businessType || 'restaurant').trim().toLowerCase();
-        if (businessType === 'shop' || businessType === 'store' || businessType === 'street-vendor' || businessType === 'street_vendor') {
-            return NextResponse.json({ message: 'Waitlist is only available for restaurant businesses.' }, { status: 403 });
-        }
-        if (restaurantData.isOpen === false) {
-            return NextResponse.json({ message: 'Restaurant is currently closed. We are not accepting new waitlist entries.' }, { status: 403 });
-        }
-        if (!restaurantData.isWaitlistEnabled) {
-            return NextResponse.json({ message: 'Waitlist is currently disabled for this restaurant.' }, { status: 403 });
-        }
-
-        if (restaurantData.waitlistLocationVerificationEnabled === true) {
-            const proximity = verifyPublicIntakeProximity(restaurantData, body);
-            if (!proximity.ok) {
-                return NextResponse.json({
-                    message: proximity.message,
-                    code: proximity.code,
-                    distanceMeters: proximity.distanceMeters,
-                }, { status: 403 });
-            }
-        }
-
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-        const waitlistRef = firestore.collection('restaurants').doc(restaurantId).collection('waitlist');
+        const waitlistRef = restaurantRef.collection('waitlist');
         const activePhoneLockRef = restaurantRef.collection('waitlist_active_phone').doc(normalizedPhone);
 
-        let entryId = null;
-        let waitlistToken = null;
-        let arrivalCode = null;
         const now = new Date();
         const nowIso = now.toISOString();
         const todayCounterDateKey = getDateKeyInTimeZone(now);
 
-        await firestore.runTransaction(async (transaction) => {
-            const businessSnap = await transaction.get(restaurantRef);
-            const businessDataTx = businessSnap.data() || {};
+        const token = await firestore.runTransaction(async (transaction) => {
+            const [restaurantSnap, lockSnap] = await transaction.getAll(restaurantRef, activePhoneLockRef);
+            if (!restaurantSnap.exists) {
+                throw { httpStatus: 404, message: 'Restaurant not found.' };
+            }
+            const restaurantData = restaurantSnap.data() || {};
+            const businessType = String(restaurantData.businessType || 'restaurant').trim().toLowerCase();
+            if (['shop', 'store', 'street-vendor', 'street_vendor'].includes(businessType)) {
+                throw { httpStatus: 403, message: 'Waitlist is only available for restaurant businesses.' };
+            }
+            if (restaurantData.isOpen === false) {
+                throw { httpStatus: 403, message: 'Restaurant is currently closed. We are not accepting new waitlist entries.' };
+            }
+            if (!restaurantData.isWaitlistEnabled) {
+                throw { httpStatus: 403, message: 'Waitlist is currently disabled for this restaurant.' };
+            }
+            if (restaurantData.waitlistLocationVerificationEnabled === true) {
+                const proximity = verifyPublicIntakeProximity(restaurantData, body);
+                if (!proximity.ok) {
+                    throw { httpStatus: 403, message: proximity.message, code: proximity.code, distanceMeters: proximity.distanceMeters };
+                }
+            }
 
-            const lockSnap = await transaction.get(activePhoneLockRef);
             if (lockSnap.exists) {
                 const lockData = lockSnap.data() || {};
                 const existingEntryId = String(lockData.entryId || '').trim();
@@ -195,18 +181,18 @@ export async function POST(req) {
                 }
             }
 
-            const storedCounterDateKey = String(businessDataTx.waitlistTokenCounterDate || '').trim();
+            const storedCounterDateKey = String(restaurantData.waitlistTokenCounterDate || '').trim();
             const shouldResetCounter = storedCounterDateKey !== todayCounterDateKey;
             const currentCounter = shouldResetCounter
                 ? DEFAULT_WAITLIST_TOKEN_BASE
-                : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(businessDataTx.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
+                : Math.max(DEFAULT_WAITLIST_TOKEN_BASE, Number(restaurantData.waitlistTokenCounter || DEFAULT_WAITLIST_TOKEN_BASE));
             const nextCounter = currentCounter + 1;
             const tokenNumber = currentCounter;
-            waitlistToken = formatWaitlistToken(tokenNumber);
-            arrivalCode = generateArrivalCode();
+            const waitlistToken = formatWaitlistToken(tokenNumber);
+            const arrivalCode = generateArrivalCode();
 
             const newEntryRef = waitlistRef.doc();
-            entryId = newEntryRef.id;
+            const entryId = newEntryRef.id;
             const newEntryData = {
                 id: newEntryRef.id,
                 name: String(name || '').trim(),
@@ -247,19 +233,21 @@ export async function POST(req) {
                 updatedAt: FieldValue.serverTimestamp(),
                 updatedAtIso: nowIso,
             }, { merge: true });
+            return { entryId, waitlistToken, arrivalCode };
         });
 
-
-        return NextResponse.json({
-            message: 'Successfully joined the waitlist!',
-            entryId,
-            waitlistToken,
-            arrivalCode,
-        }, { status: 201 });
+        return NextResponse.json({ message: 'Successfully joined the waitlist!', ...token }, { status: 201 });
 
     } catch (error) {
         if (error?.code === 'ALREADY_ON_WAITLIST' || String(error?.message || '').includes('ALREADY_ON_WAITLIST')) {
             return NextResponse.json({ message: 'You are already on the waitlist for this restaurant.' }, { status: 409 });
+        }
+        if (error?.httpStatus) {
+            return NextResponse.json({
+                message: error.message,
+                code: error.code,
+                distanceMeters: error.distanceMeters,
+            }, { status: error.httpStatus });
         }
         console.error("PUBLIC JOIN WAITLIST ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });

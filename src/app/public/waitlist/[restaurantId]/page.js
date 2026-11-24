@@ -120,7 +120,7 @@ export default function PublicWaitlistPage({ params }) {
     useEffect(() => {
         const fetchStatus = async () => {
             try {
-                const data = await fetchServiceJson(`/api/public/restaurant-overview/${restaurantId}`);
+                const data = await fetchServiceJson(`/api/public/restaurant-overview/${encodeURIComponent(restaurantId)}/services`);
                 setRestaurantData(data.restaurant);
                 setMenuExploreEnabled(data.restaurant?.services?.waitlistMenuExplore === true);
                 setStatusError('');

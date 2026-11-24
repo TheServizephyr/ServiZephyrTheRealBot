@@ -130,6 +130,36 @@ const getCoordinates = (businessData = {}) => {
     return { lat, lng };
 };
 
+async function findApprovedPublicBusiness(firestore, restaurantId) {
+    const business = await findBusinessById(firestore, restaurantId, { includeDeliverySettings: false });
+    const approvalStatus = String(business?.data?.approvalStatus || 'approved').toLowerCase();
+    return approvalStatus === 'approved' ? business : null;
+}
+
+function getServiceStatus(businessData) {
+    return {
+        name: businessData.name || 'Restaurant',
+        isOpen: getEffectiveBusinessOpenStatus(businessData),
+        services: {
+            delivery: businessData.deliveryEnabled !== false,
+            pickup: businessData.pickupEnabled !== false,
+            dineIn: businessData.dineInEnabled !== false,
+            booking: businessData.isBookingEnabled !== false,
+            waitlist: businessData.isWaitlistEnabled === true,
+            waitlistMenuExplore: businessData.waitlistMenuExploreEnabled === true,
+            bookingLocationVerification: businessData.bookingLocationVerificationEnabled === true,
+            waitlistLocationVerification: businessData.waitlistLocationVerificationEnabled === true,
+        },
+        waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes, 10),
+        waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(businessData.waitlistExpectedWaitMinutes, 0),
+    };
+}
+
+export async function getPublicRestaurantServiceStatus(firestore, restaurantId) {
+    const business = await findApprovedPublicBusiness(firestore, restaurantId);
+    return business ? { restaurant: getServiceStatus(business.data || {}) } : null;
+}
+
 export async function getPublicRestaurantOverview(firestore, restaurantId) {
     const safeRestaurantId = String(restaurantId || '').trim();
     if (!safeRestaurantId) {
@@ -139,19 +169,13 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
     const cached = readOverviewCache(safeRestaurantId);
     if (cached) return cached;
 
-    const business = await findBusinessById(firestore, safeRestaurantId, {
-        includeDeliverySettings: false,
-    });
+    const business = await findApprovedPublicBusiness(firestore, safeRestaurantId);
 
     if (!business) {
         return null;
     }
 
     const businessData = business.data || {};
-    const approvalStatus = String(businessData.approvalStatus || 'approved').toLowerCase();
-    if (approvalStatus !== 'approved') {
-        return null;
-    }
 
     const [menuSnap, ordersSnap] = await Promise.all([
         business.ref.collection('menu').get(),
@@ -268,30 +292,16 @@ export async function getPublicRestaurantOverview(firestore, restaurantId) {
     const address = businessData.address || businessData.businessAddress || {};
     const rawBusinessType = businessData.businessType || business.type || 'restaurant';
     const normalizedBusinessType = rawBusinessType === 'shop' ? 'store' : rawBusinessType;
-    const effectiveIsOpen = getEffectiveBusinessOpenStatus(businessData);
 
     const response = {
         restaurant: {
             id: business.id,
-            name: businessData.name || 'Restaurant',
+            ...getServiceStatus(businessData),
             logoUrl: businessData.logoUrl || '',
             bannerUrl: Array.isArray(businessData.bannerUrls) ? businessData.bannerUrls[0] : '',
             address: getAddressText(businessData),
             city: address.city || '',
-            isOpen: effectiveIsOpen,
             businessType: normalizedBusinessType,
-            services: {
-                delivery: businessData.deliveryEnabled !== false,
-                pickup: businessData.pickupEnabled !== false,
-                dineIn: businessData.dineInEnabled !== false,
-                booking: businessData.isBookingEnabled !== false,
-                waitlist: businessData.isWaitlistEnabled === true,
-                waitlistMenuExplore: businessData.waitlistMenuExploreEnabled === true,
-                bookingLocationVerification: businessData.bookingLocationVerificationEnabled === true,
-                waitlistLocationVerification: businessData.waitlistLocationVerificationEnabled === true,
-            },
-            waitlistNoShowTimeoutMinutes: normalizeNoShowTimeoutMinutes(businessData.waitlistNoShowTimeoutMinutes, 10),
-            waitlistExpectedWaitMinutes: normalizeExpectedWaitMinutes(businessData.waitlistExpectedWaitMinutes, 0),
             coordinates: getCoordinates(businessData),
             rating: {
                 value: Number(ratingValue.toFixed(1)),

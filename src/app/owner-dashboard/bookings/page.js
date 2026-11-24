@@ -39,6 +39,7 @@ import { waitlistDeadlines, bookingBridgeDeadlines } from '@/lib/client/serviceD
 import { useServiceDeadlines } from '@/hooks/useServiceDeadlines';
 import { LIVE_WAITLIST_STATUSES, recentNoShowCutoff } from '@/lib/waitlistReads.mjs';
 import { createServiceRefreshQueue, fetchServiceJson } from '@/lib/client/serviceApi.mjs';
+import { createWaitlistMutations } from '@/lib/client/waitlistMutations.mjs';
 import { reportClientIncident } from '@/lib/opsClientReporter';
 import { getBestEffortIdToken } from '@/lib/client-session';
 
@@ -350,7 +351,7 @@ const downloadHistoryCsv = ({ rows, fileName }) => {
     URL.revokeObjectURL(url);
 };
 
-const sortActiveWaitlistEntries = (entries = []) => [...entries].filter(isLiveActiveWaitlistEntry).sort((a, b) => {
+const sortActiveWaitlistEntries = (entries = []) => entries.filter(entry => isLiveActiveWaitlistEntry(entry)).sort((a, b) => {
     const pA = Number(a?.queuePriority || 2);
     const pB = Number(b?.queuePriority || 2);
     if (pA !== pB) return pA - pB;
@@ -1856,6 +1857,7 @@ const WaitlistManagement = ({
 }) => {
     const { toast } = useToast();
     const [entries, setEntries] = useState([]);
+    const [waitlistMutations] = useState(createWaitlistMutations);
     const [allTables, setAllTables] = useState([]);
     const [loading, setLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
@@ -1932,14 +1934,27 @@ const WaitlistManagement = ({
 
     const listenerRefreshTimerRef = useRef(null);
     const waitlistRealtimeReadyRef = useRef(false);
+    const confirmWaitlistMutation = useCallback((entryId, entry = null) => {
+        waitlistMutations.confirm(entryId, entry);
+        setEntries(current => {
+            if (!entry) return current.filter(row => row.id !== entryId);
+            if (current.some(row => row.id === entryId)) return current;
+            return sortActiveWaitlistEntries([...current, entry]);
+        });
+    }, [waitlistMutations]);
+
     const loadData = useCallback(async () => {
         try {
+            const readVersion = waitlistMutations.version;
             const waitlistPromise = handleApiCall('GET', null, '/api/owner/waitlist');
             const tablesPromise = canUseDineInTables && effectiveWaitlistSeatingMode === 'table_assign'
                 ? handleApiCall('GET', { include_empty_tabs: 'true' }, '/api/owner/dine-in-tables')
                 : Promise.resolve({ tables: [] });
             const [waitlistData, tablesData] = await Promise.all([waitlistPromise, tablesPromise]);
-            if (!waitlistRealtimeReadyRef.current) setEntries(sortActiveWaitlistEntries(waitlistData?.entries || []));
+            if (!waitlistRealtimeReadyRef.current) {
+                const rows = waitlistMutations.reconcile(waitlistData?.entries || [], { readVersion });
+                setEntries(sortActiveWaitlistEntries(rows));
+            }
             setWaitlistMeta(waitlistData?.meta || { noShowTimeoutMinutes: 10, capacity: null });
             setAllTables(tablesData?.tables || []);
             return true;
@@ -1948,7 +1963,7 @@ const WaitlistManagement = ({
             toast({ title: "Fetch Error", description: err.message, variant: "destructive" });
             return false;
         }
-    }, [canUseDineInTables, effectiveWaitlistSeatingMode, handleApiCall, toast]);
+    }, [canUseDineInTables, effectiveWaitlistSeatingMode, handleApiCall, toast, waitlistMutations]);
     const refreshQueue = useMemo(() => createServiceRefreshQueue(loadData), [loadData]);
     const fetchData = useCallback(async (silent = false, afterMutation = false) => {
         clearTimeout(listenerRefreshTimerRef.current);
@@ -2020,9 +2035,10 @@ const WaitlistManagement = ({
                     paxCount: normalizedPaxCount,
                     source: 'manual_quick_add',
                 }, '/api/owner/waitlist');
+                if (result?.entry?.id) confirmWaitlistMutation(result.entry.id, result.entry);
                 const tokenText = result?.entry?.waitlistToken ? ` Token ${result.entry.waitlistToken}.` : '';
                 toast({ title: "Waitlist Added", description: `${normalizedName} added to live waitlist.${tokenText}` });
-                await fetchData(true, true);
+                void fetchData(true, true);
             }
             closeQuickAdd();
         } catch (err) {
@@ -2030,7 +2046,7 @@ const WaitlistManagement = ({
         } finally {
             setQuickAddLoading(false);
         }
-    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, fetchData, closeQuickAdd, onBookingCreated, toast]);
+    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, confirmWaitlistMutation, fetchData, closeQuickAdd, onBookingCreated, toast]);
 
     useEffect(() => {
         if (typeof onWaitlistUpdate === 'function') {
@@ -2052,21 +2068,27 @@ const WaitlistManagement = ({
         let unsubscribeWaitlist = null;
         let unsubscribeRecentNoShows = null;
         let unsubscribeTables = null;
-        const streams = { active: { rows: [], bootstrapped: false, ready: false }, noShows: { rows: [], bootstrapped: false, ready: false } };
+        const streams = {
+            active: { rows: [], bootstrapped: false, ready: false, hasServerRows: false },
+            noShows: { rows: [], bootstrapped: false, ready: false, hasServerRows: false },
+        };
         const applySnapshot = (snapshot, stream) => {
             const state = streams[stream];
+            state.ready = !snapshot.metadata.fromCache;
+            waitlistRealtimeReadyRef.current = streams.active.ready && streams.noShows.ready;
+            if (!state.ready && state.hasServerRows) return;
             if (state.bootstrapped && snapshot.docChanges().length) {
                 const dates = [getLocalDateKey(), ...snapshot.docChanges().map(change => getLocalDateKey(new Date(getTimestampMs(getWaitlistHistoryTime(change.doc.data())) || Date.now())))];
                 invalidateOutletHistory(restaurant, impersonatedOwnerId, employeeOfOwnerId, dates);
             }
             state.bootstrapped = true;
-            state.ready = !snapshot.metadata.fromCache;
+            state.hasServerRows ||= state.ready;
             state.rows = snapshot.docs.map(normalizeWaitlistSnapshotDoc).filter(entry => stream !== 'noShows' || entry.status === 'no_show');
-            waitlistRealtimeReadyRef.current = streams.active.ready && streams.noShows.ready;
-            const mergedEntries = [...new Map([...streams.active.rows, ...streams.noShows.rows].map(entry => [entry.id, entry])).values()];
+            const mergedEntries = [...new Map([...streams.noShows.rows, ...streams.active.rows].map(entry => [entry.id, entry])).values()];
             // An empty local snapshot is not proof that the server queue is empty.
             if (waitlistRealtimeReadyRef.current || mergedEntries.length > 0) {
-                setEntries(sortActiveWaitlistEntries(mergedEntries));
+                const rows = waitlistMutations.reconcile(mergedEntries, { fromServer: waitlistRealtimeReadyRef.current });
+                setEntries(sortActiveWaitlistEntries(rows));
                 setLoading(false);
             }
         };
@@ -2117,7 +2139,7 @@ const WaitlistManagement = ({
             unsubscribeTables?.();
             clearTimeout(listenerRefreshTimerRef.current);
         };
-    }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId]);
+    }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId, waitlistMutations]);
 
     useEffect(() => {
         if (!refreshSignal) return;
@@ -2140,11 +2162,15 @@ const WaitlistManagement = ({
         setActionLoading(entryId);
         try {
             const result = await handleApiCall('PATCH', { entryId, status }, '/api/owner/waitlist');
-            toast({ title: "Updated", description: `Customer marked as ${status}.` });
-            void fetchData(true, true);
-            if (result?.promotedEntryId) {
-                toast({ title: "Next Guest Notified", description: "Auto-promoted next pending guest." });
+            const statusMessage = `Customer marked as ${status}.`;
+            if (result?.warning) {
+                toast({ title: "Updated, follow-up needed", description: `${statusMessage} ${result.warning}` });
+            } else if (result?.promotedEntryId) {
+                toast({ title: "Updated", description: `${statusMessage} Next pending guest is ready to notify.` });
+            } else {
+                toast({ title: "Updated", description: statusMessage });
             }
+            void fetchData(true, true);
         } catch (err) {
             toast({ title: "Error", description: err.message, variant: "destructive" });
         } finally {
@@ -2162,19 +2188,24 @@ const WaitlistManagement = ({
                 await handleApiCall('POST', { action: 'create_tab', tableId, pax_count: entry.paxCount, tab_name: entry.name }, '/api/owner/dine-in-tables');
             }
             const result = await handleApiCall('PATCH', { entryId: entry.id, status: 'seated' }, '/api/owner/waitlist');
+            confirmWaitlistMutation(entry.id);
+            const seatedMessage = usesTraditionalSeating
+                ? `${entry.name} marked as seated (manual seating).`
+                : `${entry.name} seated at Table ${tableId}.${source === 'scan' ? ' (via token scan)' : ''}`;
+            const warning = usesTraditionalSeating ? result?.warning : null;
             toast({
-                title: "Seated",
-                description: usesTraditionalSeating
-                    ? `${entry.name} marked as seated (manual seating).`
-                    : `${entry.name} seated at Table ${tableId}.${source === 'scan' ? ' (via token scan)' : ''}`
+                title: warning ? "Seated, follow-up needed" : "Seated",
+                description: warning ? `${seatedMessage} ${warning}` : seatedMessage,
             });
-            void fetchData(true, true);
+            if (!usesTraditionalSeating || !waitlistRealtimeReadyRef.current) void fetchData(true, true);
+            return true;
         } catch (err) {
             toast({ title: "Seating Error", description: err.message, variant: "destructive" });
+            return false;
         } finally {
             setActionLoading(null);
         }
-    }, [effectiveWaitlistSeatingMode, selectedTables, handleApiCall, fetchData, toast]);
+    }, [effectiveWaitlistSeatingMode, selectedTables, handleApiCall, confirmWaitlistMutation, fetchData, toast]);
 
     const handleSeatCustomer = async (entry) => {
         await seatWaitlistEntry(entry, null, 'manual');
@@ -2833,11 +2864,12 @@ const WaitlistManagement = ({
                             }
                             onClick={async () => {
                                 if (!scannedWaitlistEntry) return;
-                                await seatWaitlistEntry(
+                                const seated = await seatWaitlistEntry(
                                     scannedWaitlistEntry,
                                     effectiveWaitlistSeatingMode === 'manual_seat' ? null : scanSelectedTableId,
                                     'scan'
                                 );
+                                if (!seated) return;
                                 setScanSeatingEntry(null);
                                 setScanSelectedTableId('');
                             }}
@@ -3609,6 +3641,7 @@ function BookingsPageContent() {
                     <TabsContent value="waitlist">
                         {canMountWaitlistManagement ? (
                             <WaitlistManagement
+                                key={JSON.stringify([businessInfo?.collection, businessInfo?.id, impersonatedOwnerId, employeeOfOwnerId])}
                                 restaurant={businessInfo}
                                 impersonatedOwnerId={impersonatedOwnerId}
                                 employeeOfOwnerId={employeeOfOwnerId}
