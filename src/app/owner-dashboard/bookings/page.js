@@ -1993,6 +1993,14 @@ const WaitlistManagement = ({
         finally { if (!silent) setLoading(false); }
     }, [refreshQueue]);
 
+    const refreshAfterWaitlistMutation = useCallback(({ missingEntry = false } = {}) => {
+        if (!waitlistMountedRef.current) return;
+        // Table assignment also refreshes table tabs, which the waitlist streams do not contain.
+        if (missingEntry || effectiveWaitlistSeatingMode !== 'manual_seat' || !waitlistRealtimeReadyRef.current) {
+            void fetchData(true, true);
+        }
+    }, [effectiveWaitlistSeatingMode, fetchData]);
+
     const watchQuickAddEntry = useCallback((entryId) => {
         if (!waitlistMountedRef.current || !restaurant?.collection || !restaurant?.id) return;
         const watches = quickAddEntryWatchesRef.current;
@@ -2080,7 +2088,7 @@ const WaitlistManagement = ({
                 }
                 const tokenText = result?.entry?.waitlistToken ? ` Token ${result.entry.waitlistToken}.` : '';
                 toast({ title: "Waitlist Added", description: `${normalizedName} added to live waitlist.${tokenText}` });
-                void fetchData(true, true);
+                refreshAfterWaitlistMutation({ missingEntry: !result?.entry?.id });
             }
             closeQuickAdd();
         } catch (err) {
@@ -2088,7 +2096,7 @@ const WaitlistManagement = ({
         } finally {
             setQuickAddLoading(false);
         }
-    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, confirmWaitlistMutation, effectiveWaitlistSeatingMode, watchQuickAddEntry, fetchData, closeQuickAdd, onBookingCreated, toast]);
+    }, [quickAddForm, quickAddMode, restaurant?.id, handleApiCall, confirmWaitlistMutation, effectiveWaitlistSeatingMode, watchQuickAddEntry, refreshAfterWaitlistMutation, closeQuickAdd, onBookingCreated, toast]);
 
     useEffect(() => {
         if (typeof onWaitlistUpdate === 'function') {
@@ -2114,10 +2122,17 @@ const WaitlistManagement = ({
             active: { rows: [], bootstrapped: false, ready: false, hasServerRows: false },
             noShows: { rows: [], bootstrapped: false, ready: false, hasServerRows: false },
         };
+        const refreshIfRealtimeUnavailable = () => {
+            if (!waitlistRealtimeReadyRef.current && navigator.onLine && document.visibilityState === 'visible') {
+                void fetchData(true);
+            }
+        };
         const applySnapshot = (snapshot, stream) => {
             const state = streams[stream];
-            state.ready = !snapshot.metadata.fromCache;
+            const wasReady = waitlistRealtimeReadyRef.current;
+            state.ready = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
             waitlistRealtimeReadyRef.current = streams.active.ready && streams.noShows.ready;
+            if (wasReady && !waitlistRealtimeReadyRef.current) refreshIfRealtimeUnavailable();
             if (!state.ready && state.hasServerRows) return;
             if (state.bootstrapped && snapshot.docChanges().length) {
                 const dates = [getLocalDateKey(), ...snapshot.docChanges().map(change => getLocalDateKey(new Date(getTimestampMs(getWaitlistHistoryTime(change.doc.data())) || Date.now())))];
@@ -2142,6 +2157,7 @@ const WaitlistManagement = ({
             waitlistRealtimeReadyRef.current = false;
             console.error('[Bookings] Waitlist realtime listener failed:', error);
             setLoading(false);
+            refreshIfRealtimeUnavailable();
         };
         try {
             const activeWaitlistQuery = query(
@@ -2163,6 +2179,8 @@ const WaitlistManagement = ({
             console.error('[Bookings] Waitlist realtime setup failed:', error);
             setLoading(false);
         }
+        window.addEventListener('online', refreshIfRealtimeUnavailable);
+        document.addEventListener('visibilitychange', refreshIfRealtimeUnavailable);
 
         if (canUseDineInTables && effectiveWaitlistSeatingMode === 'table_assign') {
             let tablesBootstrapped = false;
@@ -2182,6 +2200,8 @@ const WaitlistManagement = ({
             }
             unsubscribeRecentNoShows?.();
             unsubscribeTables?.();
+            window.removeEventListener('online', refreshIfRealtimeUnavailable);
+            document.removeEventListener('visibilitychange', refreshIfRealtimeUnavailable);
             clearTimeout(listenerRefreshTimerRef.current);
         };
     }, [restaurant, fetchData, canUseDineInTables, effectiveWaitlistSeatingMode, impersonatedOwnerId, employeeOfOwnerId, waitlistMutations, stopQuickAddEntryWatch]);
@@ -2207,6 +2227,7 @@ const WaitlistManagement = ({
         setActionLoading(entryId);
         try {
             const result = await handleApiCall('PATCH', { entryId, status }, '/api/owner/waitlist');
+            if (status === 'cancelled') confirmWaitlistMutation(entryId);
             const statusMessage = `Customer marked as ${status}.`;
             if (result?.warning) {
                 toast({ title: "Updated, follow-up needed", description: `${statusMessage} ${result.warning}` });
@@ -2215,7 +2236,7 @@ const WaitlistManagement = ({
             } else {
                 toast({ title: "Updated", description: statusMessage });
             }
-            void fetchData(true, true);
+            refreshAfterWaitlistMutation();
         } catch (err) {
             toast({ title: "Error", description: err.message, variant: "destructive" });
         } finally {
@@ -2242,7 +2263,7 @@ const WaitlistManagement = ({
                 title: warning ? "Seated, follow-up needed" : "Seated",
                 description: warning ? `${seatedMessage} ${warning}` : seatedMessage,
             });
-            if (!usesTraditionalSeating || !waitlistRealtimeReadyRef.current) void fetchData(true, true);
+            refreshAfterWaitlistMutation();
             return true;
         } catch (err) {
             toast({ title: "Seating Error", description: err.message, variant: "destructive" });
@@ -2250,7 +2271,7 @@ const WaitlistManagement = ({
         } finally {
             setActionLoading(null);
         }
-    }, [effectiveWaitlistSeatingMode, selectedTables, handleApiCall, confirmWaitlistMutation, fetchData, toast]);
+    }, [effectiveWaitlistSeatingMode, selectedTables, handleApiCall, confirmWaitlistMutation, refreshAfterWaitlistMutation, toast]);
 
     const handleSeatCustomer = async (entry) => {
         await seatWaitlistEntry(entry, null, 'manual');
