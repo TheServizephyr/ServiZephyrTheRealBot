@@ -1,4 +1,4 @@
-import { Alegreya, Playfair_Display } from 'next/font/google';
+import localFont from 'next/font/local';
 import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
 import PWARecoveryHandler from '@/components/PWARecoveryHandler';
@@ -14,18 +14,19 @@ import Script from 'next/script';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
-// Font configuration
-const alegreya = Alegreya({
-  subsets: ['latin'],
-  weight: ['400', '500', '700'],
+const alegreya = localFont({
+  src: './fonts/alegreya.woff2',
+  weight: '400 900',
   display: 'swap',
+  adjustFontFallback: 'Times New Roman',
   variable: '--font-body',
 });
 
-const playfairDisplay = Playfair_Display({
-  subsets: ['latin'],
-  weight: ['400', '700'],
+const playfairDisplay = localFont({
+  src: './fonts/playfair-display.ttf',
+  weight: '400 900',
   display: 'swap',
+  adjustFontFallback: 'Times New Roman',
   variable: '--font-headline',
 });
 

@@ -14,7 +14,7 @@ import Image from 'next/image';
 import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
-import { Sora, Space_Grotesk } from 'next/font/google';
+import localFont from 'next/font/local';
 import { withCustomerImpersonation } from '@/lib/customer-impersonation-client';
 
 const navItems = [
@@ -24,16 +24,18 @@ const navItems = [
   { href: '/customer-dashboard/profile', icon: User, label: 'Profile' },
 ];
 
-const displayFont = Space_Grotesk({
-  subsets: ['latin'],
+const displayFont = localFont({
+  src: '../fonts/space-grotesk.woff2',
+  weight: '300 700',
+  display: 'swap',
   variable: '--font-customer-display',
-  weight: ['500', '600', '700'],
 });
 
-const bodyFont = Sora({
-  subsets: ['latin'],
+const bodyFont = localFont({
+  src: '../fonts/sora.woff2',
+  weight: '100 800',
+  display: 'swap',
   variable: '--font-customer-body',
-  weight: ['400', '500', '600'],
 });
 
 const NavLink = ({ href, activeHref, icon: Icon, label }) => {
